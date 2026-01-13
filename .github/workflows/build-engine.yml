@@ -1,71 +1,39 @@
-name: Build VO-SE Engine 
+name: Build Engine and Package
 
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+on: [push]
 
 jobs:
-  build-windows:
+  build:
     runs-on: windows-latest
+
     steps:
-      - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          install: mingw-w64-ucrt-x86_64-gcc
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
 
-      - name: Compile Windows DLL
-        shell: msys2 {0}
-        run: |
-          # 1. 作業用の一時フォルダを作成
-          mkdir -p build_tmp
-          
-          # 2. プロジェクト内のすべての .c と .h を収集（階層を問わず）
-          find . -name "*.c" -exec cp {} build_tmp/ \;
-          find . -name "*.h" -exec cp {} build_tmp/ \;
-          
-          cd build_tmp
-          
-          # 3. コンパイル実行（AVX2最適化を有効化）
-          # 入力ファイル名は vo_se_engine.c に設定
-          gcc -shared -o libvo_se.dll vo_se_engine.c -O3 -mavx2 -lm
-          
-          # 4. 成果物をプロジェクトの bin フォルダへ移動
-          mkdir -p ../bin
-          cp libvo_se.dll ../bin/
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
 
-      - name: Upload Windows DLL
-        uses: actions/upload-artifact@v4
-        with:
-          name: engine-windows
-          path: bin/libvo_se.dll
+    - name: Create bin directory
+      run: mkdir -p bin
 
-  build-macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
+    - name: Build C Engine (DLL)
+      # src/ フォルダの中にある .c ファイルを指定してビルド
+      run: |
+        gcc -shared -o bin/libvo_se.dll src/vo_se_engine.c
 
-      - name: Compile macOS dylib
-        run: |
-          mkdir -p build_tmp
-          find . -name "*.c" -exec cp {} build_tmp/ \;
-          find . -name "*.h" -exec cp {} build_tmp/ \;
-          
-          cd build_tmp
-          
-          # Apple Silicon(arm64)とIntel(x86_64)の両対応バイナリを作成
-          gcc -shared -o libvo_se.dylib vo_se_engine.c -O3 -arch arm64 -arch x86_64 -lm
-          
-          mkdir -p ../bin
-          cp libvo_se.dylib ../bin/
+    - name: Package with PyInstaller
+      run: pyinstaller vose_pro.spec
 
-      - name: Upload macOS dylib
-        uses: actions/upload-artifact@v4
-        with:
-          name: engine-macos
-          path: bin/libvo_se.dylib
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: VO-SE_Pro_Build
+        path: dist/VO-SE_Pro/
