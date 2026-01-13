@@ -11,6 +11,12 @@ from modules.talk.talk_manager import TalkManager
 
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+from PySide6.QtWidgets import QApplication
+# フォルダ名.ファイル名 の形式でインポート
+from modules.app_main import MainWindow 
+from modules.utils.initializer import AppInitializer
+from modules.utils.config_handler import ConfigHandler
+
 class VoseProApp:
     def __init__(self):
         self.app = QApplication(sys.argv)
