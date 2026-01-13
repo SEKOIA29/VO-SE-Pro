@@ -1,4 +1,4 @@
-name: Build Engine and Package
+name: Build VO-SE Pro Full Suite
 
 on: [push]
 
@@ -8,10 +8,10 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4 # v3からv4に更新
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v5 # v4からv5に更新
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
@@ -21,28 +21,52 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: Create bin directory
+    - name: Setup Workspace Directories
+      shell: powershell
       run: |
-        mkdir -p bin
-        # ディレクトリ作成を確認
-        ls -R
-
-    - name: Build C Engine (DLL)
-      # src/vo_se_engine.c が存在するか確認してからビルド
-      run: |
-        if (Test-Path "src/vo_se_engine.c") {
-          gcc -shared -o bin/libvo_se.dll src/vo_se_engine.c
-        } else {
-          Write-Error "Error: src/vo_se_engine.c not found!"
-          exit 1
+        # 既存エラー回避のため、存在チェック付きでフォルダ作成
+        $dirs = @("bin", "bin/open_jtalk", "models", "voice_banks", "src")
+        foreach ($dir in $dirs) {
+            if (!(Test-Path $dir)) {
+                New-Item -ItemType Directory -Path $dir
+                Write-Host "Created directory: $dir"
+            }
         }
 
-    - name: Package with PyInstaller
+    - name: Setup Open JTalk for Intonation Analysis
+      shell: powershell
+      run: |
+        # 解析に必要な最小限のバイナリと辞書をダウンロード
+        $url = "https://github.com/icn-lab/open_jtalk-win/releases/download/v1.11/open_jtalk-v1.11-win-x64.zip"
+        Invoke-WebRequest -Uri $url -OutFile "jtalk.zip"
+        Expand-Archive -Path "jtalk.zip" -DestinationPath "bin/jtalk_temp" -Force
+        
+        # 実行ファイルと辞書を配置
+        Copy-Item -Path "bin/jtalk_temp/bin/open_jtalk.exe" -Destination "bin/open_jtalk/" -Force
+        Copy-Item -Path "bin/jtalk_temp/dic" -Destination "bin/open_jtalk/" -Recurse -Force
+        
+        # 不要な一時ファイルを削除
+        Remove-Item -Path "jtalk.zip"
+        Remove-Item -Path "bin/jtalk_temp" -Recurse
+        Write-Host "Open JTalk Analysis Engine ready."
+
+    - name: Build C Engine (libvo_se.dll)
+      shell: powershell
+      run: |
+        if (Test-Path "src/vo_se_engine.c") {
+            # Windows版gcc (Mingw) を使用してDLL作成
+            gcc -shared -o bin/libvo_se.dll src/vo_se_engine.c
+            Write-Host "C Engine built successfully."
+        } else {
+            Write-Error "Source file src/vo_se_engine.c NOT FOUND!"
+            exit 1
+        }
+
+    - name: Bundle Application with PyInstaller
       run: pyinstaller vose_pro.spec
 
-    - name: Upload Artifact
-      # ここがエラーの原因でした。v4に更新。
-      uses: actions/upload-artifact@v4 
+    - name: Upload Final Product
+      uses: actions/upload-artifact@v4
       with:
-        name: VO-SE_Pro_Build
+        name: VO-SE_Pro_Windows_Build
         path: dist/VO-SE_Pro/
