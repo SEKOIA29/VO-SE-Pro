@@ -8,10 +8,10 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4 # v3からv4に更新
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5 # v4からv5に更新
       with:
         python-version: '3.10'
 
@@ -22,18 +22,27 @@ jobs:
         pip install pyinstaller
 
     - name: Create bin directory
-      run: mkdir -p bin
+      run: |
+        mkdir -p bin
+        # ディレクトリ作成を確認
+        ls -R
 
     - name: Build C Engine (DLL)
-      # src/ フォルダの中にある .c ファイルを指定してビルド
+      # src/vo_se_engine.c が存在するか確認してからビルド
       run: |
-        gcc -shared -o bin/libvo_se.dll src/vo_se_engine.c
+        if (Test-Path "src/vo_se_engine.c") {
+          gcc -shared -o bin/libvo_se.dll src/vo_se_engine.c
+        } else {
+          Write-Error "Error: src/vo_se_engine.c not found!"
+          exit 1
+        }
 
     - name: Package with PyInstaller
       run: pyinstaller vose_pro.spec
 
     - name: Upload Artifact
-      uses: actions/upload-artifact@v3
+      # ここがエラーの原因でした。v4に更新。
+      uses: actions/upload-artifact@v4 
       with:
         name: VO-SE_Pro_Build
         path: dist/VO-SE_Pro/
