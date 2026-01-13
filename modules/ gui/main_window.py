@@ -133,6 +133,104 @@ def start_batch_analysis(self):
         self.statusBar().showMessage("すべての解析と保存が完了しました。")
         self.update_timeline() # 画面の線を引き直す
 
+　　　　　self.setWindowTitle("VO-SE Pro - Vocal Synthesis Editor")
+        self.resize(1000, 600)
+        
+        # ドラッグ＆ドロップを有効化
+        self.setAcceptDrops(True)
+        
+        # メインレイアウト
+        layout = QVBoxLayout()
+        self.label = QLabel("ここにZIP形式の音源をドロップしてインポート / Ctrl+Sで保存")
+        self.label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.label)
+        
+        container = QWidget()
+        container.setLayout(layout)
+        self.setCentralWidget(container)
+
+    # --- ZIP投げ入れ機能 (ドラッグ＆ドロップ) ---
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.accept()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        files = [u.toLocalFile() for u in event.mimeData().urls()]
+        for f in files:
+            if f.endswith('.zip'):
+                self.import_voice_bank(f)
+
+    def import_voice_bank(self, zip_path):
+        target_dir = "voice_banks"
+        if not os.path.exists(target_dir):
+            os.makedirs(target_dir)
+            
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                # ZIPの名前でフォルダを作成して解凍
+                folder_name = os.path.basename(zip_path).replace('.zip', '')
+                dest = os.path.join(target_dir, folder_name)
+                zip_ref.extractall(dest)
+                QMessageBox.information(self, "成功", f"音源 '{folder_name}' をインポートしました。")
+        except Exception as e:
+            QMessageBox.critical(self, "エラー", f"ZIP展開失敗: {e}")
+
+self.setWindowTitle("VO-SE Pro - Vocal Synthesis Editor")
+        self.resize(1000, 600)
+        
+        # ドラッグ＆ドロップを有効化
+        self.setAcceptDrops(True)
+        
+        # メインレイアウト
+        layout = QVBoxLayout()
+        self.label = QLabel("ここにZIP形式の音源をドロップしてインポート / Ctrl+Sで保存")
+        self.label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.label)
+        
+        container = QWidget()
+        container.setLayout(layout)
+        self.setCentralWidget(container)
+
+    # --- ZIP投げ入れ機能 (ドラッグ＆ドロップ) ---
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.accept()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        files = [u.toLocalFile() for u in event.mimeData().urls()]
+        for f in files:
+            if f.endswith('.zip'):
+                self.import_voice_bank(f)
+
+    def import_voice_bank(self, zip_path):
+        target_dir = "voice_banks"
+        if not os.path.exists(target_dir):
+            os.makedirs(target_dir)
+            
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                # ZIPの名前でフォルダを作成して解凍
+                folder_name = os.path.basename(zip_path).replace('.zip', '')
+                dest = os.path.join(target_dir, folder_name)
+                zip_ref.extractall(dest)
+                QMessageBox.information(self, "成功", f"音源 '{folder_name}' をインポートしました。")
+        except Exception as e:
+            QMessageBox.critical(self, "エラー", f"ZIP展開失敗: {e}")
+
+    # --- 保存先指定機能 ---
+    def export_audio(self):
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "音声書き出し", "", "WAV Files (*.wav)"
+        )
+        if file_path:
+            # ここで後述のCエンジン(Wrapper経由)を呼び出す
+            print(f"Saving to: {file_path}")
+            # self.engine.render(file_path)
+
 class MainWindow(QMainWindow):
     """
     アプリケーションのメインウィンドウクラス。
