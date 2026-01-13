@@ -10,6 +10,11 @@ import sounddevice as sd
 
 import ctypes
 
+# データ構造をインポート
+from .data_models import NoteEvent
+# Cエンジン呼び出し用
+from .engine.wrapper import EngineWrapper
+
 # C言語側の構造体に対応するクラス
 class NoteStructure(ctypes.Structure):
     _fields_ = [
