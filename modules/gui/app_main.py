@@ -7,6 +7,16 @@ import time
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
 
+
+from PySide6.QtWidgets import QMainWindow
+# 同じフォルダ(modules)内にある場合
+from .widgets import NoteWidget, TimelineWidget
+from .keyboard_sidebar_widget import KeyboardSidebar
+from .data_models import ProjectData
+from .voice_manager import VoiceManager
+# サブフォルダ(utilsやtalk)にある場合
+from .utils.zip_handler import ZipHandler
+from .talk.talk_manager import TalkManager
 # PyInstallerのスプラッシュスクリーン制御
 try:
     import pyi_splash
