@@ -1,0 +1,71 @@
+name: Build VO-SE Engine 
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: mingw-w64-ucrt-x86_64-gcc
+
+      - name: Compile Windows DLL
+        shell: msys2 {0}
+        run: |
+          # 1. 作業用の一時フォルダを作成
+          mkdir -p build_tmp
+          
+          # 2. プロジェクト内のすべての .c と .h を収集（階層を問わず）
+          find . -name "*.c" -exec cp {} build_tmp/ \;
+          find . -name "*.h" -exec cp {} build_tmp/ \;
+          
+          cd build_tmp
+          
+          # 3. コンパイル実行（AVX2最適化を有効化）
+          # 入力ファイル名は vo_se_engine.c に設定
+          gcc -shared -o libvo_se.dll vo_se_engine.c -O3 -mavx2 -lm
+          
+          # 4. 成果物をプロジェクトの bin フォルダへ移動
+          mkdir -p ../bin
+          cp libvo_se.dll ../bin/
+
+      - name: Upload Windows DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-windows
+          path: bin/libvo_se.dll
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile macOS dylib
+        run: |
+          mkdir -p build_tmp
+          find . -name "*.c" -exec cp {} build_tmp/ \;
+          find . -name "*.h" -exec cp {} build_tmp/ \;
+          
+          cd build_tmp
+          
+          # Apple Silicon(arm64)とIntel(x86_64)の両対応バイナリを作成
+          gcc -shared -o libvo_se.dylib vo_se_engine.c -O3 -arch arm64 -arch x86_64 -lm
+          
+          mkdir -p ../bin
+          cp libvo_se.dylib ../bin/
+
+      - name: Upload macOS dylib
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-macos
+          path: bin/libvo_se.dylib
