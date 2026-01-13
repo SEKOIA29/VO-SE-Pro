@@ -1,95 +1,74 @@
 import sys
 import os
-import traceback
+
+# 自作モジュールのインポート
+from modules.utils.initializer import AppInitializer
+from modules.utils.config_handler import ConfigHandler
+from modules.utils.zip_handler import ZipHandler
+from modules.gui.main_window import MainWindow
+from modules.engine.wrapper import EngineWrapper
+from modules.talk.talk_manager import TalkManager
+
 from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtCore import Qt
 
-# 自作モジュールのインポート（フォルダ構成に合わせて適宜調整）
-# 構成例: modules/gui/main_window.py に MainWindow がある場合
-try:
-    from modules.gui.main_window import MainWindow
-except ImportError:
-    # 開発中のパス通し用（必要に応じて）
-    sys.path.append(os.path.join(os.path.dirname(__file__), "modules"))
-    from gui.main_window import MainWindow
-
-class AppInitializer:
-    """アプリケーションの整合性をチェックし、不足があれば補完するクラス"""
-    
-    REQUIRED_DIRS = ["bin", "models", "voice_banks", "output", "temp"]
-    
-    @classmethod
-    def run_checks(cls):
-        # 1. 必要なディレクトリの生成
-        for d in cls.REQUIRED_DIRS:
-            if not os.path.exists(d):
-                try:
-                    os.makedirs(d)
-                    print(f"[INFO] 作成されました: {d}")
-                except Exception as e:
-                    cls._show_error(f"フォルダ '{d}' の作成に失敗しました:\n{e}")
-                    return False
-
-        # 2. 必須バイナリ/モデルの存在確認
-        ext = ".dll" if sys.platform == "win32" else ".so"
-        engine_path = os.path.join("bin", f"libvo_se{ext}")
-        model_path = os.path.join("models", "onset_detector.onnx")
+class VoseProApp:
+    def __init__(self):
+        self.app = QApplication(sys.argv)
         
-        missing = []
-        if not os.path.exists(engine_path):
-            missing.append(f"音声合成エンジン: {engine_path}")
-        if not os.path.exists(model_path):
-            missing.append(f"AI解析モデル: {model_path}")
+        # 1. 起動前環境チェック
+        success, message = AppInitializer.check_environment()
+        if not success:
+            QMessageBox.critical(None, "環境エラー", message)
+            sys.exit(1)
+
+        # 2. 設定の読み込み
+        self.config_manager = ConfigHandler()
+        self.config = self.config_manager.load_config()
+
+        # 3. 各エンジンの初期化
+        self.engine = EngineWrapper()
+        self.talk_engine = TalkManager()
+
+        # 4. メインウィンドウの立ち上げ
+        self.window = MainWindow()
+        
+        # UIのイベントとバックエンドロジックの接続（コネクト）
+        self.connect_signals()
+
+    def connect_signals(self):
+        """UIでの操作と実際の処理を紐付ける"""
+        # ZIPドロップ時の処理をZipHandlerに橋渡し
+        self.window.import_requested.connect(self.handle_zip_import)
+        
+        # 保存(エクスポート)時の処理
+        self.window.export_requested.connect(self.handle_export)
+
+    def handle_zip_import(self, zip_path):
+        success, result = ZipHandler.extract_voice_bank(zip_path)
+        if success:
+            QMessageBox.information(self.window, "完了", f"音源 '{result}' を導入しました。")
+            self.window.refresh_ui() # UI側のリスト表示などを更新
+        else:
+            QMessageBox.warning(self.window, "失敗", f"インポートエラー: {result}")
+
+    def handle_export(self, file_path):
+        # 現在のモード（歌唱 or トーク）に応じてエンジンを使い分け
+        if self.window.current_mode == "SING":
+            # 歌唱合成(Cエンジン)実行
+            self.engine.render([], file_path) 
+        else:
+            # トーク(Open JTalk)実行
+            text = self.window.get_talk_text()
+            self.talk_engine.synthesize(text, file_path)
             
-        if missing:
-            msg = "以下の必須ファイルが見つかりません。配置を確認してください:\n\n" + "\n".join(missing)
-            cls._show_error(msg)
-            return False
-            
-        return True
+        # 最後に保存したフォルダを記憶
+        self.config["last_save_dir"] = os.path.dirname(file_path)
+        self.config_manager.save_config(self.config)
 
-    @staticmethod
-    def _show_error(message):
-        # QApplicationがまだ無い場合でもメッセージを出せるようにする
-        temp_app = QApplication.instance() or QApplication(sys.argv)
-        QMessageBox.critical(None, "VO-SE Pro 起動エラー", message)
-
-def main():
-    # 高解像度ディスプレイ(4K等)への対応設定
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
-
-    # 1. システム整合性チェック
-    if not AppInitializer.run_checks():
-        sys.exit(1)
-
-    # 2. アプリケーション本体の起動
-    app = QApplication(sys.argv)
-    app.setApplicationName("VO-SE Pro - Next Gen Vocal Synthesizer")
-    app.setApplicationVersion("1.0.0")
-
-    try:
-        # メインウィンドウの構築
-        # MainWindow内部で vo_se_engine や ai_manager が初期化されます
-        window = MainWindow()
-        window.showMaximized() # 最大化で表示
-        
-        print("[INFO] VO-SE Pro が正常に起動しました。")
-        sys.exit(app.exec())
-
-    except Exception as e:
-        # 実行中の予期せぬクラッシュをキャッチ
-        error_msg = f"致命的なエラーが発生しました:\n{str(e)}\n\n{traceback.format_exc()}"
-        print(error_msg)
-        
-        # ユーザーへの通知
-        error_dialog = QMessageBox()
-        error_dialog.setIcon(QMessageBox.Critical)
-        error_dialog.setWindowTitle("Fatal Error")
-        error_dialog.setText("アプリケーションが異常終了しました。")
-        error_dialog.setInformativeText(error_msg)
-        error_dialog.exec()
-        sys.exit(1)
+    def run(self):
+        self.window.show()
+        return self.app.exec()
 
 if __name__ == "__main__":
-    main()
+    vose_app = VoseProApp()
+    sys.exit(vose_app.run())
