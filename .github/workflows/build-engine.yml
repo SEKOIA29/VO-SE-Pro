@@ -1,35 +1,76 @@
-- name: Setup Open JTalk for Intonation Analysis
+name: Build VO-SE Pro Full Suite
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: Setup Directories
       shell: powershell
       run: |
-        # 安定した配布元（SourceForgeのミラーなど）から取得を試みる、または代替URL
-        # ここでは、比較的人気のあるGitHubミラーを指定
+        $dirs = @("bin", "bin/open_jtalk", "models", "voice_banks", "src", "temp")
+        foreach ($dir in $dirs) {
+            if (!(Test-Path $dir)) {
+                New-Item -ItemType Directory -Path $dir
+            }
+        }
+
+    - name: Setup Open JTalk
+      shell: powershell
+      run: |
+        # 比較的安定している配布元からバイナリを取得
         $url = "https://github.com/r9y9/open_jtalk/releases/download/v1.11/open_jtalk-1.11-win64-msvc.zip"
-        
         try {
-            Write-Host "Downloading Open JTalk from $url..."
             Invoke-WebRequest -Uri $url -OutFile "jtalk.zip" -ErrorAction Stop
-        } catch {
-            Write-Warning "Primary URL failed. Trying fallback..."
-            # 予備のURL（必要に応じて調整）
-            $url = "https://github.com/shift-jis/open_jtalk-win/releases/download/v1.11/open_jtalk-v1.11-win-x64.zip"
-            Invoke-WebRequest -Uri $url -OutFile "jtalk.zip"
+            Expand-Archive -Path "jtalk.zip" -DestinationPath "bin/jtalk_temp" -Force
+            
+            # 実行ファイルと辞書を正しい位置に配置
+            $exe = Get-ChildItem -Path "bin/jtalk_temp" -Filter "open_jtalk.exe" -Recurse | Select-Object -First 1
+            $dic = Get-ChildItem -Path "bin/jtalk_temp" -Name "dic" -Directory -Recurse | Select-Object -First 1
+            
+            if ($exe) { Copy-Item -Path $exe.FullName -Destination "bin/open_jtalk/open_jtalk.exe" -Force }
+            
+            # 辞書フォルダの中身をコピー
+            $dicFullPath = Get-ChildItem -Path "bin/jtalk_temp" -Filter "dic" -Directory -Recurse | Select-Object -First 1
+            if ($dicFullPath) {
+                Copy-Item -Path "$($dicFullPath.FullName)/*" -Destination "bin/open_jtalk/dic" -Recurse -Force
+            }
+        } finally {
+            if (Test-Path "jtalk.zip") { Remove-Item "jtalk.zip" }
+            if (Test-Path "bin/jtalk_temp") { Remove-Item "bin/jtalk_temp" -Recurse }
         }
 
-        Expand-Archive -Path "jtalk.zip" -DestinationPath "bin/jtalk_temp" -Force
-        
-        # 実行ファイルと辞書を配置（解凍後のフォルダ構造に合わせて柔軟に移動）
-        $exePath = Get-ChildItem -Path "bin/jtalk_temp" -Filter "open_jtalk.exe" -Recurse | Select-Object -First 1
-        $dicPath = Get-ChildItem -Path "bin/jtalk_temp" -Name "dic" -Directory -Recurse | Select-Object -First 1
-        
-        if ($exePath) { 
-            Copy-Item -Path $exePath.FullName -Destination "bin/open_jtalk/open_jtalk.exe" -Force 
-        }
-        # 辞書フォルダを再帰的にコピー
-        $fullDicPath = Get-ChildItem -Path "bin/jtalk_temp" -Filter "dic" -Directory -Recurse | Select-Object -First 1
-        if ($fullDicPath) {
-            Copy-Item -Path "$($fullDicPath.FullName)/*" -Destination "bin/open_jtalk/dic" -Recurse -Force
+    - name: Build C Engine
+      shell: powershell
+      run: |
+        if (Test-Path "src/vo_se_engine.c") {
+            gcc -shared -o bin/libvo_se.dll src/vo_se_engine.c
+        } else {
+            Write-Error "src/vo_se_engine.c is missing!"
+            exit 1
         }
 
-        Remove-Item -Path "jtalk.zip"
-        Remove-Item -Path "bin/jtalk_temp" -Recurse
-        Write-Host "Open JTalk Setup Complete."
+    - name: Run PyInstaller
+      run: pyinstaller vose_pro.spec
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: VO-SE_Pro_Release
+        path: dist/VO-SE_Pro/
