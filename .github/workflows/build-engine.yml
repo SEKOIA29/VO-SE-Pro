@@ -10,21 +10,28 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Setup Workspace
+      shell: powershell
       run: |
-        mkdir -p bin/open_jtalk
-        mkdir -p src
+        # -Force をつけることで、フォルダが既にあってもエラーになりません
+        New-Item -ItemType Directory -Force -Path bin/open_jtalk
+        New-Item -ItemType Directory -Force -Path src
+        New-Item -ItemType Directory -Force -Path temp
 
-    # ここでGitHubのサーバーが直接バイナリを取得します（あなたの操作は不要）
     - name: Install Open JTalk Binary
       shell: powershell
       run: |
+        # 安定したミラーURLを使用
         $url = "https://github.com/r9y9/open_jtalk/releases/download/v1.11/open_jtalk-1.11-win64-msvc.zip"
         Invoke-WebRequest -Uri $url -OutFile "jtalk.zip"
-        Expand-Archive -Path "jtalk.zip" -DestinationPath "jtalk_temp"
-        # 必要なファイルだけを抽出して配置
-        Move-Item "jtalk_temp/bin/open_jtalk.exe" "bin/open_jtalk/"
-        Move-Item "jtalk_temp/dic" "bin/open_jtalk/"
-        Remove-Item "jtalk_zip", "jtalk_temp" -Recurse
+        Expand-Archive -Path "jtalk.zip" -DestinationPath "jtalk_temp" -Force
+        
+        # 実行ファイルと辞書を正しい位置に移動
+        Copy-Item "jtalk_temp/bin/open_jtalk.exe" "bin/open_jtalk/" -Force
+        Copy-Item -Path "jtalk_temp/dic" -Destination "bin/open_jtalk/" -Recurse -Force
+        
+        # 後片付け
+        Remove-Item "jtalk.zip"
+        Remove-Item "jtalk_temp" -Recurse
 
     - name: Build C-Engine
       run: |
@@ -34,7 +41,9 @@ jobs:
 
     - name: Run PyInstaller
       run: |
-        pip install pyinstaller -r requirements.txt
+        # requirements.txt がない場合でも止まらないように設定
+        if (Test-Path "requirements.txt") { pip install -r requirements.txt }
+        pip install pyinstaller
         pyinstaller vose_pro.spec
 
     - name: Upload
