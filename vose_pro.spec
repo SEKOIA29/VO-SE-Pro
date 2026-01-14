@@ -1,53 +1,31 @@
 # -*- mode: python ; coding: utf-8 -*-
-import sys
 import os
-
-# プロジェクトのルートパスを取得
-project_root = os.path.abspath(os.getcwd())
+import sys
+import pyopenjtalk
 
 block_cipher = None
 
-# --- OS別のバイナリ・データ設定 ---
-if sys.platform == "win32":
-    # Windows用設定
-    engine_file = (os.path.join('bin', 'libvo_se.dll'), 'bin')
-    icon_file = os.path.join('assets', 'icon.ico')
-    # Open JTalk一式を同梱
-    extra_datas = [
-        (os.path.join('bin', 'open_jtalk'), os.path.join('bin', 'open_jtalk')),
-        (os.path.join('models', 'onset_detector.onnx'), 'models'),
-        ('voice_banks', 'voice_banks'),
-        (os.path.join('assets', 'license.txt'), 'assets'),
-    ]
-elif sys.platform == "darwin":
-    # macOS用設定
-    engine_file = (os.path.join('bin', 'libvo_se.dylib'), 'bin')
-    icon_file = os.path.join('assets', 'icon.icns')
-    extra_datas = [
-        (os.path.join('models', 'onset_detector.onnx'), 'models'),
-        ('voice_banks', 'voice_banks'),
-        (os.path.join('assets', 'license.txt'), 'assets'),
-    ]
-else:
-    # Linux等（必要に応じて）
-    engine_file = (os.path.join('bin', 'libvo_se.so'), 'bin')
-    icon_file = None
-    extra_datas = []
+# 1. pyopenjtalkのインストールディレクトリから辞書の場所を自動特定
+# これにより、GitHub Actions環境でもあなたのMac環境でも正しく辞書を拾えます
+pyopenjtalk_dir = os.path.dirname(pyopenjtalk.__file__)
+dic_path = os.path.join(pyopenjtalk_dir, "dic")
 
-# --- 解析設定 ---
+# 2. 同梱するファイルのリストを作成
+# (元ファイルパス, 実行ファイル内での展開先フォルダ)
+added_files = [
+    (dic_path, 'pyopenjtalk/dic'), # Open JTalk辞書データ
+]
+
+# Windowsビルドの場合のみ、CエンジンのDLLを含める
+if sys.platform == 'win32':
+    added_files.append(('bin/libvo_se.dll', 'bin'))
+
 a = Analysis(
-    ['main.py'],                 # エントリーポイント
-    pathex=[project_root],
-    binaries=[engine_file],      # CエンジンDLL
-    datas=extra_datas,           # AIモデル、Open JTalk、音源、規約
-    hiddenimports=[
-        'onnxruntime',
-        'numpy',
-        'PySide6.QtCore',
-        'PySide6.QtWidgets',
-        'PySide6.QtGui',
-        'PySide6.QtPrintSupport', # GUIの印刷/PDF書き出し等で必要になる場合がある
-    ],
+    ['main.py'],
+    pathex=[],
+    binaries=[],
+    datas=added_files,
+    hiddenimports=['pyopenjtalk'], # 動的ロードに備えて明示
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -60,7 +38,6 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
-# --- 実行ファイル生成設定 ---
 exe = EXE(
     pyz,
     a.scripts,
@@ -71,16 +48,14 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,               # GUIアプリなので黒い画面（コンソール）は出さない
+    console=True,  # 開発中はエラーログが見えるようTrueに設定。完成時はFalseへ
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=icon_file,
 )
 
-# --- フォルダへの収集設定 ---
 coll = COLLECT(
     exe,
     a.binaries,
@@ -91,24 +66,3 @@ coll = COLLECT(
     upx_exclude=[],
     name='VO-SE_Pro',
 )
-
-# --- macOS専用：.appパッケージ化設定 ---
-if sys.platform == "darwin":
-    app = BUNDLE(
-        coll,
-        name='VO-SE_Pro.app',
-        icon=icon_file,
-        bundle_identifier='com.vosepro.vocal-synth',
-        info_plist={
-            'NSPrincipalClass': 'NSApplication',
-            'NSAppleScriptEnabled': False,
-            'CFBundleDocumentTypes': [
-                {
-                    'CFBundleTypeName': 'ZIP Archive',
-                    'CFBundleTypeRole': 'Viewer',
-                    'LSHandlerRank': 'Alternate',
-                    'LSItemContentTypes': ['public.zip-archive']
-                }
-            ]
-        },
-    )
