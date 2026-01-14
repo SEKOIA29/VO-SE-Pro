@@ -2,20 +2,21 @@
 #include <stdlib.h>
 #include <string.h>
 
-// 音符データの構造体
+/* --- マクロ定義の統一 --- */
+#ifdef _WIN32
+    #define DLLEXPORT __declspec(dllexport)
+#else
+    #define DLLEXPORT
+#endif
+
+/* --- 構造体の定義 --- */
 typedef struct {
     float pitch_hz;
     const char* wav_path;
 } NoteEvent;
 
-#ifdef _WIN32
-#define DLL_EXPORT __declspec(dllexport)
-#else
-#define DLL_EXPORT
-#endif
-
-// Pythonから呼び出されるレンダリング関数
-DLL_EXPORT void execute_render(NoteEvent* notes, int note_count, const char* output_path) {
+/* --- 関数1: レンダリング処理 --- */
+DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* output_path) {
     printf("[C-Engine] レンダリング開始: %s\n", output_path);
 
     // 保存先ファイルをバイナリモードで開く
@@ -25,32 +26,31 @@ DLL_EXPORT void execute_render(NoteEvent* notes, int note_count, const char* out
         return;
     }
 
-    // ダミーのWAVヘッダー（将来的に本物のヘッダー計算に置き換え可能）
+    // ダミーのWAVヘッダー
     fprintf(f, "RIFF....WAVEfmt ");
 
     // 各音符の処理シミュレーション
     for (int i = 0; i < note_count; i++) {
-        printf("  Processing: %s (Pitch: %.2f Hz)\n", notes[i].wav_path, notes[i].pitch_hz);
+        if (notes[i].wav_path != NULL) {
+            printf("   Processing: %s (Pitch: %.2f Hz)\n", notes[i].wav_path, notes[i].pitch_hz);
+        }
     }
 
     fclose(f);
     printf("[C-Engine] レンダリング成功。\n");
 }
 
-
-/* 音声処理のコアロジック (例: 音量を0.8倍にする)
-   Python側からこの関数を呼び出します
-*/
+/* --- 関数2: 音声エフェクト処理 --- */
 DLLEXPORT void process_voice(float* buffer, int length) {
     if (buffer == NULL) return;
     
     for (int i = 0; i < length; i++) {
-        // ここに独自の信号処理アルゴリズムを記述します
+        // 音量を0.8倍にする
         buffer[i] *= 0.8f; 
     }
 }
 
-/* 動作確認用のデバッグ関数 */
-DLLEXPORT float get_engine_version() {
+/* --- 関数3: バージョン確認用 --- */
+DLLEXPORT float get_engine_version(void) {
     return 1.0f;
 }
