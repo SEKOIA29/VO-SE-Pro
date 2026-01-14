@@ -1,93 +1,44 @@
-name: Build VO-SE Pro Full Suite
+name: Build VO-SE Pro
 
 on: [push]
 
 jobs:
   build:
     runs-on: windows-latest
-
     steps:
-    - name: Checkout code
+    - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pyinstaller
-
     - name: Setup Workspace
+      run: |
+        mkdir -p bin/open_jtalk
+        mkdir -p src
+
+    # ここでGitHubのサーバーが直接バイナリを取得します（あなたの操作は不要）
+    - name: Install Open JTalk Binary
       shell: powershell
       run: |
-        # フォルダを一括作成
-        $dirs = @("bin", "bin/open_jtalk", "bin/open_jtalk/dic", "models", "voice_banks", "src", "temp")
-        foreach ($dir in $dirs) {
-            if (!(Test-Path $dir)) {
-                New-Item -ItemType Directory -Path $dir -Force
-            }
-        }
+        $url = "https://github.com/r9y9/open_jtalk/releases/download/v1.11/open_jtalk-1.11-win64-msvc.zip"
+        Invoke-WebRequest -Uri $url -OutFile "jtalk.zip"
+        Expand-Archive -Path "jtalk.zip" -DestinationPath "jtalk_temp"
+        # 必要なファイルだけを抽出して配置
+        Move-Item "jtalk_temp/bin/open_jtalk.exe" "bin/open_jtalk/"
+        Move-Item "jtalk_temp/dic" "bin/open_jtalk/"
+        Remove-Item "jtalk_zip", "jtalk_temp" -Recurse
 
-    - name: Download Open JTalk (Stable Version)
-      shell: powershell
-      run: |
-        # リンク切れ対策：複数のソースを試行
-        $sources = @(
-            "https://github.com/r9y9/open_jtalk/releases/download/v1.11/open_jtalk-1.11-win64-msvc.zip",
-            "https://github.com/icn-lab/open_jtalk-win/releases/download/v1.11/open_jtalk-v1.11-win-x64.zip"
-        )
-        
-        $success = $false
-        foreach ($url in $sources) {
-            try {
-                Write-Host "Trying to download from: $url"
-                # Timeoutを設定してハングを防ぐ
-                Invoke-WebRequest -Uri $url -OutFile "jtalk.zip" -TimeoutSec 60 -ErrorAction Stop
-                $success = $true
-                break
-            } catch {
-                Write-Warning "Failed to download from $url"
-            }
-        }
-
-        if ($success) {
-            Expand-Archive -Path "jtalk.zip" -DestinationPath "bin/jtalk_temp" -Force
-            # ファイルの配置（階層を自動判定してコピー）
-            $exe = Get-ChildItem -Path "bin/jtalk_temp" -Filter "open_jtalk.exe" -Recurse | Select-Object -First 1
-            $dic = Get-ChildItem -Path "bin/jtalk_temp" -Name "dic" -Directory -Recurse | Select-Object -First 1
-            
-            if ($exe) { Copy-Item -Path $exe.FullName -Destination "bin/open_jtalk/open_jtalk.exe" -Force }
-            if ($dic) { 
-                $dicFull = Get-ChildItem -Path "bin/jtalk_temp" -Filter "dic" -Directory -Recurse | Select-Object -First 1
-                Copy-Item -Path "$($dicFull.FullName)/*" -Destination "bin/open_jtalk/dic" -Recurse -Force 
-            }
-            Remove-Item "jtalk.zip"
-            Remove-Item "bin/jtalk_temp" -Recurse
-        } else {
-            Write-Error "All download sources failed. Please add Open JTalk binaries to your repository manually."
-            exit 1
-        }
-
-    - name: Build C Engine
-      shell: powershell
+    - name: Build C-Engine
       run: |
         if (Test-Path "src/vo_se_engine.c") {
-            gcc -shared -o bin/libvo_se.dll src/vo_se_engine.c
-        } else {
-            # ファイルがない場合は空のDLLを作成するか、エラーで止める
-            Write-Error "src/vo_se_engine.c not found!"
-            exit 1
+          gcc -shared -o bin/libvo_se.dll src/vo_se_engine.c
         }
 
-    - name: Build Executable
-      run: pyinstaller vose_pro.spec
+    - name: Run PyInstaller
+      run: |
+        pip install pyinstaller -r requirements.txt
+        pyinstaller vose_pro.spec
 
-    - name: Upload Build
+    - name: Upload
       uses: actions/upload-artifact@v4
       with:
-        name: VO-SE-Pro-Windows
+        name: VO-SE_Pro_Full_Package
         path: dist/VO-SE_Pro/
