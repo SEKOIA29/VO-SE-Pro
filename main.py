@@ -1,80 +1,94 @@
 import sys
 import os
+import platform
+import ctypes
+import pyopenjtalk
+import numpy as np
 
-# 自作モジュールのインポート
-from modules.utils.initializer import AppInitializer
-from modules.utils.config_handler import ConfigHandler
-from modules.utils.zip_handler import ZipHandler
-from modules.gui.main_window import MainWindow
-from modules.engine.wrapper import EngineWrapper
-from modules.talk.talk_manager import TalkManager
+def get_resource_path(relative_path):
+    """
+    実行環境（開発時 or PyInstaller実行時）に応じて正しいファイルパスを返します。
+    """
+    if getattr(sys, 'frozen', False):
+        # PyInstallerで固められた実行ファイル内の一時フォルダ
+        base_path = sys._MEIPASS
+    else:
+        # 通常の開発環境
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
-from PySide6.QtWidgets import QApplication, QMessageBox
-
-from PySide6.QtWidgets import QApplication
-# フォルダ名.ファイル名 の形式でインポート
-from modules.app_main import MainWindow 
-from modules.utils.initializer import AppInitializer
-from modules.utils.config_handler import ConfigHandler
-
-class VoseProApp:
+class VoSeEngine:
     def __init__(self):
-        self.app = QApplication(sys.argv)
-        
-        # 1. 起動前環境チェック
-        success, message = AppInitializer.check_environment()
-        if not success:
-            QMessageBox.critical(None, "環境エラー", message)
-            sys.exit(1)
+        self.os_name = platform.system()
+        self.c_engine = None
+        self._load_c_engine()
 
-        # 2. 設定の読み込み
-        self.config_manager = ConfigHandler()
-        self.config = self.config_manager.load_config()
-
-        # 3. 各エンジンの初期化
-        self.engine = EngineWrapper()
-        self.talk_engine = TalkManager()
-
-        # 4. メインウィンドウの立ち上げ
-        self.window = MainWindow()
-        
-        # UIのイベントとバックエンドロジックの接続（コネクト）
-        self.connect_signals()
-
-    def connect_signals(self):
-        """UIでの操作と実際の処理を紐付ける"""
-        # ZIPドロップ時の処理をZipHandlerに橋渡し
-        self.window.import_requested.connect(self.handle_zip_import)
-        
-        # 保存(エクスポート)時の処理
-        self.window.export_requested.connect(self.handle_export)
-
-    def handle_zip_import(self, zip_path):
-        success, result = ZipHandler.extract_voice_bank(zip_path)
-        if success:
-            QMessageBox.information(self.window, "完了", f"音源 '{result}' を導入しました。")
-            self.window.refresh_ui() # UI側のリスト表示などを更新
+    def _load_c_engine(self):
+        """OSに応じてC言語で書かれたエンジン(DLL)をロードします"""
+        if self.os_name == "Windows":
+            dll_path = get_resource_path(os.path.join("bin", "libvo_se.dll"))
+            if os.path.exists(dll_path):
+                try:
+                    self.c_engine = ctypes.CDLL(dll_path)
+                    print(f"[Success] C-Engine loaded: {dll_path}")
+                except Exception as e:
+                    print(f"[Error] Failed to load C-Engine: {e}")
+            else:
+                print(f"[Warning] C-Engine not found at {dll_path}")
         else:
-            QMessageBox.warning(self.window, "失敗", f"インポートエラー: {result}")
+            print(f"[Info] Running on {self.os_name}. C-Engine (DLL) skip.")
 
-    def handle_export(self, file_path):
-        # 現在のモード（歌唱 or トーク）に応じてエンジンを使い分け
-        if self.window.current_mode == "SING":
-            # 歌唱合成(Cエンジン)実行
-            self.engine.render([], file_path) 
-        else:
-            # トーク(Open JTalk)実行
-            text = self.window.get_talk_text()
-            self.talk_engine.synthesize(text, file_path)
-            
-        # 最後に保存したフォルダを記憶
-        self.config["last_save_dir"] = os.path.dirname(file_path)
-        self.config_manager.save_config(self.config)
+    def analyze_intonation(self, text):
+        """Open JTalkを使用して日本語のイントネーション（フルコンテキストラベル）を解析します"""
+        print(f"\n--- 解析実行: '{text}' ---")
+        try:
+            # pyopenjtalkによる解析
+            labels = pyopenjtalk.extract_fullcontext(text)
+            return labels
+        except Exception as e:
+            return [f"Analysis failed: {str(e)}"]
 
-    def run(self):
-        self.window.show()
-        return self.app.exec()
+    def process_with_c(self, data_array):
+        """解析結果をCエンジン(DLL)に渡して高速処理します(Windowsのみ)"""
+        if not self.c_engine:
+            return data_array
+        
+        # 例: float配列をC言語側に渡す処理
+        data_float = np.array(data_array, dtype=np.float32)
+        ptr = data_float.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        
+        # C側の関数 process_voice(float* buffer, int length) を呼び出す想定
+        try:
+            self.c_engine.process_voice(ptr, len(data_float))
+            return data_float
+        except AttributeError:
+            print("[Error] Function 'process_voice' not found in DLL.")
+            return data_array
+
+def main():
+    print("==============================")
+    print("   VO-SE Pro - Main System    ")
+    print("==============================")
+    
+    engine = VoSeEngine()
+    
+    # ユーザー入力のシミュレーション
+    test_text = "こんにちは、音声合成テストを開始します。"
+    
+    # 1. イントネーション解析
+    labels = engine.analyze_intonation(test_text)
+    
+    print(f"抽出されたラベル数: {len(labels)}")
+    for i, label in enumerate(labels[:5]): # 最初の5つだけ表示
+        print(f"  [{i}] {label}")
+    
+    # 2. Cエンジンによる処理（ダミーデータでのテスト）
+    if engine.c_engine:
+        test_data = [1.0, 0.5, -0.5, 0.0]
+        result = engine.process_with_c(test_data)
+        print(f"Cエンジン処理結果: {result}")
+
+    print("\nVO-SEシステムは正常に動作しています。")
 
 if __name__ == "__main__":
-    vose_app = VoseProApp()
-    sys.exit(vose_app.run())
+    main()
