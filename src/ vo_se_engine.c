@@ -36,3 +36,21 @@ DLL_EXPORT void execute_render(NoteEvent* notes, int note_count, const char* out
     fclose(f);
     printf("[C-Engine] レンダリング成功。\n");
 }
+
+
+/* 音声処理のコアロジック (例: 音量を0.8倍にする)
+   Python側からこの関数を呼び出します
+*/
+DLLEXPORT void process_voice(float* buffer, int length) {
+    if (buffer == NULL) return;
+    
+    for (int i = 0; i < length; i++) {
+        // ここに独自の信号処理アルゴリズムを記述します
+        buffer[i] *= 0.8f; 
+    }
+}
+
+/* 動作確認用のデバッグ関数 */
+DLLEXPORT float get_engine_version() {
+    return 1.0f;
+}
