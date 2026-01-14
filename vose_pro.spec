@@ -66,3 +66,75 @@ coll = COLLECT(
     upx_exclude=[],
     name='VO-SE_Pro',
 )
+
+block_cipher = None
+
+# 辞書の場所を特定（エラー対策付き）
+added_files = []
+
+try:
+    pyopenjtalk_dir = os.path.dirname(pyopenjtalk.__file__)
+    dic_path = os.path.join(pyopenjtalk_dir, "dic")
+    
+    if os.path.exists(dic_path):
+        added_files.append((dic_path, 'pyopenjtalk/dic'))
+        print(f"Dictionary found at: {dic_path}")
+    else:
+        print("Warning: pyopenjtalk/dic not found in site-packages.")
+except Exception as e:
+    print(f"Error locating dictionary: {e}")
+
+# Windowsビルドの場合、CエンジンのDLLを含める
+if sys.platform == 'win32':
+    dll_path = 'bin/libvo_se.dll'
+    if os.path.exists(dll_path):
+        added_files.append((dll_path, 'bin'))
+    else:
+        print(f"Warning: {dll_path} not found.")
+
+a = Analysis(
+    ['main.py'],
+    pathex=[],
+    binaries=[],
+    datas=added_files,
+    hiddenimports=['pyopenjtalk'],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
+    noarchive=False,
+)
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name='VO-SE_Pro',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=True, 
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='VO-SE_Pro',
+)
