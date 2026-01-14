@@ -1,0 +1,4 @@
+pyopenjtalk
+numpy
+PySide6
+pyinstaller
