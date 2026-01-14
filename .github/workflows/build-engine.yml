@@ -1,57 +1,53 @@
-name: Build VO-SE Pro
+name: Build VO-SE Pro (Multi-Platform)
 
 on:
   push:
     branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
 
 jobs:
+  # --- Windowsビルド ---
   build-windows:
     runs-on: windows-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        # 必要なライブラリをインストール
-        pip install numpy PySide6 pyinstaller
-        # pyopenjtalkをインストール（先ほどのログで成功を確認済み）
-        pip install pyopenjtalk
-
-    - name: Verify Dictionary Path
-      shell: powershell
-      run: |
-        # 辞書の場所を確認し、ログに出力
-        python -c "import pyopenjtalk; import os; dic=os.path.join(os.path.dirname(pyopenjtalk.__file__), 'dic'); print('DIC PATH:', dic); print('Exists:', os.path.exists(dic))"
-
-    - name: Build C Engine DLL
-      shell: powershell
-      run: |
-        if (!(Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" }
-        if (Test-Path "src/vo_se_engine.c") {
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install deps
+        run: |
+          pip install numpy PySide6 pyinstaller pyopenjtalk
+      - name: Build C Engine
+        run: |
+          if (!(Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" }
           gcc -shared -o bin/libvo_se.dll src/vo_se_engine.c
-          echo "C Engine built successfully."
-        } else {
-          echo "Error: src/vo_se_engine.c not found."
-          exit 1
-        }
+      - name: Build EXE
+        run: pyinstaller vose_pro.spec
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: VO-SE_Pro_Windows
+          path: dist/VO-SE_Pro/
 
-    - name: Run PyInstaller
-      run: |
-        pyinstaller vose_pro.spec
-
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: VO-SE_Pro_Windows_Package
-        path: dist/VO-SE_Pro/
-        retention-days: 5
+  # --- Macビルド ---
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install deps
+        run: |
+          pip install numpy PySide6 pyinstaller pyopenjtalk
+      - name: Build C Engine
+        run: |
+          mkdir -p bin
+          # Macでは .dylib を作成する
+          gcc -shared -o bin/libvo_se.dylib src/vo_se_engine.c
+      - name: Build APP
+        run: pyinstaller vose_pro.spec
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: VO-SE_Pro_MacOS
+          path: dist/VO-SE_Pro/
