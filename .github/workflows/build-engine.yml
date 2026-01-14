@@ -22,24 +22,36 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        # 辞書データが欠落しないよう、pyopenjtalkを確実にインストール
+        # 必要なライブラリをインストール
         pip install numpy PySide6 pyinstaller
+        # pyopenjtalkをインストール（先ほどのログで成功を確認済み）
         pip install pyopenjtalk
-        # 万が一dicが見つからないエラーが出る場合の予備としてフル版を試行
-        pip install pyopenjtalk-quantized || echo "Alternative package not found, skipping."
 
     - name: Verify Dictionary Path
       shell: powershell
       run: |
-        # 辞書がどこにインストールされたかログに出力して確認
-        python -c "import pyopenjtalk; import os; print('DIC PATH:', os.path.join(os.path.dirname(pyopenjtalk.__file__), 'dic'))"
-        python -c "import pyopenjtalk; import os; dic=os.path.join(os.path.dirname(pyopenjtalk.__file__), 'dic'); print('Exists:', os.path.exists(dic))"
+        # 辞書の場所を確認し、ログに出力
+        python -c "import pyopenjtalk; import os; dic=os.path.join(os.path.dirname(pyopenjtalk.__file__), 'dic'); print('DIC PATH:', dic); print('Exists:', os.path.exists(dic))"
 
     - name: Build C Engine DLL
       shell: powershell
       run: |
-        # 出力先フォルダの作成
         if (!(Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" }
-        
-        # Cソースをコンパイル
-        if (Test-Path "src/vo_se
+        if (Test-Path "src/vo_se_engine.c") {
+          gcc -shared -o bin/libvo_se.dll src/vo_se_engine.c
+          echo "C Engine built successfully."
+        } else {
+          echo "Error: src/vo_se_engine.c not found."
+          exit 1
+        }
+
+    - name: Run PyInstaller
+      run: |
+        pyinstaller vose_pro.spec
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: VO-SE_Pro_Windows_Package
+        path: dist/VO-SE_Pro/
+        retention-days: 5
