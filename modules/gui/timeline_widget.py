@@ -1,3 +1,5 @@
+#timeline_widget.py
+
 import json
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt, QRect, Slot, Signal
