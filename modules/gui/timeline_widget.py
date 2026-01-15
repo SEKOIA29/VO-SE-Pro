@@ -50,6 +50,13 @@ class TimelineWidget(QWidget):
     def quantize_value(self, value, resolution):
         return round(value / resolution) * resolution if resolution > 0 else value
 
+    #-----
+
+    def set_notes(self, notes_list):
+        """新しいノートリストをセットして再描画する"""
+        self.notes_list = notes_list
+        self.update() # これで画面が書き換わります
+
     # --- 描画ロジック ---
     def paintEvent(self, event: QPaintEvent):
         painter = QPainter(self)
