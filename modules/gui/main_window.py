@@ -64,8 +64,17 @@ class AnalysisThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self, engine, ai):
         super().__init__()
+
+　　　　　# 設定ハンドラーの初期化
+        self.config_manager = ConfigHandler()
+        self.config = self.config_manager.load_config()
         
-# 1. エンジン・AI・マネージャーの初期化
+        # 以前選んでいたキャラや音量を適用する準備
+        self.current_voice = self.config.get("default_voice")
+        self.volume = self.config.get("volume", 0.8)
+        
+　　　
+        # 1. エンジン・AI・マネージャーの初期化
         self.engine = engine
         self.ai_manager = ai
         self.voice_manager = VoiceManager(ai) 
@@ -80,6 +89,17 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.progress_bar)
         self.progress_bar.hide()
 
+    def closeEvent(self, event):
+        """ウィンドウを閉じる時に呼ばれるイベント"""
+        # 最新の状態を辞書にまとめる
+        current_config = {
+            "last_save_dir": self.config.get("last_save_dir"),
+            "default_voice": self.current_voice,
+            "volume": self.volume
+        }
+        # 保存実行
+        self.config_manager.save_config(current_config)
+        super().closeEvent(event)
 　　　
     @Slot()
     def on_click_auto_lyrics(self):
