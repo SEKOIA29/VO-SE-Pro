@@ -665,18 +665,17 @@ class MainWindow(QMainWindow):
         self.talk_bar.addWidget(self.text_input)
 
     def on_talk_execute(self):
+        """QLineEditに入力されたテキストを解析してタイムラインに展開"""
         text = self.text_input.text()
         if not text: return
         
-        # 1. Talk解析（脳）
+        # 形態素解析などを行いNoteEventのリストを生成
         new_events = self.analyzer.analyze_to_pro_events(text)
         
-        # 2. Pro版タイムライン（表示）への流し込み
-        # 既存のTimelineWidgetのメソッドを呼び出す
+        # 既存のタイムラインへ流し込み
         self.timeline_widget.set_notes(new_events)
         self.timeline_widget.update()
-        
-        print(f"VO-SE Pro: '{text}' を読み上げモードで展開しました")
+        self.statusBar().showMessage(f"Talkモード: '{text}' を展開しました")
 
 
 
