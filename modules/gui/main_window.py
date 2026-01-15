@@ -707,46 +707,55 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(self.copy_action)
         edit_menu.addAction(self.paste_action)
 
-    def setup_voice_selector(self):
-        """サイドバーにスクロール可能なカードエリアを作成"""
-        self.voice_scroll = QScrollArea()
-        self.voice_scroll.setWidgetResizable(True)
-        self.voice_scroll.setFixedWidth(400) # 3列並ぶ程度の幅
-        self.voice_scroll.setStyleSheet("background: transparent; border: none;")
-    
-        self.voice_container = QWidget()
-        self.voice_container.setStyleSheet("background: transparent;")
-        self.voice_grid = QGridLayout(self.voice_container)
-        self.voice_grid.setSpacing(15)
-        self.voice_grid.setAlignment(Qt.AlignmentFlag.AlignTop)
-    
-        self.voice_scroll.setWidget(self.voice_container)
-        self.left_sidebar.addWidget(self.voice_scroll) # レイアウトに追加
-
-    def update_voice_list(self):
+def update_voice_list(self):
         """VoiceManagerと同期してUI（カード一覧）を再構築する"""
-        # 既存のカード（Grid内のウィジェット）を全て削除
+        # 1. 既存のカードを安全に削除
+        # リストを保持している場合はクリア
+        if not hasattr(self, 'voice_cards'):
+            self.voice_cards = []
+        else:
+            self.voice_cards.clear()
+
         for i in reversed(range(self.voice_grid.count())): 
-            widget = self.voice_grid.itemAt(i).widget()
-            if widget: widget.deleteLater()
+            item = self.voice_grid.itemAt(i)
+            if item and item.widget():
+                item.widget().deleteLater()
 
-        # 最新のリストからカードを生成してGridに配置
+        # 2. 最新の音源リストからカードを生成して配置（3列グリッド）
+        # self.voice_manager.voices.items() が (名前, データ辞書) を返す想定
         for index, (name, data) in enumerate(self.voice_manager.voices.items()):
-            color = self.voice_manager.get_character_color(data["path"])
-            card = VoiceCardWidget(name, data["icon"], color)
-            card.clicked.connect(self.on_voice_selected) 
-            self.voice_grid.addWidget(card, index // 3, index % 3)
-
-         # 2. 最新の音源リストからカードを生成
-        for index, (name, path) in enumerate(self.voice_manager.voices.items()):
-            icon_path = os.path.join(path, "icon.png")
-            color = self.voice_manager.get_character_color(path) # json等から色を取得
-        
+            # パス、アイコン、色の取得
+            path = data.get("path", "")
+            icon_path = data.get("icon", os.path.join(path, "icon.png"))
+            color = self.voice_manager.get_character_color(path)
+            
+            # カードの生成
             card = VoiceCardWidget(name, icon_path, color)
-           # クリック時にエンジン切り替えと「産声(あ！)」を鳴らす
-            card.clicked.connect(self.on_voice_selected) 
-        
+            
+            # 選択イベントの接続（ここが重要！）
+            card.clicked.connect(self.on_voice_selected)
+            
+            # グリッドへ追加 (3列構成: index // 3 が行, index % 3 が列)
             self.voice_grid.addWidget(card, index // 3, index % 3)
+            
+            # 選択管理用にリストに保持
+            self.voice_cards.append(card)
+
+    @Slot(str)
+    def on_voice_selected(self, character_name):
+        """カードがクリックされた時の排他的選択処理とエンジン更新"""
+        # A. 全カードのスタイルを更新（クリックされたものだけ光らせる）
+        for card in self.voice_cards:
+            card.set_selected(card.name == character_name)
+        
+        # B. エンジンにボイスをセット
+        voice_path = self.voice_manager.voices[character_name]["path"]
+        if hasattr(self.vo_se_engine, 'set_voice_library'):
+            self.vo_se_engine.set_voice_library(voice_path)
+        
+        # C. UIへのフィードバック
+        self.status_label.setText(f"ボイス変更: {character_name}")
+        self.statusBar().showMessage(f"Voice Loaded: {character_name}", 3000)
 
 　　def on_voice_selected(self, name):
        """キャラクターが選ばれた時の最終処理"""
