@@ -66,4 +66,30 @@ class VoiceManager:
         try:
             # UTAU音源は伝統的に Shift-JIS (cp932)
             with open(ini_path, 'r', encoding='cp932', errors='ignore') as f:
-                for line in f
+                for line in f:
+                    line = line.strip()
+                    if not line or '=' not in line:
+                        continue
+                    
+                    # フォーマット: ファイル名.wav=エイリアス,左ブランク,固定範囲,右ブランク,先行発声,オーバーラップ
+                    fname, params = line.split('=', 1)
+                    p = params.split(',')
+                    
+                    alias = p[0] if p[0] else fname.replace(".wav", "")
+                    
+                    # 単位はミリ秒(ms)としてパース（エンジン側で秒に変換することを想定）
+                    config[alias] = {
+                        "filename": fname,
+                        "left_blank": float(p[1]) if len(p) > 1 and p[1] else 0.0,
+                        "fixed_range": float(p[2]) if len(p) > 2 and p[2] else 0.0,
+                        "right_blank": float(p[3]) if len(p) > 3 and p[3] else 0.0,
+                        "pre_utterance": float(p[4]) if len(p) > 4 and p[4] else 0.0,
+                        "overlap": float(p[5]) if len(p) > 5 and p[5] else 0.0
+                    }
+        except Exception as e:
+            logging.error(f"oto.ini の解析中にエラー: {e}")
+            
+        return config
+
+    def get_voice_path(self, name):
+        return self.voices.get(name)
