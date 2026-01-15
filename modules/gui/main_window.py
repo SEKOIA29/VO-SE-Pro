@@ -80,37 +80,30 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.progress_bar)
         self.progress_bar.hide()
 
+　　　
+    @Slot()
     def on_click_auto_lyrics(self):
-        """歌詞入力ボタンが押された時の処理"""
-        # 1. ユーザーから文章を入力してもらう
-        text, ok = QInputDialog.getText(
-            self, "AI自動歌詞配置", 
-            "喋らせたい・歌わせたい文章を入力してください:",
-            text="今日はいい天気ですね"
-        )
-    
-        if not (ok and text):
-            return
+        text, ok = QInputDialog.getText(self, "AI自動歌詞配置", "文章を入力:")
+        if not (ok and text): return
 
-        # 2. Open JTalkでアクセント解析（トレース取得）
+        # 解析実行
         trace_data = self.analyzer.analyze(text)
-        if not trace_data:
-            self.statusBar().showMessage("解析に失敗しました。")
-            return
+        # intonation.pyで定義したパース関数を呼ぶ
+        parsed_notes = self.analyzer.parse_trace_to_notes(trace_data)
 
-        # 3. トレースデータを音符オブジェクト（NoteEvent）のリストに変換
-        parsed_data = self.analyzer.parse_trace_to_notes(trace_data)
-    
         new_notes = []
-        for d in parsed_data:
-            # 既存のデータモデルに合わせて変換
+        for d in parsed_notes:
             note = NoteEvent(
                 lyrics=d["lyric"],
-                start_time=d["start"], # 秒単位
+                start_time=d["start"],
                 duration=d["duration"],
-                note_number=d["pitch"] # 解析したアクセントに基づくピッチ
+                note_number=d["pitch"]
             )
             new_notes.append(note)
+
+        # タイムラインへセット（1,200行側のメソッド名に合わせて調整してください）
+        self.timeline_widget.set_notes(new_notes)
+        self.statusBar().showMessage(f"『{text}』の解析完了", 3000)
 
         # 4. タイムラインに反映
         if new_notes:
