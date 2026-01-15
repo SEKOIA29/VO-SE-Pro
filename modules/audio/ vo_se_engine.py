@@ -127,3 +127,39 @@ class VO_SE_Engine:
         if audio_data is not None:
             sd.play(audio_data, self.sample_rate)
             sd.wait()
+
+
+
+   def update_notes_data(self, notes):
+        """タイムラインから送られてきた最新のノートリストを保持する"""
+        self.current_notes = notes
+        # キャッシュをクリアして、次の再生で新しいonsetが反映されるようにする
+        self.clear_cache()
+
+    def calculate_wav_slice(self, note):
+        """
+        赤線(onset)の位置に基づいて、Wavファイルの切り出し範囲を計算する
+        """
+        # UTAU等の原音設定パラメータ
+        # pre_utterance: 先行発声 (例: 's'の音)
+        # overlap: オーバーラップ
+        
+        # 【重要】赤線(onset)によるオフセット計算
+        # ユーザーが赤線を右に動かすほど、実際の発音タイミングが遅れる（＝Wavの読み込み開始を遅くする）
+        if hasattr(note, 'onset'):
+            user_offset_ms = note.onset * 1000  # 秒をミリ秒に変換
+        else:
+            user_offset_ms = 0
+
+        # カット開始位置の計算式
+        # 原音設定の「左ブランク」 + 赤線の移動量
+        cut_start_ms = note.voice_config.left_blank + user_offset_ms
+        
+        # 先行発声を考慮した、タイムライン上の実際の配置位置
+        actual_start_time = note.start_time - note.pre_utterance
+
+        return {
+            "cut_start": cut_start_ms,
+            "play_at": actual_start_time,
+            "duration": note.duration + note.pre_utterance
+        }
