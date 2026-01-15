@@ -880,20 +880,28 @@ class MainWindow(QMainWindow):
 
 
     
-    @Slot()
+　 　@Slot()
     def update_playback_cursor(self):
-        """タイマーイベントごとに呼び出され、再生カーソル位置とGUIを同期更新する"""
-        if self.is_playing:
-            # --- 再生時刻の同期 ---
-            # システム時刻から計算するのではなく、VO_SE_Engineの現在時刻を取得する
-            self.current_playback_time = self.vo_se_engine.current_time_playback 
-           
-            # 再生時間を MM:SS.ms 形式にフォーマット
-            mins = int(self.current_playback_time / 60)
-            secs = int(self.current_playback_time % 60)
-            msecs = int((self.current_playback_time - int(self.current_playback_time)) * 100)
-            time_str = f"{mins:02}:{secs:02}.{msecs:02}"
-            self.time_display_label.setText(time_str)
+        """タイマー同期: エンジンの現在時刻を取得してGUIを動かす"""
+        if not self.is_playing: return
+
+        # システム時刻ではなくエンジン側の再生時刻を参照
+        self.current_playback_time = self.vo_se_engine.get_current_time()
+        
+        # ループ処理 (GUI側での監視)
+        if self.is_looping:
+            start, end = self.timeline_widget.get_selected_notes_range()
+            if self.current_playback_time >= end:
+                self.vo_se_engine.seek_time(start) # エンジンを巻き戻す
+                self.current_playback_time = start
+
+        # GUI反映
+        self.timeline_widget.set_current_time(self.current_playback_time)
+        
+        # 自動スクロールロジック
+        cursor_x = self.timeline_widget.seconds_to_beats(self.current_playback_time) * self.timeline_widget.pixels_per_beat
+        if cursor_x > self.h_scrollbar.value() + self.timeline_widget.width() * 0.8:
+            self.h_scrollbar.setValue(int(cursor_x - self.timeline_widget.width() * 0.2))
           
             
             # --- ループ処理のロジック ---
