@@ -775,6 +775,9 @@ class MainWindow(QMainWindow):
        self.engine.set_voice_path(f"audio_data/{selected_name}/")
        print(f"VO-SE: キャラクターを {selected_name} に変更しました")
 
+   def setup_connections(self):
+       # タイムラインで何かが変わったら、エンジンのプレビューを更新する
+       self.timeline_widget.notes_changed_signal.connect(self.on_timeline_updated)
 
 
 
@@ -885,11 +888,22 @@ class MainWindow(QMainWindow):
             self.status_label.setText("録音開始しました。MIDI入力を待っています...")
             self.timeline_widget.set_recording_state(True, time.time())
 
-    @Slot()
-    def on_character_changed(self):
-        char_id = self.character_selector.currentData()
-        self.vo_se_engine.set_active_character(char_id)
-
+　　　@Slot()
+    def on_timeline_updated(self):
+        """ノートやOnsetが変更されたときに呼ばれる"""
+        # 1. 最新のノートリストを取得
+        updated_notes = self.timeline_widget.notes_list
+    
+        # 2. エンジンに「キャッシュを破棄して再計算」させる
+        # synthesis_track などのメソッドに渡す
+        self.statusBar().showMessage("タイミング変更をエンジンに反映中...", 2000)
+    
+        # 別スレッドで軽いプレビュー生成を走らせるとUIが止まりません
+        threading.Thread(
+            target=self.vo_se_engine.prepare_cache, 
+            args=(updated_notes,), 
+            daemon=True
+       ).start()
 
     
     @Slot()
