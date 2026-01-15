@@ -147,3 +147,29 @@ class TimelineWidget(QWidget):
     def set_current_time(self, time_in_seconds: float):
         self._current_playback_time = time_in_seconds
         self.update()
+
+
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            # --- Onsetドラッグの確定 ---
+            if self.edit_mode == "ONSET" and self.target_note:
+                # 相対的なOnset値を確定
+                print(f"Onset変更確定: {self.target_note.lyrics} -> {self.target_note.onset:.3f}s")
+                
+                # エンジンへ「特定のノートが更新された」ことを通知
+                # MainWindow側でこの信号をキャッチしてエンジンを叩く設計にします
+                self.notes_changed_signal.emit() 
+
+            # --- 通常の移動・リサイズの確定 ---
+            elif self.edit_mode in ('move', 'resize') and self.target_note:
+                # 量子化（スナップ）処理
+                self.target_note.start_time = self.beats_to_seconds(
+                    self.quantize_value(self.seconds_to_beats(self.target_note.start_time), self.quantize_resolution)
+                )
+                self.notes_changed_signal.emit()
+
+            # 状態のリセット
+            self.edit_mode = None
+            self.target_note = None
+            self.update()
