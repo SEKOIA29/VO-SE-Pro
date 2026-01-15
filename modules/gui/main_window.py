@@ -741,36 +741,26 @@ def update_voice_list(self):
             # 選択管理用にリストに保持
             self.voice_cards.append(card)
 
-    @Slot(str)
-    def on_voice_selected(self, character_name):
-        """カードがクリックされた時の排他的選択処理とエンジン更新"""
-        # A. 全カードのスタイルを更新（クリックされたものだけ光らせる）
-        for card in self.voice_cards:
-            card.set_selected(card.name == character_name)
-        
-        # B. エンジンにボイスをセット
-        voice_path = self.voice_manager.voices[character_name]["path"]
-        if hasattr(self.vo_se_engine, 'set_voice_library'):
-            self.vo_se_engine.set_voice_library(voice_path)
-        
-        # C. UIへのフィードバック
-        self.status_label.setText(f"ボイス変更: {character_name}")
-        self.statusBar().showMessage(f"Voice Loaded: {character_name}", 3000)
-
-　　def on_voice_selected(self, name):
-       """キャラクターが選ばれた時の最終処理"""
-        # 全カードのスタイルをリセットし、選択されたものだけ光らせる
-       for i in range(self.voice_grid.count()):
-           card = self.voice_grid.itemAt(i).widget()
-           card.update_style(selected=(card.name == name))
-
-           self.current_voice = name
-           self.engine.set_voice(name) # C言語エンジンへの指示
+   @Slot(str)
+   def on_voice_selected(self, character_name):
+       # 1. カードの見た目を更新
+       for card in self.voice_cards:
+           card.set_selected(card.name == character_name)
     
-           # 2演出：選んだ瞬間にそのキャラの声で挨拶
-           #self.audio_output.preview_voice(name, "あ") 
-           self.statusBar().showMessage(f"Voice: {name} が読み込まれました")
+       # 2. ボイス情報を取得
+       voice_data = self.voice_manager.voices[character_name]
+       path = voice_data["path"]
 
+       # 3. 歌声エンジン(VO_SE_Engine)の更新
+       self.vo_se_engine.set_voice_library(path)
+
+       # 4. トークエンジン(TalkManager)の更新
+       # 例: 音源フォルダ内に talk.htsvoice が入っている想定
+       talk_model = os.path.join(path, "talk.htsvoice")
+       if os.path.exists(talk_model):
+           self.talk_manager.set_voice(talk_model)
+
+       self.statusBar().showMessage(f"【{character_name}】に切り替え完了")
 
 
    def setup_voice_selector(self):
