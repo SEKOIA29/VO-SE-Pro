@@ -562,8 +562,8 @@ class MainWindow(QMainWindow):
             else:
                 self.statusBar().showMessage("エラー: 有効なUTAU音源(oto.ini)が見つかりませんでした。")
           　　
-         
-
+#まだ残りあるよ        
+# main_window.py 続き
 
     
     def scan_utau_voices(self):
