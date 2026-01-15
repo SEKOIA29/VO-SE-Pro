@@ -507,6 +507,27 @@ class MainWindow(QMainWindow):
         
         self.main_layout.addLayout(bottom_layout)
 
+        self.auto_btn = QPushButton("歌詞から自動生成")
+        # スタイルを2026年風（Apple風）に少し整える
+        self.auto_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(255, 255, 255, 20);
+                border-radius: 6px;
+                padding: 5px 12px;
+                color: white;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #007AFF;
+            }
+        """)
+        
+        # クリックイベントの接続
+        self.auto_btn.clicked.connect(self.on_click_auto_lyrics)
+        
+        # ツールバーへの配置
+        self.toolbar.addWidget(self.auto_btn)
+
     def setup_control_panel(self):
         """上部のボタンや入力欄を並べるレイアウト"""
         panel_layout = QHBoxLayout()
