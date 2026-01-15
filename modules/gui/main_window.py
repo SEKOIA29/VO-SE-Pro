@@ -34,6 +34,7 @@ from PySide6.QtWidgets import QMainWindow, QProgressBar, QMessageBox, QVBoxLayou
 from PySide6.QtCore import QThread, Signal
 from ..ai.analysis_thread import AnalysisThread
 from ..engine.vo_se_engine import VO_SE_Engine
+from backend.intonation import IntonationAnalyzer 
 
 
 # 1. バックグラウンドで動く作業員（スレッド）の定義
@@ -78,7 +79,7 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.progress_bar)
         self.progress_bar.hide()
       
-def start_batch_analysis(self):
+    def start_batch_analysis(self):
         """AI一括解析の開始（フリーズ防止スレッド起動）"""
         # 現在選択されている音源のパスを取得
         target_dir = self.voice_manager.get_current_voice_path() 
@@ -177,7 +178,7 @@ def start_batch_analysis(self):
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"ZIP展開失敗: {e}")
 
-self.setWindowTitle("VO-SE Pro - Vocal Synthesis Editor")
+        self.setWindowTitle("VO-SE Pro - Vocal Synthesis Editor")
         self.resize(1000, 600)
         
         # ドラッグ＆ドロップを有効化
@@ -243,6 +244,7 @@ class MainWindow(QMainWindow):
         self.voice_manager = VoiceManager()
         status = self.voice_manager.first_run_setup()
         print(status)
+        self.analyzer = IntonationAnalyzer()
         
         # キャラクター選択メニューに名前を入れる
         self.voice_selector.addItems(self.voice_manager.voices.keys())
