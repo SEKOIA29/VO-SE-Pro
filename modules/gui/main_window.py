@@ -565,11 +565,61 @@ class MainWindow(QMainWindow):
 #まだ残りあるよ        
 # main_window.py 続き
 
-    
     def scan_utau_voices(self):
-        """起動時にUTAUボイス等をスキャンする想定のメソッド"""
-        # ここにスキャンロジックを実装
-        return {} 
+        """
+        voicesフォルダ内をスキャンし、UTAU形式の音源を抽出する。
+        音源名、パス、アイコン、立ち絵、原音設定の有無を辞書にまとめる。
+        """
+        voice_root = os.path.join(os.getcwd(), "voices")
+        if not os.path.exists(voice_root):
+            os.makedirs(voice_root)
+            return {}
+
+        found_voices = {}
+        
+        # フォルダ一覧を取得
+        for dir_name in os.listdir(voice_root):
+            dir_path = os.path.join(voice_root, dir_name)
+            
+            if os.path.isdir(dir_path):
+                # UTAU音源である判断基準: oto.ini または character.txt が存在するか
+                oto_path = os.path.join(dir_path, "oto.ini")
+                char_txt_path = os.path.join(dir_path, "character.txt")
+                
+                if os.path.exists(oto_path) or os.path.exists(char_txt_path):
+                    # キャラクター名の決定（character.txtがあればそこから取得、なければフォルダ名）
+                    char_name = dir_name
+                    if os.path.exists(char_txt_path):
+                        try:
+                            with open(char_txt_path, 'r', encoding='shift-jis', errors='ignore') as f:
+                                for line in f:
+                                    if line.startswith("name="):
+                                        char_name = line.split("=")[1].strip()
+                                        break
+                        except:
+                            pass
+                    
+                    # アイコンの確認（なければデフォルト）
+                    icon_path = os.path.join(dir_path, "icon.png")
+                    if not os.path.exists(icon_path):
+                        icon_path = "resources/default_avatar.png" # 予備
+                        
+                    found_voices[char_name] = {
+                        "path": dir_path,
+                        "icon": icon_path,
+                        "id": dir_name
+                    }
+        
+        # 内部マネージャーにセット
+        self.voice_manager.voices = found_voices
+        return found_voices
+
+    def refresh_voice_ui_with_scan(self):
+        """スキャンを実行してUIを最新状態にする"""
+        self.statusBar().showMessage("音源フォルダをスキャン中...")
+        self.scan_utau_voices()
+        self.update_voice_list() # 前回の統合版で実装したグリッド更新メソッド
+        self.statusBar().showMessage(f"スキャン完了: {len(self.voice_manager.voices)} 個の音源が見つかりました", 3000)
 
 
     def setup_formant_slider(self):
