@@ -3,80 +3,116 @@
 import sys
 import os
 import ctypes
-import time
+import logging
+
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
 
+# --- 自作モジュールのインポート ---
+# フォルダ構成に合わせてパスを調整（絶対インポートを推奨）
+from modules.gui.main_window import MainWindow
+from modules.audio.vo_se_engine import VO_SE_Engine
+from modules.ai.ai_manager import AIManager
+from modules.audio.audio_output import AudioOutput
 
-from PySide6.QtWidgets import QMainWindow
-# 同じフォルダ(modules)内にある場合
-from .widgets import NoteWidget, TimelineWidget
-from .keyboard_sidebar_widget import KeyboardSidebar
-from .data_models import ProjectData
-from .voice_manager import VoiceManager
-# サブフォルダ(utilsやtalk)にある場合
-from .utils.zip_handler import ZipHandler
-from .talk.talk_manager import TalkManager
 # PyInstallerのスプラッシュスクリーン制御
 try:
     import pyi_splash
 except ImportError:
     pyi_splash = None
 
-# 自作モジュールのインポート
-from GUI.main_window import MainWindow
-from engine.vo_se_engine import VO_SE_Engine
-from engine.ai_manager import AIManager
-
 def main():
-    # 1. 高DPI対応（GUIを表示する前に必須）
+    # 1. 環境設定
+    # Windows/Macでの高DPIスケーリングを有効化
     os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
+    os.environ["QT_AUTOSCREEN_SCALE_FACTOR"] = "1"
     
-    app = QApplication(sys.argv)
+    # ロギング設定
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
-    # --- 2. スタイルシートの一括適用 ---
+    app = QApplication(sys.argv)
+    app.setApplicationName("VO-SE Pro")
+    app.setOrganizationName("VO-SE Project")
+
+    # --- 2. スタイルシート（ダークモード・モダンUI） ---
     app.setStyleSheet("""
-        QMainWindow { background-color: #2e2e2e; color: #eeeeee; }
-        QPushButton { background-color: #007acc; border: none; color: white; padding: 6px 12px; border-radius: 4px; }
-        QPushButton:hover { background-color: #005f99; }
-        QLabel { color: #eeeeee; }
-        QLineEdit, QComboBox { background-color: #3e3e3e; border: 1px solid #555555; color: #eeeeee; padding: 4px; }
-        QScrollBar:vertical { background: #333333; width: 12px; }
-        QScrollBar::handle:vertical { background: #007acc; min-height: 20px; }
-        QSplitter::handle { background-color: #555; }
+        QMainWindow { background-color: #1e1e1e; color: #d4d4d4; }
+        QWidget { font-family: 'Segoe UI', 'Hiragino Kaku Gothic ProN', sans-serif; }
+        
+        /* タイムライン・ピアノロール周辺 */
+        QScrollArea { border: none; background-color: #252526; }
+        
+        /* ボタン */
+        QPushButton { 
+            background-color: #007acc; border: none; color: white; 
+            padding: 8px 16px; border-radius: 4px; font-weight: bold;
+        }
+        QPushButton:hover { background-color: #0062a3; }
+        QPushButton:pressed { background-color: #004d80; }
+        QPushButton:disabled { background-color: #3e3e3e; color: #888888; }
+
+        /* 入力系 */
+        QLineEdit, QComboBox { 
+            background-color: #3c3c3c; border: 1px solid #555555; 
+            color: #eeeeee; padding: 4px; selection-background-color: #264f78;
+        }
+        
+        /* スプリッター（境界線） */
+        QSplitter::handle { background-color: #333333; }
+        QSplitter::handle:horizontal { width: 4px; }
+        QSplitter::handle:vertical { height: 4px; }
+
+        /* スクロールバー */
+        QScrollBar:vertical { background: #1e1e1e; width: 10px; margin: 0; }
+        QScrollBar::handle:vertical { background: #424242; min-height: 20px; border-radius: 5px; }
+        QScrollBar::handle:vertical:hover { background: #4f4f4f; }
     """)
 
-    # --- 3. アプリの初期化（スプラッシュ表示中に実行） ---
-    if pyi_splash:
-        pyi_splash.update_text("エンジンを初期化中...")
+    # --- 3. バックエンドの初期化（スプラッシュ表示中に実行） ---
+    try:
+        if pyi_splash:
+            pyi_splash.update_text("音声エンジンをロード中...")
+        
+        # 低遅延オーディオ出力の初期化
+        audio_device = AudioOutput(sample_rate=44100, block_size=256)
+        
+        # C言語エンジンのロード
+        engine = VO_SE_Engine() 
 
-    # C言語エンジンのロード
-    engine = VO_SE_Engine() 
+        if pyi_splash:
+            pyi_splash.update_text("AI推論モデルを最適化中...")
 
-    if pyi_splash:
-        pyi_splash.update_text("AIモデルを準備中...")
+        # AIマネージャーの初期化
+        ai = AIManager()
+        ai.init_model()
 
-    # AIマネージャーの初期化
-    ai = AIManager()
-    ai.init_model()
+        # 4. メインウィンドウの作成と依存注入(Dependency Injection)
+        if pyi_splash:
+            pyi_splash.update_text("UIを構築中...")
+            
+        window = MainWindow(engine=engine, ai=ai, audio=audio_device)
 
-    # メインウィンドウの作成
-    window = MainWindow(engine=engine, ai=ai)
+        # --- 5. セットアップ完了、表示 ---
+        if pyi_splash:
+            pyi_splash.close()
 
-    # --- 4. セットアップ完了、表示 ---
-    if pyi_splash:
-        pyi_splash.close()
+        window.show()
+        
+    except Exception as e:
+        logging.critical(f"アプリケーションの起動に失敗しました: {e}")
+        if pyi_splash:
+            pyi_splash.close()
+        return
 
-    window.show()
     sys.exit(app.exec())
 
-# Windowsのタスクバーアイコン個別認識用
-if os.name == 'nt':
+# Windowsのタスクバーアイコン個別認識用（PyInstallerで必須）
+if platform_system := os.name == 'nt':
     try:
-        myappid = 'mycompany.vo-se.pro.1.0'
+        myappid = 'vose.pro.editor.v1'
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-    except Exception as e:
-        print(f"Windows AppID Setting Error: {e}")
+    except Exception:
+        pass
 
 if __name__ == "__main__":
     main()
