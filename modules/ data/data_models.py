@@ -48,6 +48,14 @@ class NoteEvent:
     is_selected: bool = field(default=False, repr=False)
     is_playing: bool = field(default=False, repr=False)
 
+
+    def __init__(self, lyrics, start_time, duration, note_number, onset=0.0):
+        self.lyrics = lyrics
+        self.start_time = start_time    # 開始秒
+        self.duration = duration        # 長さ秒
+        self.note_number = note_number  # MIDI番号 (60=C4)
+        self.onset = onset              # 発音位置オフセット（AI赤線）
+
     def __repr__(self):
         mode = "Talk" if self.pitch_end is not None else "Sing"
         return f"Note({mode}, pitch={self.note_number}, lyric='{self.lyric}', start={self.start_time:.2f}s)"
