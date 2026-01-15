@@ -905,6 +905,31 @@ class MainWindow(QMainWindow):
             daemon=True
        ).start()
 
+    @Slot()
+    def on_notes_modified(self):
+        """
+        タイムラインでノートやAIの赤線（Onset）が動かされた時に実行される。
+        """
+        # 1. ステータスバーで通知（デバッグ時に便利）
+        self.statusBar().showMessage("音声を更新中...", 1000)
+
+        # 2. 最新のノート情報を取得
+        updated_notes = self.timeline_widget.notes_list
+    
+        # 3. エンジンにデータの更新を知らせる
+        # すでに再生中の場合は、リアルタイムに音を変えるための処理
+        if hasattr(self.vo_se_engine, 'update_notes_data'):
+            self.vo_se_engine.update_notes_data(updated_notes)
+    
+       # 4. バックグラウンドでプレビュー用のキャッシュ波形を生成
+       # (合成に時間がかかる場合を想定してスレッド化)
+       threading.Thread(
+           target=self.vo_se_engine.synthesize_track,
+           args=(updated_notes, self.pitch_data),
+           kwargs={'preview_mode': True},
+           daemon=True
+       ).start()
+
     
     @Slot()
     def update_playback_cursor(self):
