@@ -780,65 +780,78 @@ class MainWindow(QMainWindow):
 
   
 
-    @Slot()
+@Slot()
     def on_play_pause_toggled(self):
-        """再生/停止ボタンのハンドラ"""
+        """再生/停止ボタンのハンドラ。録音停止、音声生成、スレッド再生を統合。"""
         
+        # --- 1. すでに再生中の場合は「停止」処理 ---
         if self.is_playing:
             self.is_playing = False
             self.playback_timer.stop()
             
-            # TODO: VO-SE Engineで再生中の音声があれば停止させる仕組みが必要
-            # 前回のバージョンの停止ロジックを統合
-            if self.vo_se_engine and hasattr(self.vo_se_engine, 'stream') and self.vo_se_engine.stream.is_active():
-                 self.vo_se_engine.stream.stop_stream()
-            
-            self.play_button.setText("再生/停止")
-            self.status_label.setText("再生停止しました。")
-            self.playing_notes = {}
-            
-
-        else:
-            if self.is_recording:
-                self.on_record_toggled()
-            
-            # get_selected_notes_range は選択範囲がない場合、プロジェクト全体を返すためそのまま使える
-            start_time, end_time = self.timeline_widget.get_selected_notes_range()
-
-            if start_time >= end_time:
-                 self.status_label.setText("ノートが存在しないため再生できません。")
-                 return
-
-            notes = self.timeline_widget.notes_list
-            pitch = self.pitch_data
-            
             try:
-                self.status_label.setText("音声生成中...お待ちください。")
-                QApplication.processEvents()
+                # エンジン側の停止処理
+                if hasattr(self.vo_se_engine, 'stop_playback'):
+                    self.vo_se_engine.stop_playback()
+                
+                # ストリームを直接触る必要がある場合の保険
+                if hasattr(self.vo_se_engine, 'stream') and self.vo_se_engine.stream.is_active():
+                    self.vo_se_engine.stream.stop_stream()
+            except Exception as e:
+                print(f"停止処理中にエラー: {e}")
 
-                audio_track = self.vo_se_engine.synthesize_track(notes, pitch, start_time, end_time)
-                
-                # エンジンのストリームが停止中であれば再開する (前回のバージョンのロジック)
-                if hasattr(self.vo_se_engine, 'stream') and not self.vo_se_engine.stream.is_active():
-                    self.vo_se_engine.stream.start_stream()
+            self.play_button.setText("再生")
+            self.status_label.setText("再生を停止しました。")
+            self.playing_notes = {}
+            return # 停止したのでここで終了
 
-                self.current_playback_time = start_time
-                self.start_time_real = time.time() - self.current_playback_time
-                
-                self.is_playing = True
-                self.playback_timer.start()
-                
-                import threading
-                playback_thread = threading.Thread(target=self.vo_se_engine.play_audio, args=(audio_track,))
-                playback_thread.daemon = True
-                playback_thread.start()
-                
-                self.play_button.setText("■ 再生中 (停止)")
-                self.status_label.setText(f"再生開始しました (範囲: {start_time:.2f}s - {end_time:.2f}s)。")
+        # --- 2. 再生開始前の準備 ---
+        if self.is_recording:
+            self.on_record_toggled() # 録音中なら止める
 
-            except Exception as e: # ValueErrorだけでなく一般的なエラーもキャッチ
-                 self.status_label.setText(f"再生エラーが発生しました: {e}")
-                 print(f"再生エラーの詳細: {e}")
+        # 再生範囲の取得
+        start_time, end_time = self.timeline_widget.get_selected_notes_range()
+        notes = self.timeline_widget.notes_list
+        pitch = self.pitch_data
+
+        if not notes or start_time >= end_time:
+            self.status_label.setText("ノートが存在しないため再生できません。")
+            return
+
+        # --- 3. 音声生成と再生開始 ---
+        try:
+            self.status_label.setText("音声生成中...お待ちください。")
+            # GUIをフリーズさせないために一度描画を更新
+            QApplication.processEvents()
+
+            # A. トラックの生成（重い処理）
+            audio_track = self.vo_se_engine.synthesize_track(notes, pitch, start_time, end_time)
+            
+            # B. エンジンの準備
+            if hasattr(self.vo_se_engine, 'stream') and not self.vo_se_engine.stream.is_active():
+                self.vo_se_engine.stream.start_stream()
+
+            self.current_playback_time = start_time
+            self.is_playing = True
+            
+            # C. 別スレッドで再生を実行
+            import threading
+            playback_thread = threading.Thread(
+                target=self.vo_se_engine.play_audio, 
+                args=(audio_track,),
+                daemon=True
+            )
+            playback_thread.start()
+            
+            # D. GUI側のタイマーとラベルの更新
+            self.playback_timer.start()
+            self.play_button.setText("■ 停止")
+            self.status_label.setText(f"再生中: {start_time:.2f}s - {end_time:.2f}s")
+
+        except Exception as e:
+            self.status_label.setText(f"再生エラー: {e}")
+            print(f"再生エラーの詳細: {e}")
+            self.is_playing = False
                 
     @Slot()
     def on_loop_button_toggled(self):
