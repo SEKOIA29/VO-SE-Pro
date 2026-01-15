@@ -725,12 +725,18 @@ class MainWindow(QMainWindow):
         self.left_sidebar.addWidget(self.voice_scroll) # レイアウトに追加
 
     def update_voice_list(self):
-        """VoiceManagerと同期してUIを更新（Zipドロップ後にも呼ばれる）"""
-        # 1. 既存のカードを削除してクリーンアップ
+        """VoiceManagerと同期してUI（カード一覧）を再構築する"""
+        # 既存のカード（Grid内のウィジェット）を全て削除
         for i in reversed(range(self.voice_grid.count())): 
             widget = self.voice_grid.itemAt(i).widget()
-            if widget:
-                widget.deleteLater()
+            if widget: widget.deleteLater()
+
+        # 最新のリストからカードを生成してGridに配置
+        for index, (name, data) in enumerate(self.voice_manager.voices.items()):
+            color = self.voice_manager.get_character_color(data["path"])
+            card = VoiceCardWidget(name, data["icon"], color)
+            card.clicked.connect(self.on_voice_selected) 
+            self.voice_grid.addWidget(card, index // 3, index % 3)
 
          # 2. 最新の音源リストからカードを生成
         for index, (name, path) in enumerate(self.voice_manager.voices.items()):
