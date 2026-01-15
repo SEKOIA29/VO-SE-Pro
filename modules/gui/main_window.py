@@ -1288,9 +1288,13 @@ def apply_lyrics_to_notes(self, text):
     self.timeline_widget.update() # 再描画
 
 
-def handle_midi_event(self, note_number, is_on):
-    if is_on:
-        # 1. 即座に音を鳴らす（エンジン呼び出し）
-        self.engine.play_realtime_note(note_number)
-        # 2. タイムラインにノートを配置（記録モード時）
-        self.timeline_widget.add_note_from_midi(note_number)
+def handle_midi_realtime(self, note_number, velocity, event_type):
+        """MIDI入力マネージャーからの信号をエンジンと録音機能へ渡す"""
+        if event_type == 'on':
+            # 1. 遅延なしでエンジンを鳴らす
+            self.vo_se_engine.play_realtime_note(note_number)
+            # 2. 録音モードならタイムラインにノートを記録
+            if self.is_recording:
+                self.timeline_widget.add_note_from_midi(note_number, velocity)
+        elif event_type == 'off':
+            self.vo_se_engine.stop_realtime_note(note_number)
