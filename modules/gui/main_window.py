@@ -70,6 +70,7 @@ class MainWindow(QMainWindow):
         self.ai_manager = ai
         self.voice_manager = VoiceManager(ai) 
         self.voice_manager.first_run_setup()
+        self.analyzer = IntonationAnalyzer()
         
         self.analysis_thread = None # スレッド保持用
         self.current_voice_dir = "" # 現在選択されている音源フォルダ
@@ -78,6 +79,45 @@ class MainWindow(QMainWindow):
         self.progress_bar = QProgressBar()
         self.statusBar().addPermanentWidget(self.progress_bar)
         self.progress_bar.hide()
+
+    def on_click_auto_lyrics(self):
+        """歌詞入力ボタンが押された時の処理"""
+        # 1. ユーザーから文章を入力してもらう
+        text, ok = QInputDialog.getText(
+            self, "AI自動歌詞配置", 
+            "喋らせたい・歌わせたい文章を入力してください:",
+            text="今日はいい天気ですね"
+        )
+    
+        if not (ok and text):
+            return
+
+        # 2. Open JTalkでアクセント解析（トレース取得）
+        trace_data = self.analyzer.analyze(text)
+        if not trace_data:
+            self.statusBar().showMessage("解析に失敗しました。")
+            return
+
+        # 3. トレースデータを音符オブジェクト（NoteEvent）のリストに変換
+        parsed_data = self.analyzer.parse_trace_to_notes(trace_data)
+    
+        new_notes = []
+        for d in parsed_data:
+            # 既存のデータモデルに合わせて変換
+            note = NoteEvent(
+                lyrics=d["lyric"],
+                start_time=d["start"], # 秒単位
+                duration=d["duration"],
+                note_number=d["pitch"] # 解析したアクセントに基づくピッチ
+            )
+            new_notes.append(note)
+
+        # 4. タイムラインに反映
+        if new_notes:
+            # 既存の音符を消すか、後ろに追加するか選択（ここでは全入れ替えを想定）
+            self.timeline_widget.set_notes(new_notes)
+            self.timeline_widget.update() # 再描画
+            self.statusBar().showMessage(f"{len(new_notes)}個の音素を配置しました。")
       
     def start_batch_analysis(self):
         """AI一括解析の開始（フリーズ防止スレッド起動）"""
@@ -244,7 +284,7 @@ class MainWindow(QMainWindow):
         self.voice_manager = VoiceManager()
         status = self.voice_manager.first_run_setup()
         print(status)
-        self.analyzer = IntonationAnalyzer()
+        
         
         # キャラクター選択メニューに名前を入れる
         self.voice_selector.addItems(self.voice_manager.voices.keys())
