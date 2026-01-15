@@ -780,7 +780,7 @@ class MainWindow(QMainWindow):
 
   
 
-@Slot()
+    @Slot()
     def on_play_pause_toggled(self):
         """再生/停止ボタンのハンドラ。録音停止、音声生成、スレッド再生を統合。"""
         
@@ -892,66 +892,56 @@ class MainWindow(QMainWindow):
 
 
     
-　 　@Slot()
+    @Slot()
     def update_playback_cursor(self):
-        """タイマー同期: エンジンの現在時刻を取得してGUIを動かす"""
-        if not self.is_playing: return
+        """タイマー同期: エンジンの現在時刻を取得し、全ウィジェットの同期とスクロールを行う"""
+        if not self.is_playing:
+            return
 
-        # システム時刻ではなくエンジン側の再生時刻を参照
-        self.current_playback_time = self.vo_se_engine.get_current_time()
-        
-        # ループ処理 (GUI側での監視)
+        # 1. エンジン側から最新の再生時刻を取得
+        # メソッドがない場合は内部変数、それもなければ現在時刻を維持
+        if hasattr(self.vo_se_engine, 'get_current_time'):
+            self.current_playback_time = self.vo_se_engine.get_current_time()
+        elif hasattr(self.vo_se_engine, 'current_time_playback'):
+            self.current_playback_time = self.vo_se_engine.current_time_playback
+
+        # 2. ループ処理ロジック (GUI側で範囲を監視し、エンジンを巻き戻す)
         if self.is_looping:
-            start, end = self.timeline_widget.get_selected_notes_range()
-            if self.current_playback_time >= end:
-                self.vo_se_engine.seek_time(start) # エンジンを巻き戻す
-                self.current_playback_time = start
-
-        # GUI反映
-        self.timeline_widget.set_current_time(self.current_playback_time)
-        
-        # 自動スクロールロジック
-        cursor_x = self.timeline_widget.seconds_to_beats(self.current_playback_time) * self.timeline_widget.pixels_per_beat
-        if cursor_x > self.h_scrollbar.value() + self.timeline_widget.width() * 0.8:
-            self.h_scrollbar.setValue(int(cursor_x - self.timeline_widget.width() * 0.2))
-          
+            p_start, p_end = self.timeline_widget.get_selected_notes_range()
             
-            # --- ループ処理のロジック ---
-            # ここではGUI側でループ範囲監視と巻き戻しを行う
-            if self.is_looping:
-                project_start_time, project_end_time = self.timeline_widget.get_selected_notes_range()
+            if p_end > p_start:
+                # 終了時間を超えたら開始時間へループ
+                if self.current_playback_time >= p_end:
+                    self.current_playback_time = p_start
+                    if hasattr(self.vo_se_engine, 'seek_time'):
+                        self.vo_se_engine.seek_time(p_start)
+                    else:
+                        self.vo_se_engine.current_time_playback = p_start
                 
-                # 再生時間が終了範囲を超えたら、開始時間まで巻き戻す
-                if self.current_playback_time >= project_end_time and project_end_time > project_start_time:
-                    self.current_playback_time = project_start_time
-                    # VO_SE_Engineの内部時刻も巻き戻す必要がある
-                    self.vo_se_engine.current_time_playback = self.current_playback_time 
-                
-                # 再生時間が開始範囲より前なら、開始時間まで進める (通常は発生しない想定だが安全策)
-                if self.current_playback_time < project_start_time:
-                    self.current_playback_time = project_start_time
-                    # VO_SE_Engineの内部時刻も巻き戻す必要がある
-                    self.vo_se_engine.current_time_playback = self.current_playback_time 
+                # 安全策：開始時間より前なら開始時間へ強制移動
+                elif self.current_playback_time < p_start:
+                    self.current_playback_time = p_start
+                    if hasattr(self.vo_se_engine, 'current_time_playback'):
+                        self.vo_se_engine.current_time_playback = p_start
 
-            # --- GUIの更新と自動スクロール ---
-            self.timeline_widget.set_current_time(self.current_playback_time)
+        # 3. GUI各部への時刻反映
+        # メインタイムライン
+        self.timeline_widget.set_current_time(self.current_playback_time)
+        # ピッチ編集エディタ（グラフエディタ）との同期
+        if hasattr(self, 'graph_editor_widget'):
             self.graph_editor_widget.set_current_time(self.current_playback_time)
 
-            # 自動スクロールのロジック
-            current_beats = self.timeline_widget.seconds_to_beats(self.current_playback_time)
-            cursor_x_pos = current_beats * self.timeline_widget.pixels_per_beat
-            viewport_width = self.timeline_widget.width()
-            
-            # カーソルがビューポートの中心に来るようにスクロール位置を計算
-            target_scroll_x = cursor_x_pos - (viewport_width / 2)
-            
-            # スクロールバーの有効範囲に収める
-            max_scroll_value = self.h_scrollbar.maximum()
-            min_scroll_value = self.h_scrollbar.minimum()
-            clamped_scroll_x = max(min_scroll_value, min(max_scroll_value, target_scroll_x))
-            
-            # スクロールバーの値を設定（GUIが自動的にスクロールする）
-            self.h_scrollbar.setValue(int(clamped_scroll_x))
+        # 4. 自動スクロールのロジック (カーソルを常に中心付近に保つ)
+        current_beats = self.timeline_widget.seconds_to_beats(self.current_playback_time)
+        cursor_x_pos = current_beats * self.timeline_widget.pixels_per_beat
+        viewport_width = self.timeline_widget.width()
+        
+        # カーソルが画面の右側（80%）を超えたら、あるいは中心に保つようにスクロール
+        target_scroll_x = cursor_x_pos - (viewport_width / 2)
+        
+        # スクロールバーの値を更新（クランプ処理で範囲外エラーを防止）
+        max_v = self.h_scrollbar.maximum()
+        min_v = self
 
 
     @Slot()
