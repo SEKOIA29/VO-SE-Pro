@@ -38,7 +38,7 @@ from backend.intonation import IntonationAnalyzer
 from backend.audio_player import AudioPlayer
 
 
-# 1. バックグラウンドで動く作業員（スレッド）の定義
+# 1. バックグラウンドで動くやつらの定義
 class AnalysisThread(QThread):
     progress = Signal(int, str)  # (進捗率, 現在のファイル名) を送る信号
     finished = Signal(dict)      # (解析結果の辞書) を完了時に送る信号
@@ -65,6 +65,8 @@ class AnalysisThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self, engine, ai):
         super().__init__()
+
+        self.setAcceptDrops(True)
 
 　　　　　# 設定ハンドラーの初期化
         self.config_manager = ConfigHandler()
@@ -107,6 +109,16 @@ class MainWindow(QMainWindow):
         # 保存実行
         self.config_manager.save_config(current_config)
         super().closeEvent(event)
+
+    def dropEvent(self, event):
+    """ファイルをドロップした時の処理"""
+    files = [u.toLocalFile() for u in event.mimeData().urls()]
+    for f in files:
+        if f.endswith(".zip"):
+            success, name = ZipHandler.extract_voice_bank(f)
+            if success:
+                self.statusBar().showMessage(f"新キャラ『{name}』をインストールしました！")
+                self.refresh_voice_list() # リストを更新して表示に反映
 
     @Slot()
     def on_play_clicked(self):
