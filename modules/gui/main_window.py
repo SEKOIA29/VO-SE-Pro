@@ -117,7 +117,7 @@ class MainWindow(QMainWindow):
         if f.endswith(".zip"):
             success, name = ZipHandler.extract_voice_bank(f)
             if success:
-                self.statusBar().showMessage(f"新キャラ『{name}』をインストールしました！")
+                self.statusBar().showMessage(f"『{name}』をインストールしました、")
                 self.refresh_voice_list() # リストを更新して表示に反映
 
     @Slot()
