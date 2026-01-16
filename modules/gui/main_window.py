@@ -110,6 +110,13 @@ class MainWindow(QMainWindow):
         self.config_manager.save_config(current_config)
         super().closeEvent(event)
 
+    def dragEnterEvent(self, event):
+        """ファイルがドラッグされてきた時の処理"""
+        if event.mimeData().hasUrls():
+            event.accept() # 受け入れを許可
+        else:
+            event.ignore()
+
     def dropEvent(self, event):
     """ファイルをドロップした時の処理"""
     files = [u.toLocalFile() for u in event.mimeData().urls()]
