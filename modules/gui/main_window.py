@@ -127,6 +127,18 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage(f"『{name}』をインストールしました、")
                 self.refresh_voice_list() # リストを更新して表示に反映
 
+
+
+    def refresh_voice_list(self):
+        """voice_banks フォルダを再スキャンしてカードを並べ直す"""
+        # 1. 既存のカードをUIから消去
+        for i in reversed(range(self.voice_layout.count())): 
+            self.voice_layout.itemAt(i).widget().setParent(None)
+            
+        # 2. voice_banks フォルダ内のフォルダをスキャンして再配置
+        # (ここにスキャンロジックを書く)
+        print("ボイスリストを更新しました")
+
     @Slot()
     def on_play_clicked(self):
         """再生ボタンが押された時"""
