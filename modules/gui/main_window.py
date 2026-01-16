@@ -37,6 +37,7 @@ from ..engine.vo_se_engine import VO_SE_Engine
 from backend.intonation import IntonationAnalyzer 
 from backend.audio_player import AudioPlayer
 from utils.dynamics_ai import DynamicsAIEngine
+from dynamics_engine import DynamicsEngine
 
 # 1. バックグラウンドで動くやつらの定義
 class AnalysisThread(QThread):
@@ -65,6 +66,12 @@ class AnalysisThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self, engine, ai):
         super().__init__()
+
+        # 1. エンジンの初期化 (DLLとAIモデルのパスを指定)
+        self.engine = DynamicsEngine("vose_engine.dll", "models/char_v1")
+        
+        # UIの初期化など
+        self.init_ui()
 
         self.setAcceptDrops(True)
 
@@ -100,6 +107,33 @@ class MainWindow(QMainWindow):
         
         # タイムラインの再生バーと連動させる
         self.audio_player.position_changed.connect(self.timeline_widget.update_playhead)
+
+    def on_render_button_clicked(self):
+        """合成ボタンが押された時の動作"""
+        # 画面を「合成中...」にする
+        self.status_bar.showMessage("AIが歌唱を生成中...")
+        self.render_button.setEnabled(False)
+
+        # 2. タイムライン上のノート情報を取得
+        raw_notes = self.timeline.get_notes_data()
+
+        # 3. エンジンを動かして音声を取得
+        # ※本来はQThreadなどで非同期にするのがベストですが、まずは基本の形
+        audio_result = self.engine.run_full_synthesis(raw_notes)
+
+        if audio_result is not None:
+            # 4. 再生（SounddeviceやPyQtのオーディオ機能を使用）
+            self.play_audio(audio_result)
+            self.status_bar.showMessage("合成完了！")
+        else:
+            self.status_bar.showMessage("エラー：合成に失敗しました")
+            
+        self.render_button.setEnabled(True)
+
+    def closeEvent(self, event):
+        """アプリが閉じられる時の「お掃除」"""
+        self.engine.unload() # DLLとメモリを完全に解放
+        event.accept()
 
     def closeEvent(self, event):
         """ウィンドウを閉じる時に呼ばれるイベント"""
