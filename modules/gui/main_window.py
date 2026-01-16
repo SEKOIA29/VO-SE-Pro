@@ -35,6 +35,7 @@ from PySide6.QtCore import QThread, Signal
 from ..ai.analysis_thread import AnalysisThread
 from ..engine.vo_se_engine import VO_SE_Engine
 from backend.intonation import IntonationAnalyzer 
+from backend.audio_player import AudioPlayer
 
 
 # 1. バックグラウンドで動く作業員（スレッド）の定義
@@ -88,6 +89,12 @@ class MainWindow(QMainWindow):
         self.progress_bar = QProgressBar()
         self.statusBar().addPermanentWidget(self.progress_bar)
         self.progress_bar.hide()
+
+        # プレイヤーの初期化
+        self.audio_player = AudioPlayer(volume=self.config.get("volume", 0.8))
+        
+        # タイムラインの再生バーと連動させる
+        self.audio_player.position_changed.connect(self.timeline_widget.update_playhead)
 
     def closeEvent(self, event):
         """ウィンドウを閉じる時に呼ばれるイベント"""
