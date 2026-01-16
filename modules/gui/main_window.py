@@ -36,7 +36,7 @@ from ..ai.analysis_thread import AnalysisThread
 from ..engine.vo_se_engine import VO_SE_Engine
 from backend.intonation import IntonationAnalyzer 
 from backend.audio_player import AudioPlayer
-
+from utils.dynamics_ai import DynamicsAIEngine
 
 # 1. バックグラウンドで動くやつらの定義
 class AnalysisThread(QThread):
@@ -67,6 +67,9 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setAcceptDrops(True)
+
+　　　　　#ダイナミクスAIの初期化
+　　　　　self.dynamics_ai = DynamicsAIEngine()
 
 　　　　　# 設定ハンドラーの初期化
         self.config_manager = ConfigHandler()
@@ -116,6 +119,15 @@ class MainWindow(QMainWindow):
             event.accept() # 受け入れを許可
         else:
             event.ignore()
+
+
+    def on_ai_button_clicked(self):
+        # 現在のタイムライン上のピッチを取得
+        f0 = self.timeline.get_pitch_data()
+        # AIで補正
+        new_f0 = self.dynamics_ai.generate_emotional_pitch(f0)
+        # 画面に反映
+        self.timeline.set_pitch_data(new_f0)
 
     def dropEvent(self, event):
     """ファイルをドロップした時の処理"""
