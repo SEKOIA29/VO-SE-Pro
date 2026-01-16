@@ -220,7 +220,7 @@ class MainWindow(QMainWindow):
     def update_analysis_status(self, percent, filename):
         """解析中の進捗とファイル名をリアルタイム表示"""
         self.progress_bar.setValue(percent)
-        # ステータスバーに現在のファイル名を表示（かっこいい演出）
+        # ステータスバーに現在のファイル名を表示（
         self.statusBar().showMessage(f"AI解析実行中 [{percent}%]: {filename} をスキャン中...")
 
     def on_analysis_error(self, message):
@@ -228,6 +228,18 @@ class MainWindow(QMainWindow):
         self.ai_analyze_button.setEnabled(True)
         self.progress_bar.hide()
         QMessageBox.critical(self, "AI解析エラー", f"解析中に問題が発生しました:\n{message}")
+
+    def on_synthesis_button_clicked(self):
+        # 1. UIから音符情報などを取得
+        notes = self.timeline.get_all_notes()
+    
+        # 2. エンジン（別ファイル）に処理を丸投げ
+        # エンジン内部で AI計算 -> C言語合成 -> メモリ解放 まで完結させる
+        audio_data = self.engine.run_full_synthesis(notes)
+    
+        # 3. 出来上がった音を鳴らす
+        if audio_data:
+            self.audio_player.play(audio_data)
 
     def on_analysis_complete(self, results):
         """解析が終わったらデータを保存し、画面を更新する"""
