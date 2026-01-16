@@ -305,8 +305,19 @@ class MainWindow(QMainWindow):
     UIの構築、イベント接続、全体的なアプリケーションロジックを管理する。
     """
     
-    def __init__(self, parent=None):
+    def __init__(self, engine=None, config=None):
         super().__init__(parent)
+
+        # 渡されたエンジンと設定をクラス内で使えるように保持する
+        self.vo_se_engine = engine
+        self.config = config if config else {}
+        
+        # もしエンジンが渡されなかった時のための予備
+        if self.vo_se_engine is None:
+            from backend.engine import VoSeEngine
+            self.vo_se_engine = VoSeEngine()
+
+        self.setup_ui()
 
         self.voice_manager = VoiceManager()
         status = self.voice_manager.first_run_setup()
