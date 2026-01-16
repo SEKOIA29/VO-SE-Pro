@@ -131,9 +131,12 @@ class MainWindow(QMainWindow):
 
     def refresh_voice_list(self):
         """voice_banks フォルダを再スキャンしてカードを並べ直す"""
-        # 1. 既存のカードをUIから消去
-        for i in reversed(range(self.voice_layout.count())): 
-            self.voice_layout.itemAt(i).widget().setParent(None)
+
+　　　　　path = "voice_banks/Rancher/"
+       if os.path.exists(os.path.join(path, "icon.png")):
+           icon_path = os.path.join(path, "icon.png")
+       else:
+           icon_path = "assets/default_icon.png" # ない場合はデフォルト
             
         # 2. voice_banks フォルダ内のフォルダをスキャンして再配置
         # (ここにスキャンロジックを書く)
