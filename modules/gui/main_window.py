@@ -107,6 +107,13 @@ class MainWindow(QMainWindow):
         # 保存実行
         self.config_manager.save_config(current_config)
         super().closeEvent(event)
+
+    @Slot()
+    def on_play_clicked(self):
+        """再生ボタンが押された時"""
+        # 現在のノートを合成して出力されたWavを再生
+        target_wav = "temp/preview.wav" 
+        self.audio_player.play_file(target_wav)
 　　　
     @Slot()
     def on_click_auto_lyrics(self):
