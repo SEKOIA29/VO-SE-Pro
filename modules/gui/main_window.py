@@ -140,6 +140,23 @@ class MainWindow(QMainWindow):
             
         self.render_button.setEnabled(True)
 
+     def create_render_data(self):
+　　　　　　# タイムライン上の音符を取得（既存のリストを想定）
+         gui_notes = self.get_timeline_notes() 
+    
+         note_array = (NoteEvent * len(gui_notes))()
+         for i, g_note in enumerate(gui_notes):
+             note_array[i].pitch_hz = g_note.pitch
+             note_array[i].start_sec = g_note.start_time
+             note_array[i].duration_sec = g_note.duration
+             note_array[i].pre_utterance = 0.05 # 固定値または設定値
+             note_array[i].overlap = 0.02
+             note_array[i].wav_path = g_note.wav_path.encode('utf-8')
+        
+        return note_array
+
+
+       
     def closeEvent(self, event):
         """アプリが閉じられる時の「お掃除」"""
         self.engine.unload() # DLLとメモリを完全に解放
