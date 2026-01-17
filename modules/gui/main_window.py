@@ -279,8 +279,8 @@ class MainWindow(QMainWindow):
             self.main_layout.setContentsMargins(5, 5, 5, 5)
             self.main_layout.setSpacing(2)
 
-        # 2. 上部コントロールパネル（再生・録音・テンポ・ボイス選択）
-        self.setup_control_panel()
+        # 2. 上部コントロールパネル（再生・録音・テンポ・ボイス選択）       
+         self.setup_control_panel()
 
          # 3. メインエリア（スプリッター：タイムライン + グラフエディタ）
 　　　　　 self.main_splitter = QSplitter(Qt.Vertical)
