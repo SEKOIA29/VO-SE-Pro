@@ -139,23 +139,32 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("エラー：合成に失敗しました")
             
         self.render_button.setEnabled(True)
-
-     def create_render_data(self):
-　　　　　　# タイムライン上の音符を取得（既存のリストを想定）
-         gui_notes = self.get_timeline_notes() 
+      
+    def on_render_button_clicked(self):
+        """レンダリングボタンが押された時の処理"""
+        # 1. 画面上の音符を取得
+        notes_data = self.get_current_notes()
+        
+        # 2. DLLを叩いてWAV生成（先ほど作ったexecute_renderを呼ぶ）
+        # ※ 内部で ctypes.Structure (NoteEvent) を作って渡す
+        self.engine.render(notes_data, "output.wav")
+        
+        print("レンダリングが完了しました。")
+ 
+    def create_render_data(self):
+　　　　　# タイムライン上の音符を取得（既存のリストを想定）
+        gui_notes = self.get_timeline_notes() 
     
-         note_array = (NoteEvent * len(gui_notes))()
-         for i, g_note in enumerate(gui_notes):
-             note_array[i].pitch_hz = g_note.pitch
-             note_array[i].start_sec = g_note.start_time
-             note_array[i].duration_sec = g_note.duration
-             note_array[i].pre_utterance = 0.05 # 固定値または設定値
-             note_array[i].overlap = 0.02
-             note_array[i].wav_path = g_note.wav_path.encode('utf-8')
+        note_array = (NoteEvent * len(gui_notes))()
+        for i, g_note in enumerate(gui_notes):
+            note_array[i].pitch_hz = g_note.pitch
+            note_array[i].start_sec = g_note.start_time
+            note_array[i].duration_sec = g_note.duration
+            note_array[i].pre_utterance = 0.05 # 固定値または設定値
+            note_array[i].overlap = 0.02
+            note_array[i].wav_path = g_note.wav_path.encode('utf-8')
         
         return note_array
-
-
        
     def closeEvent(self, event):
         """アプリが閉じられる時の「お掃除」"""
@@ -191,16 +200,14 @@ class MainWindow(QMainWindow):
         self.timeline.set_pitch_data(new_f0)
 
     def dropEvent(self, event):
-    """ファイルをドロップした時の処理"""
-    files = [u.toLocalFile() for u in event.mimeData().urls()]
-    for f in files:
-        if f.endswith(".zip"):
-            success, name = ZipHandler.extract_voice_bank(f)
-            if success:
-                self.statusBar().showMessage(f"『{name}』をインストールしました、")
-                self.refresh_voice_list() # リストを更新して表示に反映
-
-
+        """ファイルをドロップした時の処理"""
+        files = [u.toLocalFile() for u in event.mimeData().urls()]
+        for f in files:
+            if f.endswith(".zip"):
+                success, name = ZipHandler.extract_voice_bank(f)
+                if success:
+                    self.statusBar().showMessage(f"『{name}』をインストールしました、")
+                    self.refresh_voice_list() # リストを更新して表示に反映
 
     def refresh_voice_list(self):
         """voice_banks フォルダを再スキャンしてカードを並べ直す"""
