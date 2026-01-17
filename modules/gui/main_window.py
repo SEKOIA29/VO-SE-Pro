@@ -263,27 +263,27 @@ class MainWindow(QMainWindow):
         
         self.timeline_widget.set_current_time(self.current_playback_time)
 
-    def dragEnterEvent(self, event):
-        # ドロップされたのが「ファイル」なら受け入れる
-        if event.mimeData().hasUrls():
-           event.accept()
-        else:
-            event.ignore()
+        def dragEnterEvent(self, event):
+            # ドロップされたのが「ファイル」なら受け入れる
+            if event.mimeData().hasUrls():
+               event.accept()
+            else:
+                event.ignore()
 
-    def init_ui(self):
-        """UIコンポーネントの配置とレイアウトの構築"""
-        # 1. 中央のメインウィジェットとメインレイアウト
-        self.central_widget = QWidget()
-        self.setCentralWidget(self.central_widget)
-        self.main_layout = QVBoxLayout(self.central_widget)
-        self.main_layout.setContentsMargins(5, 5, 5, 5)
-        self.main_layout.setSpacing(2)
+        def init_ui(self):
+            """UIコンポーネントの配置とレイアウトの構築"""
+            # 1. 中央のメインウィジェットとメインレイアウト
+            self.central_widget = QWidget()
+            self.setCentralWidget(self.central_widget)
+            self.main_layout = QVBoxLayout(self.central_widget)
+            self.main_layout.setContentsMargins(5, 5, 5, 5)
+            self.main_layout.setSpacing(2)
 
         # 2. 上部コントロールパネル（再生・録音・テンポ・ボイス選択）
         self.setup_control_panel()
 
-        # 3. メインエリア（スプリッター：タイムライン + グラフエディタ）
-        self.main_splitter = QSplitter(Qt.Vertical)
+         # 3. メインエリア（スプリッター：タイムライン + グラフエディタ）
+　　　　　 self.main_splitter = QSplitter(Qt.Vertical)
         
         # タイムラインエリア（サイドバー + メインタイムライン + 垂直スクロール）
         self.timeline_container = QWidget()
