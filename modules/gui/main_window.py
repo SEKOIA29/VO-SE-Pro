@@ -67,6 +67,16 @@ class MainWindow(QMainWindow):
     def __init__(self, engine, ai):
         super().__init__()
 
+        def init_engine(self):
+            dll_path = os.path.join(os.path.dirname(__file__), "bin", "libvo_se.dll")
+            if os.path.exists(dll_path):
+                self.lib = ctypes.CDLL(dll_path)
+               # 関数の型定義
+               self.lib.execute_render.argtypes = [ctypes.POINTER(NoteEvent), ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+               print("Engine Loaded Successfully")
+           else:
+               print("Warning: Engine DLL not found!")
+
         # 1. エンジンの初期化 (DLLとAIモデルのパスを指定)
         self.engine = DynamicsEngine("vose_engine.dll", "models/char_v1")
         
