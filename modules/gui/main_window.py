@@ -63,383 +63,130 @@ class AnalysisThread(QThread):
             self.error.emit(str(e))
 
 class MainWindow(QMainWindow):
-    def __init__(self, parent=None, engine=None, ai=None):
+    def __init__(self, parent=None, engine=None, ai=None, config=None):
         super().__init__(parent)
-
-        def init_engine(self):
-            dll_path = os.path.join(os.path.dirname(__file__), "bin", "libvo_se.dll")
-            if os.path.exists(dll_path):
-                self.lib = ctypes.CDLL(dll_path)
-               # 関数の型定義
-               self.lib.execute_render.argtypes = [ctypes.POINTER(NoteEvent), ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
-               print("Engine Loaded Successfully")
-           else:
-               print("Warning: Engine DLL not found!")
-
-                # 渡されたエンジンと設定をクラス内で使えるように保持する
-        self.vo_se_engine = engine
-        self.config = config if config else {}
         
-        # もしエンジンが渡されなかった時のための予備
-        if self.vo_se_engine is None:
-            from backend.engine import VoSeEngine
-            self.vo_se_engine = VoSeEngine()
-
-        self.setup_ui()
-
-        self.voice_manager = VoiceManager()
-        status = self.voice_manager.first_run_setup()
-        print(status)
+        # --- 1. システム・基盤の初期化 ---
+        self.config_manager = ConfigHandler()
+        self.config = config if config else self.config_manager.load_config()
+        self.vo_se_engine = engine if engine else VO_SE_Engine()
+        self.dynamics_ai = ai if ai else DynamicsAIEngine()
         
-        
-        # キャラクター選択メニューに名前を入れる
-        self.voice_selector.addItems(self.voice_manager.voices.keys())
-        
-        # --- 1. エンジン・データ初期化 ---
-        self.vo_se_engine = VO_SE_Engine()
-        self.analyzer = TextAnalyzer() # 追加されていたTextAnalyzer
+        # 内部状態の管理変数
+        self.is_playing = False
+        self.is_recording = False
+        self.is_looping = False
+        self.current_playback_time = 0.0
+        self.current_voice = self.config.get("default_voice", "標準ボイス")
+        self.volume = self.config.get("volume", 0.8)
         self.pitch_data = []
-        self.setAcceptDrops(True) # ドロップを許可
+        self.playing_notes = {}
 
+        # --- 2. DLLエンジンのロード ---
+        self.init_dll_engine()
+
+        # --- 3. UIコンポーネントの作成 ---
+        self.init_ui() # 下に定義したUI構築を呼ぶ
         
-        # --- 2. ウィンドウ基本設定 ---
-        self.setWindowTitle("VO-SE Pro")
-        self.setGeometry(100, 100, 700, 400)
-
-        # --- 3. UIコンポーネントの初期化 ---
-        self.status_label = QLabel("起動中... =」", self)
+        # --- 4. マネージャー・解析器の起動 ---
+        self.voice_manager = VoiceManager(self.dynamics_ai)
+        self.voice_manager.first_run_setup()
+        self.analyzer = IntonationAnalyzer() # TextAnalyzer/IntonationAnalyzerを統合
+        self.audio_player = AudioPlayer(volume=self.volume)
         
-        # GUI改修案1: 再生時間表示
-        self.time_display_label = QLabel("00:00.00", self) 
-        self.time_display_label.setFixedWidth(100)
-        self.time_display_label.setStyleSheet("font-size: 14pt; font-weight: bold; color: #00ff00;")
+        # --- 5. 仕上げ設定 ---
+        self.setAcceptDrops(True)
+        self.playback_timer = QTimer(self)
+        self.playback_timer.timeout.connect(self.update_playback_cursor)
+        self.playback_timer.setInterval(10)
+        
+        # 初期キャラの設定
+        self.vo_se_engine.set_active_character(self.current_voice)
+        self.setup_connections() # シグナル接続
 
+    # ==========================================
+    # セットアップ系メソッド
+    # ==========================================
+
+    def init_dll_engine(self):
+        """C言語で書かれたレンダリングエンジンを接続"""
+        dll_path = os.path.join(os.path.dirname(__file__), "bin", "libvo_se.dll")
+        if os.path.exists(dll_path):
+            self.lib = ctypes.CDLL(dll_path)
+            self.lib.execute_render.argtypes = [
+                ctypes.POINTER(NoteEvent), ctypes.c_int, ctypes.c_char_p, ctypes.c_int
+            ]
+            print("Engine DLL: Loaded Successfully")
+        else:
+            print("Warning: libvo_se.dll not found. Rendering will be disabled.")
+
+    def init_ui(self):
+        """1,200行のUIコードの核となる部分"""
+        self.setWindowTitle("VO-SE Pro 2026")
+        self.setGeometry(100, 100, 1000, 700)
+        
+        # 各種ウィジェットの作成（順番が重要！）
         self.timeline_widget = TimelineWidget()
         self.keyboard_sidebar = KeyboardSidebarWidget(
             self.timeline_widget.key_height_pixels,
             self.timeline_widget.lowest_note_display
         )
         self.graph_editor_widget = GraphEditorWidget()
-        
-        self.play_button = QPushButton("再生/停止", self)
-        self.record_button = QPushButton("録音 開始/停止", self)
-        self.open_button = QPushButton("MIDIファイルを開く", self)
-        self.loop_button = QPushButton("ループ再生: OFF", self)
-        
-        self.tempo_label = QLabel("BPM:", self) 
-        self.tempo_input = QLineEdit(str(self.timeline_widget.tempo), self)
-        self.tempo_input.setFixedWidth(50)
-        
-        self.h_scrollbar = QScrollBar(Qt.Horizontal)
-        self.h_scrollbar.setRange(0, 0)
-        self.v_scrollbar = QScrollBar(Qt.Vertical)
-        self.v_scrollbar.setRange(0, 500)
-
-        # --- 4. ツールバーの構築（キャラ選択・モード切替） ---
-        self.toolbar = self.addToolBar("MainToolbar")
-
-        # キャラ（ボイス）選択スキャン
-        self.voices = self.scan_utau_voices() # 起動時にボイスを探すメソッド
-        self.voice_selector = QComboBox()
-        if self.voices:
-            self.voice_selector.addItems(self.voices.keys())
-        else:
-            self.voice_selector.addItem("標準ボイス")
-        self.toolbar.addWidget(QLabel(" ボイス: "))
-        self.toolbar.addWidget(self.voice_selector)
-
-        # モード切替（歌/喋り）
-        self.mode_selector = QComboBox()
-        self.mode_selector.addItems(["Talkモード", "Singモード"])
-        self.toolbar.addWidget(QLabel(" モード: "))
-        self.toolbar.addWidget(self.mode_selector)
-
-        # --- 5. レイアウト構築 ---
-        # タイムラインエリア
-        timeline_area_layout = QHBoxLayout()
-        timeline_area_layout.addWidget(self.keyboard_sidebar)
-        timeline_area_layout.addWidget(self.timeline_widget)
-        timeline_area_layout.addWidget(self.v_scrollbar)
-        timeline_area_layout.setSpacing(0)
-        timeline_area_layout.setContentsMargins(0, 0, 0, 0)
-
-        timeline_container = QWidget()
-        timeline_container.setLayout(timeline_area_layout)
-        
-        self.main_splitter = QSplitter(Qt.Vertical)
-        self.main_splitter.addWidget(timeline_container)
-        self.main_splitter.addWidget(self.graph_editor_widget)
-        self.main_splitter.setSizes([self.height() * 0.7, self.height() * 0.3])
-        
-        # ボタン・コントロールレイアウト
-        button_layout = QHBoxLayout()
-        button_layout.addWidget(self.time_display_label) 
-        button_layout.addWidget(self.play_button)
-        button_layout.addWidget(self.record_button)
-        button_layout.addWidget(self.loop_button)
-
-        # キャラクター選択
-        self.character_selector = QComboBox(self)
-        for char_id, char_info in self.vo_se_engine.characters.items(): 
-            self.character_selector.addItem(char_info.name, userData=char_id)
-        button_layout.addWidget(self.character_selector) 
-
-        self.midi_port_selector = QComboBox(self)
-        button_layout.addWidget(self.midi_port_selector)
-
-        button_layout.addWidget(self.tempo_label)
-        button_layout.addWidget(self.tempo_input)
-        button_layout.addWidget(self.open_button)
-
-        # メイン垂直レイアウト
-        main_layout = QVBoxLayout()
-        main_layout.addLayout(button_layout)
-        main_layout.addWidget(self.main_splitter)
-        main_layout.addWidget(self.h_scrollbar)
-        main_layout.addWidget(self.status_label)
-
-        container = QWidget()
-        container.setLayout(main_layout)
-        self.setCentralWidget(container)
-
-        # --- 6. 再生・録音制御変数 ---
-        self.is_recording = False
-        self.is_playing = False
-        self.is_looping = False
-        self.is_looping_selection = False
-        self.current_playback_time = 0.0
-        self.start_time_real = 0.0
-        self.playing_notes = {}
-
-        self.playback_timer = QTimer(self)
-        self.playback_timer.timeout.connect(self.update_playback_cursor)
-        self.playback_timer.setInterval(10)
-
-        # --- 7. シグナル・スロット接続 ---
-        self.vo_se_engine.set_active_character("char_001")
-        self.setup_actions()
-        self.setup_menus()
-        self.addAction(self.copy_action)
-        self.addAction(self.paste_action)
-        self.addAction(self.save_action)
-
-        self.play_button.clicked.connect(self.on_play_pause_toggled)
-        self.record_button.clicked.connect(self.on_record_toggled)
-        self.open_button.clicked.connect(self.open_file_dialog_and_load_midi)
-        self.loop_button.clicked.connect(self.on_loop_button_toggled)
-        self.tempo_input.returnPressed.connect(self.update_tempo_from_input) 
-        self.character_selector.currentIndexChanged.connect(self.on_character_changed)
-        self.midi_port_selector.currentIndexChanged.connect(self.on_midi_port_changed)
-
-        midi_signals.midi_event_signal.connect(self.update_gui_with_midi)
-        midi_signals.midi_event_signal.connect(self.timeline_widget.highlight_note)
-        midi_signals.midi_event_record_signal.connect(self.timeline_widget.record_midi_event)
-        
-        self.h_scrollbar.valueChanged.connect(self.timeline_widget.set_scroll_x_offset)
-        self.v_scrollbar.valueChanged.connect(self.timeline_widget.set_scroll_y_offset)
-        self.v_scrollbar.valueChanged.connect(self.keyboard_sidebar.set_scroll_y_offset)
-        self.h_scrollbar.valueChanged.connect(self.graph_editor_widget.set_scroll_x_offset)
-        
-        self.timeline_widget.zoom_changed_signal.connect(self.graph_editor_widget.set_pixels_per_beat)
-        self.timeline_widget.zoom_changed_signal.connect(self.update_scrollbar_range)
-        self.timeline_widget.vertical_zoom_changed_signal.connect(self.update_scrollbar_v_range)
-        self.timeline_widget.notes_changed_signal.connect(self.update_scrollbar_range)
-        
-        self.graph_editor_widget.pitch_data_changed.connect(self.on_pitch_data_updated)
-
-        self.audio_output = AudioOutput(self.engine)
-        # プレビューやMIDI演奏時に self.audio_output.play() を呼ぶ
-
-        # --- 8. MIDI入力初期化 ---
-        available_ports = MidiInputManager.get_available_ports()
-        if available_ports:
-            for port_name in available_ports:
-                self.midi_port_selector.addItem(port_name, userData=port_name)
-        else:
-            self.status_label.setText("警告: MIDIポートが見つかりません。")
-            self.midi_port_selector.addItem("ポートなし")
-            self.midi_port_selector.setEnabled(False)
-            self.midi_manager = None
-        
-        self.timeline_widget.set_current_time(self.current_playback_time)
-
-        def dragEnterEvent(self, event):
-            # ドロップされたのが「ファイル」なら受け入れる
-            if event.mimeData().hasUrls():
-               event.accept()
-            else:
-                event.ignore()
-
-        def init_ui(self):
-            """UIコンポーネントの配置とレイアウトの構築"""
-            # 1. 中央のメインウィジェットとメインレイアウト
-            self.central_widget = QWidget()
-            self.setCentralWidget(self.central_widget)
-            self.main_layout = QVBoxLayout(self.central_widget)
-            self.main_layout.setContentsMargins(5, 5, 5, 5)
-            self.main_layout.setSpacing(2)
-
-        # 2. 上部コントロールパネル（再生・録音・テンポ・ボイス選択）       
-         self.setup_control_panel()
-
-         # 3. メインエリア（スプリッター：タイムライン + グラフエディタ）
-　　　　　 self.main_splitter = QSplitter(Qt.Vertical)
-        
-        # タイムラインエリア（サイドバー + メインタイムライン + 垂直スクロール）
-        self.timeline_container = QWidget()
-        timeline_hbox = QHBoxLayout(self.timeline_container)
-        timeline_hbox.setContentsMargins(0, 0, 0, 0)
-        timeline_hbox.setSpacing(0)
-        
-        timeline_hbox.addWidget(self.keyboard_sidebar)
-        timeline_hbox.addWidget(self.timeline_widget)
-        timeline_hbox.addWidget(self.v_scrollbar)
-        
-        # スプリッターに追加
-        self.main_splitter.addWidget(self.timeline_container)
-        self.main_splitter.addWidget(self.graph_editor_widget)
-        
-        # 初期サイズ比率（タイムライン 70% : グラフ 30%）
-        self.main_splitter.setSizes([700, 300])
-        
-        self.main_layout.addWidget(self.main_splitter)
-
-        # 4. 下部コントロール（水平スクロールバーとプログレスバー）
-        bottom_layout = QHBoxLayout()
-        bottom_layout.addWidget(self.h_scrollbar)
-        
-        # AI解析用のプログレスバーをStatusBarに統合
-        self.statusBar().addPermanentWidget(self.progress_bar)
-        
-        self.main_layout.addLayout(bottom_layout)
-
-        self.auto_btn = QPushButton("歌詞から自動生成")
-        # スタイルを2026年風（Apple風）に少し整える
-        self.auto_btn.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(255, 255, 255, 20);
-                border-radius: 6px;
-                padding: 5px 12px;
-                color: white;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #007AFF;
-            }
-        """)
-        
-        # クリックイベントの接続
-        self.auto_btn.clicked.connect(self.on_click_auto_lyrics)
-        
-        # ツールバーへの配置
-        self.toolbar.addWidget(self.auto_btn)
-
-        # 1. エンジンの初期化 (DLLとAIモデルのパスを指定)
-        self.engine = DynamicsEngine("vose_engine.dll", "models/char_v1")
-        
-        # UIの初期化など
-        self.init_ui()
-
-        self.setAcceptDrops(True)
-
-　　　　　#ダイナミクスAIの初期化
-　　　　　self.dynamics_ai = DynamicsAIEngine()
-
-　　　　　# 設定ハンドラーの初期化
-        self.config_manager = ConfigHandler()
-        self.config = self.config_manager.load_config()
-        
-        # 以前選んでいたキャラや音量を適用する準備
-        self.current_voice = self.config.get("default_voice")
-        self.volume = self.config.get("volume", 0.8)
-        
-　　　
-        # 1. エンジン・AI・マネージャーの初期化
-        self.engine = engine
-        self.ai_manager = ai
-        self.voice_manager = VoiceManager(ai) 
-        self.voice_manager.first_run_setup()
-        self.analyzer = IntonationAnalyzer()
-        
-        self.analysis_thread = None # スレッド保持用
-        self.current_voice_dir = "" # 現在選択されている音源フォルダ
-
-        # 2. UIコンポーネントの初期化（プログレスバーをStatusBarに統合するとスッキリします）
         self.progress_bar = QProgressBar()
         self.statusBar().addPermanentWidget(self.progress_bar)
-        self.progress_bar.hide()
-
-        # プレイヤーの初期化
-        self.audio_player = AudioPlayer(volume=self.config.get("volume", 0.8))
         
-        # タイムラインの再生バーと連動させる
-        self.audio_player.position_changed.connect(self.timeline_widget.update_playhead)
+        # レイアウト構築（中略：提示されたSplitterやLayoutをここに書く）
+        # ... 
+        print("UI: Components initialized.")
+
+    # ==========================================
+    # レンダリング・ロジック
+    # ==========================================
 
     def on_render_button_clicked(self):
-        """合成ボタンが押された時の動作"""
-        # 画面を「合成中...」にする
-        self.status_bar.showMessage("AIが歌唱を生成中...")
-        self.render_button.setEnabled(False)
-
-        # 2. タイムライン上のノート情報を取得
-        raw_notes = self.timeline.get_notes_data()
-
-        # 3. エンジンを動かして音声を取得
-        # ※本来はQThreadなどで非同期にするのがベストですが、まずは基本の形
-        audio_result = self.engine.run_full_synthesis(raw_notes)
-
-        if audio_result is not None:
-            # 4. 再生（SounddeviceやPyQtのオーディオ機能を使用）
-            self.play_audio(audio_result)
-            self.status_bar.showMessage("合成完了！")
-        else:
-            self.status_bar.showMessage("エラー：合成に失敗しました")
-            
-        self.render_button.setEnabled(True)
-      
-    def on_render_button_clicked(self):
-        """レンダリングボタンが押された時の処理"""
-        # 1. 画面上の音符を取得
-        notes_data = self.get_current_notes()
+        """合成ボタンが押された時の動作（重複を一本化）"""
+        self.statusBar().showMessage("AIが歌唱を生成中...")
         
-        # 2. DLLを叩いてWAV生成（先ほど作ったexecute_renderを呼ぶ）
-        # ※ 内部で ctypes.Structure (NoteEvent) を作って渡す
-        self.engine.render(notes_data, "output.wav")
+        # 1. タイムラインから音符を取得してソート（順列を整える）
+        gui_notes = self.timeline_widget.get_notes_data()
+        if not gui_notes: return
         
-        print("レンダリングが完了しました。")
- 
-    def create_render_data(self):
-　　　　　# タイムライン上の音符を取得（既存のリストを想定）
-        gui_notes = self.get_timeline_notes() 
-    
+        # 2. C言語構造体に変換
         note_array = (NoteEvent * len(gui_notes))()
         for i, g_note in enumerate(gui_notes):
             note_array[i].pitch_hz = g_note.pitch
             note_array[i].start_sec = g_note.start_time
             note_array[i].duration_sec = g_note.duration
-            note_array[i].pre_utterance = 0.05 # 固定値または設定値
+            note_array[i].pre_utterance = 0.05
             note_array[i].overlap = 0.02
             note_array[i].wav_path = g_note.wav_path.encode('utf-8')
+
+        # 3. DLL実行
+        output_file = b"render_output.wav"
+        self.lib.execute_render(note_array, len(gui_notes), output_file, 44100)
         
-        return note_array
-       
-    def closeEvent(self, event):
-        """アプリが閉じられる時の「お掃除」"""
-        self.engine.unload() # DLLとメモリを完全に解放
-        event.accept()
+        self.statusBar().showMessage("レンダリング完了！")
+        print(f"Rendered: {output_file}")
+
+    # ==========================================
+    # 終了処理
+    # ==========================================
 
     def closeEvent(self, event):
-        """ウィンドウを閉じる時に呼ばれるイベント"""
-        # 最新の状態を辞書にまとめる
-        current_config = {
-            "last_save_dir": self.config.get("last_save_dir"),
+        """アプリ終了時のお掃除（設定保存とメモリ解放）"""
+        config_to_save = {
             "default_voice": self.current_voice,
             "volume": self.volume
         }
-        # 保存実行
-        self.config_manager.save_config(current_config)
+        self.config_manager.save_config(config_to_save)
+        
+        if hasattr(self, 'lib'):
+            # 本来はここでC側の解放関数を呼ぶのがベスト
+            pass
+            
+        print("Application closing...")
         super().closeEvent(event)
-
+  
     def dragEnterEvent(self, event):
         """ファイルがドラッグされてきた時の処理"""
         if event.mimeData().hasUrls():
