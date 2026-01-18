@@ -5,40 +5,37 @@ import pyopenjtalk
 
 block_cipher = None
 
-# --- 1. 辞書とDLLの場所を自動特定（エラー回避ロジック） ---
+# --- 1. 辞書とDLL/dylibの場所を自動特定 ---
 added_files = []
 
+# pyopenjtalkの辞書取得
 try:
-    # pyopenjtalkのインストール先を取得
     pyj_dir = os.path.dirname(pyopenjtalk.__file__)
-    # 辞書フォルダ(dic)のパス候補
     dic_path = os.path.join(pyj_dir, "dic")
-    
     if os.path.exists(dic_path):
         added_files.append((dic_path, 'pyopenjtalk/dic'))
-        print(f"DEBUG: Dictionary found at {dic_path}")
-    else:
-        # フォルダがない場合はエラーにせず、ログだけ残す
-        print("DEBUG: pyopenjtalk/dic NOT found. Skipping to avoid build error.")
 except Exception as e:
-    print(f"DEBUG: Error locating dictionary: {e}")
+    print(f"DEBUG: Dictionary error: {e}")
 
-# Windows用CエンジンのDLL（存在する場合のみ追加）
+# OSに応じたCエンジンのバイナリ判定
 if sys.platform == 'win32':
-    dll_path = os.path.join('bin', 'libvo_se.dll')
-    if os.path.exists(dll_path):
-        added_files.append((dll_path, 'bin'))
-        print(f"DEBUG: Added DLL from {dll_path}")
-    else:
-        print(f"DEBUG: DLL NOT found at {dll_path}")
+    dll_name = 'libvo_se.dll'
+else:
+    dll_name = 'libvo_se.dylib' # Mac用
+
+dll_path = os.path.join('bin', dll_name)
+if os.path.exists(dll_path):
+    # 'bin'フォルダとしてEXE内にパッキング
+    added_files.append((dll_path, 'bin'))
+    print(f"DEBUG: Added Engine Binary from {dll_path}")
 
 # --- 2. ビルド設定 ---
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=added_files, # ここで安全なリストを渡す
-    hiddenimports=['pyopenjtalk', 'numpy'],
+    datas=added_files,
+    hiddenimports=['pyopenjtalk', 'numpy', 'PySide6'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -61,12 +58,8 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True, 
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
+    console=True, # デバッグ用にTrueにしています。完成後はFalseでGUIのみにできます。
+    icon=None,    # アイコンがあればここにパスを指定
 )
 
 coll = COLLECT(
@@ -77,5 +70,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='VO-SE_Pro',
+    name='VO-SE_Pro', # ここが dist/ フォルダの中に作られるフォルダ名
 )
