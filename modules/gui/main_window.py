@@ -24,6 +24,21 @@ from janome.tokenizer import Tokenizer
 import mido
 import numpy as np
 
+# 1. パス解決用の関数（
+def get_resource_path(relative_path):
+    """内蔵DLLなどのリソースパスを取得"""
+    if getattr(sys, 'frozen', False):
+        # EXE化した後のパス（一時フォルダ）
+        base_path = sys._MEIPASS
+    else:
+        # 開発中（.py実行）のパス
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
+
+
+
+
+
 # 内部モジュール（存在しない場合はモック実装があっった）
 try:
     from GUI.vo_se_engine import VO_SE_Engine
@@ -309,6 +324,9 @@ class MainWindow(QMainWindow):
 
     def __init__(self, parent=None, engine=None, ai=None, config=None):
         super().__init__(parent)
+
+
+        self.init_engine()
         
         # --- 1. 基盤の初期化 ---
         self.config_manager = ConfigHandler()
@@ -381,6 +399,23 @@ class MainWindow(QMainWindow):
                 self.lib = None
         else:
             print("⚠ Warning: libvo_se.dll not found")
+
+    
+    def init_engine(self):
+        # パス指定
+        # OSに合わせて拡張子を変える（GitHub Actionsのマルチプラットフォーム対応）
+        ext = ".dll" if platform.system() == "Windows" else ".dylib"
+        
+        # binフォルダ内のDLLを指名
+        dll_relative_path = os.path.join("bin", f"libvo_se{ext}")
+        self.dll_full_path = get_resource_path(dll_relative_path)
+
+        # 3. ロード実行
+        try:
+            self.lib = ctypes.CDLL(self.dll_full_path)
+            print(f"Loaded Engine: {self.dll_full_path}")
+        except Exception as e:
+            print(f"Failed to load engine: {e}")
 
     def init_ui(self):
         """UIコンポーネントの構築"""
@@ -636,6 +671,8 @@ class MainWindow(QMainWindow):
         self.timeline_widget.update()
         self.statusBar().showMessage(f"Talkモード: '{text}' を展開しました")
         self.text_input.clear()
+
+    
 
     # ==========================================================================
     # ドラッグ&ドロップ処理
