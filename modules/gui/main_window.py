@@ -505,12 +505,12 @@ class MainWindow(QMainWindow):
         panel_layout.addWidget(self.open_button)
         
         # レンダリングボタン
-        self.render_button = QPushButton("🎵 合成")
+        self.render_button = QPushButton("合成")
         self.render_button.clicked.connect(self.on_render_button_clicked)
         panel_layout.addWidget(self.render_button)
         
         # AI解析ボタン
-        self.ai_analyze_button = QPushButton("🤖 AI Auto Setup")
+        self.ai_analyze_button = QPushButton(" AI Auto Setup")
         self.ai_analyze_button.setStyleSheet(
             "background-color: #4A90E2; color: white; font-weight: bold;"
         )
@@ -518,7 +518,7 @@ class MainWindow(QMainWindow):
         panel_layout.addWidget(self.ai_analyze_button)
         
         # AI歌詞配置ボタン
-        self.auto_lyrics_button = QPushButton("📝 自動歌詞")
+        self.auto_lyrics_button = QPushButton("自動歌詞")
         self.auto_lyrics_button.clicked.connect(self.on_click_auto_lyrics)
         panel_layout.addWidget(self.auto_lyrics_button)
         
