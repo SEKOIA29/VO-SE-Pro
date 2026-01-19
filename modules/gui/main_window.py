@@ -1077,9 +1077,12 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "エラー", f"書き出し失敗: {e}")
 
-    @Slot()
-    def export_to_midi_file(self):
-        """MIDIファイルエクスポート（歌詞付き）"""
+@Slot()
+    def export_to_midi_file(self):  #同じクラスになるだけで9分の1だね
+        """
+        MIDIファイルエクスポート（標準的な1ノート1歌詞形式）
+        """
+        # 1. 保存先の決定
         filepath, _ = QFileDialog.getSaveFileName(
             self, "MIDIファイルとしてエクスポート", "", "MIDI Files (*.mid *.midi)"
         )
@@ -1087,62 +1090,71 @@ class MainWindow(QMainWindow):
             return
 
         try:
+            # 2. MIDIファイルの初期化
             mid = mido.MidiFile()
             track = mido.MidiTrack()
             mid.tracks.append(track)
-            mid.ticks_per_beat = 480
+            
+            # 分解能（TPQN）の設定：480が一般的
+            ticks_per_beat = 480
+            mid.ticks_per_beat = ticks_per_beat
 
+            # 3. メタデータの追加（テンポ・トラック名）
+            # テンポは1マイクロ秒あたりの四分音符の時間で指定
             midi_tempo = mido.bpm2tempo(self.timeline_widget.tempo)
             track.append(mido.MetaMessage('set_tempo', tempo=midi_tempo, time=0))
-            track.append(mido.MetaMessage('track_name', name='Vocal Track 1', time=0))
+            track.append(mido.MetaMessage('track_name', name='Vocal Track', time=0))
 
-            sorted_notes = sorted(self.timeline_widget.notes_list, key=lambda note: note.start_time)
-            tokenizer = Tokenizer()
+            # 4. ノートのソート（時間順）
+            sorted_notes = sorted(self.timeline_widget.notes_list, key=lambda n: n.start_time)
+            
+            # 現在の累積チック数
             current_tick = 0
 
             for note in sorted_notes:
-                if note.lyrics:
-                    tokens = [token.surface for token in tokenizer.tokenize(note.lyrics, wakati=True)]
-                else:
-                    tokens = []
+                # 時間計算：秒からビート、そしてチックへ変換
+                # start_tick: 曲の冒頭からの絶対位置
+                start_tick = int(self.timeline_widget.seconds_to_beats(note.start_time) * ticks_per_beat)
+                duration_tick = int(self.timeline_widget.seconds_to_beats(note.duration) * ticks_per_beat)
+
+                # delta_time_on: 前のイベントからの相対時間
+                delta_time_on = max(0, start_tick - current_tick)
                 
-                note_start_beats = self.timeline_widget.seconds_to_beats(note.start_time)
-                note_duration_beats = self.timeline_widget.seconds_to_beats(note.duration)
+                # --- MIDIメッセージの構成 ---
                 
-                if tokens:
-                    beats_per_syllable = note_duration_beats / len(tokens)
-                    ticks_per_syllable = int(beats_per_syllable * mid.ticks_per_beat)
+                # A. Note ON
+                track.append(mido.Message(
+                    'note_on', 
+                    note=note.note_number, 
+                    velocity=note.velocity if hasattr(note, 'velocity') else 100, 
+                    time=delta_time_on
+                ))
+                current_tick += delta_time_on
 
-                    delta_time_on = int(note_start_beats * mid.ticks_per_beat) - current_tick
-                    track.append(mido.Message('note_on', note=note.note_number, velocity=note.velocity, time=delta_time_on))
-                    current_tick += delta_time_on
+                # B. Lyric (歌詞メタデータ)
+                # Note Onの直後に time=0 で配置するのが一般的
+                lyric_text = note.lyrics if note.lyrics else "ら"
+                track.append(mido.MetaMessage('lyric', text=lyric_text, time=0))
 
-                    for i, syllable in enumerate(tokens):
-                        lyric_delta_time = ticks_per_syllable if i > 0 else 0
-                        track.append(mido.MetaMessage('lyric', text=syllable, time=lyric_delta_time))
-                        current_tick += lyric_delta_time
+                # C. Note OFF
+                # ノートの長さ分だけ時間を進める
+                track.append(mido.Message(
+                    'note_off', 
+                    note=note.note_number, 
+                    velocity=0, 
+                    time=duration_tick
+                ))
+                current_tick += duration_tick
 
-                    total_syllable_ticks = len(tokens) * ticks_per_syllable
-                    note_off_delta_time = int(note_duration_beats * mid.ticks_per_beat) - total_syllable_ticks
-                    if note_off_delta_time < 0:
-                        note_off_delta_time = 0
-
-                    track.append(mido.Message('note_off', note=note.note_number, velocity=note.velocity, time=note_off_delta_time))
-                    current_tick += note_off_delta_time
-                else:
-                    delta_time_on = int(note_start_beats * mid.ticks_per_beat) - current_tick
-                    track.append(mido.Message('note_on', note=note.note_number, velocity=note.velocity, time=delta_time_on))
-                    current_tick += delta_time_on
-                    delta_time_off = int(note_duration_beats * mid.ticks_per_beat)
-                    track.append(mido.Message('note_off', note=note.note_number, velocity=note.velocity, time=delta_time_off))
-                    current_tick += delta_time_off
-
+            # 5. トラック終了処理
             track.append(mido.MetaMessage('end_of_track', time=0))
+            
+            # ファイル保存
             mid.save(filepath)
-            self.status_label.setText(f"MIDIエクスポート完了: {filepath}")
+            self.statusBar().showMessage(f"MIDIエクスポート完了: {os.path.basename(filepath)}")
             
         except Exception as e:
-            QMessageBox.critical(self, "エラー", f"MIDI保存エラー: {e}")
+            QMessageBox.critical(self, "MIDIエクスポートエラー", f"保存中に問題が発生しました:\n{e}") 
 
     # ==========================================================================
     # 音源管理
