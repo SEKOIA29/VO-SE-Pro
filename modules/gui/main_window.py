@@ -857,14 +857,14 @@ class MainWindow(QMainWindow):
         self.ai_analyze_button.setEnabled(False)
         self.progress_bar.show()
         self.progress_bar.setValue(0)
-        self.statusBar().showMessage("AIエンジン起動中...")
+        self.statusBar().showMessage("dynamics engine起動中...")
         
         self.analysis_thread.start()
 
     def update_analysis_status(self, percent: int, filename: str):
         """解析進捗の表示"""
         self.progress_bar.setValue(percent)
-        self.statusBar().showMessage(f"AI解析中 [{percent}%]: {filename}")
+        self.statusBar().showMessage(f"解析中 [{percent}%]: {filename}")
 
     def on_analysis_complete(self, results: dict):
         """解析完了時の処理"""
@@ -882,7 +882,7 @@ class MainWindow(QMainWindow):
         self.ai_analyze_button.setEnabled(True)
         self.statusBar().showMessage(f"解析完了: {len(results)}件処理", 3000)
         self.timeline_widget.update()
-        QMessageBox.information(self, "完了", "AI解析が完了しました")
+        QMessageBox.information(self, "完了", "解析が完了しました")
 
     def on_analysis_error(self, message: str):
         """解析エラー時の処理"""
@@ -897,7 +897,7 @@ class MainWindow(QMainWindow):
     @Slot()
     def on_render_button_clicked(self):
         """合成ボタンが押された時の動作"""
-        self.statusBar().showMessage("AIが歌唱を生成中...")
+        self.statusBar().showMessage("歌唱を生成中...")
         
         gui_notes = self.timeline_widget.get_notes_data()
         if not gui_notes:
@@ -1237,7 +1237,7 @@ class MainWindow(QMainWindow):
     @Slot()
     def on_click_auto_lyrics(self):
         """AI自動歌詞配置"""
-        text, ok = QInputDialog.getText(self, "AI自動歌詞配置", "文章を入力:")
+        text, ok = QInputDialog.getText(self, "自動歌詞配置", "文章を入力:")
         if not (ok and text):
             return
 
