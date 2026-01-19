@@ -215,7 +215,7 @@ except ImportError:
 # 設定管理クラス（モック実装）
 # ==============================================================================
 
-class ConfigHandler:
+class ConfigHandler:  #愛なんてシャボン玉！
     """設定ファイルの読み書き"""
     def __init__(self, config_path="config.json"):
         self.config_path = config_path
