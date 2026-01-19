@@ -963,6 +963,25 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"保存失敗: {e}")
 
+
+    def read_file_safely(self, file_path):
+    """ファイルのエンコーディングを自動判別して読み込む"""
+    try:
+        with open(file_path, 'rb') as f:
+            raw_data = f.read()
+            # 文字コードを判定
+            result = chardet.detect(raw_data)
+            encoding = result['encoding']
+            
+            # 判定失敗や信頼度が低い場合は、日本語音源に多い cp932(Shift-JIS) を試す
+            if not encoding or result['confidence'] < 0.7:
+                encoding = 'cp932'
+                
+            return raw_data.decode(encoding, errors='ignore')
+    except Exception as e:
+        print(f"読み込みエラー: {e}")
+        return ""
+
     @Slot()
     def open_file_dialog_and_load_midi(self):
         """ファイルを開く"""
@@ -1148,14 +1167,11 @@ class MainWindow(QMainWindow):
                 if os.path.exists(oto_path) or os.path.exists(char_txt_path):
                     char_name = dir_name
                     if os.path.exists(char_txt_path):
-                        try:
-                            with open(char_txt_path, 'r', encoding='shift-jis', errors='ignore') as f:
-                                for line in f:
-                                    if line.startswith("name="):
-                                        char_name = line.split("=")[1].strip()
-                                        break
-                        except:
-                            pass
+                        content = self.read_file_safely(char_txt_path)
+                        for line in content.splitlines():
+                            if line.startswith("name="):
+                                char_name = line.split("=")[1].strip()
+                                break
                     
                     icon_path = os.path.join(dir_path, "icon.png")
                     if not os.path.exists(icon_path):
