@@ -1276,27 +1276,52 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def on_voice_selected(self, character_name: str):
-        """ボイスカード選択時の処理"""
-        # カード選択状態更新
+        """
+        ボイスカード選択時の処理：音源データのロードと各エンジンへの適用
+        """
+        # 1. UIの選択状態（枠線など）を更新
         for card in self.voice_cards:
             card.set_selected(card.name == character_name)
         
+        # 2. 音源データの存在チェック
         if character_name not in self.voice_manager.voices:
+            self.statusBar().showMessage(f"エラー: {character_name} のデータが見つかりません")
             return
         
         voice_data = self.voice_manager.voices[character_name]
         path = voice_data["path"]
 
-        # エンジン更新
-        self.vo_se_engine.set_voice_library(path)
-        self.current_voice = character_name
+        try:
+            # 3. 歌唱用データのロード (oto.iniの解析)
+            # 先ほど作成した parse_oto_ini メソッドを呼び出す
+            self.current_oto_data = self.parse_oto_ini(path)
+            
+            # 4. 合成エンジン (VO_SE_Engine) の更新
+            # ライブラリパスと解析したOTOデータを渡す
+            self.vo_se_engine.set_voice_library(path)
+            if hasattr(self.vo_se_engine, 'set_oto_data'):
+                self.vo_se_engine.set_oto_data(self.current_oto_data)
+            
+            self.current_voice = character_name
 
-        # Talkエンジン更新（存在すれば）
-        talk_model = os.path.join(path, "talk.htsvoice")
-        if os.path.exists(talk_model) and hasattr(self, 'talk_manager'):
-            self.talk_manager.set_voice(talk_model)
+            # 5. Talkエンジン（会話用）の更新
+            # UTAUフォルダ内に talk.htsvoice があれば自動適用
+            talk_model = os.path.join(path, "talk.htsvoice")
+            if os.path.exists(talk_model) and hasattr(self, 'talk_manager'):
+                self.talk_manager.set_voice(talk_model)
 
-        self.statusBar().showMessage(f"【{character_name}】に切り替え完了")
+            # 6. UIへのフィードバック（ステータスバーと色設定）
+            char_color = self.voice_manager.get_character_color(path)
+            self.statusBar().showMessage(
+                f"【{character_name}】に切り替え完了 ({len(self.current_oto_data)} 音素ロード)", 
+                5000
+            )
+            
+            # ログ出力（デバッグ用）
+            print(f"Selected voice: {character_name} at {path}")
+
+        except Exception as e:
+            QMessageBox.critical(self, "音源ロードエラー", f"音源の読み込み中にエラーが発生しました:\n{e}")
 
     def refresh_voice_list(self):
         """voice_banksフォルダを再スキャン"""
