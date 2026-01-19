@@ -326,6 +326,10 @@ class MainWindow(QMainWindow):
     def __init__(self, parent=None, engine=None, ai=None, config=None):
         super().__init__(parent)
 
+        self.render_timer = QTimer()
+        self.render_timer.setSingleShot(True)
+        self.render_timer.timeout.connect(self.execute_async_render)
+
 
         self.init_engine()
         
@@ -1384,6 +1388,18 @@ class MainWindow(QMainWindow):
         self.v_scrollbar.setRange(0, max_scroll_value)
 
         self.keyboard_sidebar.set_key_height_pixels(key_h)
+
+
+    @Slot()
+    def on_notes_modified(self):
+        """変更があったらタイマーをリスタート（300ms待機）"""
+        self.render_timer.start(300) 
+
+    def execute_async_render(self):
+        """タイマー満了で実際にスレッドを起動"""
+        threading.Thread(target=self.vo_se_engine.prepare_cache, 
+                         args=(self.timeline_widget.notes_list,), 
+                         daemon=True).start()
 
     # ==========================================================================
     # ヘルパーメソッド
