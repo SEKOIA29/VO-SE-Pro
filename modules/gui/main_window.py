@@ -427,7 +427,7 @@ class MainWindow(QMainWindow):
 
     def init_ui(self):
         """UIコンポーネントの構築"""
-        self.setWindowTitle("VO-SE Pro 2026")
+        self.setWindowTitle("VO-SE Pro ")
         self.setGeometry(100, 100, 1200, 800)
         
         # メインウィジェット
@@ -459,8 +459,11 @@ class MainWindow(QMainWindow):
         self.setup_formant_slider()
         self.setup_performance_toggle()
         self.init_pro_talk_ui()
+        self.lyrics_button = QPushButton("歌詞一括入力")
+        self.lyrics_button.clicked.connect(self.on_click_apply_lyrics_bulk)
         
         print("✓ UI components initialized")
+        
 
     def setup_control_panel(self):
         """上部コントロールパネルの構築"""
