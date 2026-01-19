@@ -1201,6 +1201,45 @@ class MainWindow(QMainWindow):
         self.voice_manager.voices = found_voices
         return found_voices
 
+    def parse_oto_ini(self, voice_path: str) -> dict:
+        """
+        oto.iniを解析して辞書に格納する
+        戻り値: { "あ": {"wav": "a.wav", "offset": 50, "consonant": 100, ...}, ... }
+        """
+        oto_map = {}
+        oto_path = os.path.join(voice_path, "oto.ini")
+        
+        if not os.path.exists(oto_path):
+            return oto_map
+
+        # 先ほど作成した「安全な読み込み」を使用
+        content = self.read_file_safely(oto_path)
+        
+        for line in content.splitlines():
+            if not line.strip() or "=" not in line:
+                continue
+            
+            try:
+                # 形式: wav_filename=alias,offset,consonant,blank,preutterance,overlap
+                wav_file, params = line.split("=", 1)
+                p = params.split(",")
+                
+                alias = p[0] if p[0] else os.path.splitext(wav_file)[0]
+                
+                # パラメータを辞書化（数値はfloatに変換）
+                oto_map[alias] = {
+                    "wav_path": os.path.join(voice_path, wav_file),
+                    "offset": float(p[1]) if len(p) > 1 else 0.0,      # 左ブランク
+                    "consonant": float(p[2]) if len(p) > 2 else 0.0,   # 固定範囲
+                    "blank": float(p[3]) if len(p) > 3 else 0.0,       # 右ブランク
+                    "preutterance": float(p[4]) if len(p) > 4 else 0.0, # 先行発声
+                    "overlap": float(p[5]) if len(p) > 5 else 0.0      # オーバーラップ
+                }
+            except (ValueError, IndexError):
+                continue
+                
+        return oto_map
+
     def refresh_voice_ui_with_scan(self):
         """スキャンを実行してUIを最新状態にする"""
         self.statusBar().showMessage("音源フォルダをスキャン中...")
