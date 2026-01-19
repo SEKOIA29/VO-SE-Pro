@@ -1305,6 +1305,25 @@ class MainWindow(QMainWindow):
         
         self.timeline_widget.update()
 
+    @Slot()
+    def on_click_apply_lyrics_bulk(self):
+        """歌詞の一括流し込み（強化版）"""
+        # 先ほど紹介したコードをここに書く
+        text, ok = QInputDialog.getMultiLineText(self, "歌詞の一括入力", "歌詞を入力:")
+        if not (ok and text): return
+        
+        # 1文字ずつにバラす
+        lyric_list = [char for char in text if char.strip() and char not in "、。！？"]
+        
+        # タイムライン上のノートを取得
+        notes = sorted(self.timeline_widget.notes_list, key=lambda n: n.start_time)
+        
+        # ノートに順番にセット
+        for i in range(min(len(lyric_list), len(notes))):
+            notes[i].lyrics = lyric_list[i]
+            
+        self.timeline_widget.update()
+
     # ==========================================================================
     # その他のスロット
     # ==========================================================================
