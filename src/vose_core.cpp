@@ -1,15 +1,15 @@
 #include <iostream>
 #include <vector>
 
-// WindowsでのDLLエクスポート用マクロ
+// WindowsとmacOS/Linuxでエクスポート宣言を切り替える
 #ifdef _WIN32
-#define DLLEXPORT __declspec(dllexport)
+  #define DLLEXPORT __declspec(dllexport)
 #else
-#define DLLEXPORT
+  #define DLLEXPORT __attribute__((visibility("default")))
 #endif
 
-// Python側の CNoteEvent 構造体とメモリレイアウトを完全に一致させる
 extern "C" {
+    // Python側の CNoteEvent とメモリレイアウトを完全に一致させる
     struct CNoteEvent {
         int note_number;
         float start_time;
@@ -23,21 +23,16 @@ extern "C" {
         int pitch_length;   // 配列の要素数
     };
 
-    // 音声処理のメイン関数（テスト用）
+    // 音声処理のメイン関数
     DLLEXPORT int process_vocal(CNoteEvent* note) {
         if (!note || !note->pitch_curve) {
-            return -1; // エラー
+            return -1;
         }
 
-        // Pythonから渡されたデータが正しいかコンソールに出力して確認
-        std::cout << "[C++ Engine] Processing Note Number: " << note->note_number << std::endl;
-        std::cout << "[C++ Engine] Pitch Array Length: " << note->pitch_length << std::endl;
+        // 標準出力に出力（macOSのターミナルに表示されます）
+        std::printf("[Engine] Note:%d, Frames:%d, FirstPitch:%.2f Hz\n", 
+                    note->note_number, note->pitch_length, note->pitch_curve[0]);
         
-        if (note->pitch_length > 0) {
-            std::cout << "[C++ Engine] First Pitch Hz: " << note->pitch_curve[0] << " Hz" << std::endl;
-        }
-
-        // ここに将来的に WORLD (cppworld) の合成ロジックを移植する
-        return 0; // 成功
+        return 0;
     }
 }
