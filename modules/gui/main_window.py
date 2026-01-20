@@ -109,6 +109,39 @@ except ImportError:
                 output_buffer[start_idx:min(end_idx, total_samples)] += wav_resized[:min(len(wav_resized), total_samples-start_idx)]
 
             return output_buffer
+
+        def process_note_vocal(self, wav_path, target_midi, duration_sec, oto_config):
+            """
+            1つのノートを高品質に合成する
+            """
+            # 1. 音声の読み込み（Offsetを考慮）
+            x, fs = librosa.load(wav_path, sr=self.sample_rate, 
+                                 offset=oto_config['offset']/1000.0)
+            x = x.astype(np.float64) # WORLDはfloat64が必要
+
+            # 2. 基本周波数(F0)・スペクトル・非周期性指標の抽出
+            # これが音を「分解」する工程
+            _f0, t = pw.dio(x, fs)
+            f0 = pw.stonemask(x, _f0, t, fs)
+            sp = pw.cheaptrick(x, f0, t, fs)
+            ap = pw.d4c(x, f0, t, fs)
+
+            # 3. ピッチの加工（目標のMIDI番号へ）
+            # MIDI番号から周波数(Hz)を計算
+            target_hz = 440.0 * (2.0 ** ((target_midi - 69) / 12.0))
+            # 全体のピッチを目標のHzに固定（これでお経にならず歌になる）
+            modified_f0 = np.ones_like(f0) * target_hz
+
+            # 4. タイムストレッチ（母音を伸ばす）
+            # 録音された音の長さと、ノートの長さを比較して引き伸ばし率を計算
+            current_duration = len(x) / fs
+            stretch_ratio = duration_sec / current_duration
+        
+            # 5. 再合成（音を「組み立てる」工程）
+            # フォルマント(声質)を保ったまま、新しいピッチと長さで音を作る
+            y = pw.synthesize(modified_f0, sp, ap, fs)
+        
+            return y
      
         
         def set_active_character(self, name): pass
