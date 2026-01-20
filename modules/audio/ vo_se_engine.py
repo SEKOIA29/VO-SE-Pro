@@ -2,164 +2,139 @@
 
 
 import ctypes
-import platform
 import os
 import sys
 import numpy as np
 import sounddevice as sd
+import librosa
+import pyworld as pw
 from typing import List
 
-# データ構造をインポート
-from .data_models import NoteEvent
-
-# --- C言語側の構造体に対応するクラス定義 ---
-
-class CNoteEvent(ctypes.Structure):
-    """C言語エンジン側とメモリレイアウトを統一した構造体"""
-    _fields_ = [
-        ("note_number", ctypes.c_int),
-        ("start_time", ctypes.c_float),
-        ("duration", ctypes.c_float),
-        ("velocity", ctypes.c_int),
-        ("pre_utterance", ctypes.c_float),
-        ("overlap", ctypes.c_float),
-        # 最大8音素まで固定長配列で渡す（ポインタ管理を簡略化）
-        ("phonemes", ctypes.c_char_p * 8),
-        ("phoneme_count", ctypes.c_int)
-    ]
-
-class SynthesisRequest(ctypes.Structure):
-    """合成リクエスト全体を包む構造体"""
-    _fields_ = [
-        ("notes", ctypes.POINTER(CNoteEvent)),
-        ("note_count", ctypes.c_int),
-        ("sample_rate", ctypes.c_int)
-    ]
+# データ構造のインポート（環境に合わせて調整してください）
+# from .data_models import NoteEvent 
 
 class VO_SE_Engine:
     def __init__(self, sample_rate=44100):
         self.sample_rate = sample_rate
         self.current_voice_path = ""
-        self.lib = self._load_library()
-        self._setup_ctypes()
-        self._refs = [] # C言語に渡した文字列がGCされないよう保持するリスト
+        self.oto_map = {}  # UTAU原音設定を保持
+        self._refs = []    # GC防止用ポインタ保持
 
-    def _load_library(self):
-        """OSとCPU命令セットに合わせてライブラリをロード"""
-        # 2026年環境ではWindowsならAVX2/AVX512版、MacならApple Siliconネイティブを選択
-        if platform.system() == "Windows":
-            fname = "libvo_se.dll" # Makefileで生成される名前
-        else:
-            fname = "libvo_se.dylib"
-        
-        # パス解決（ビルド後と開発時両対応）
-        base = getattr(sys, '_MEIPASS', os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-        lib_path = os.path.join(base, "bin", fname)
-        
-        if not os.path.exists(lib_path):
-            raise FileNotFoundError(f"Engine library not found at: {lib_path}")
+    def set_oto_data(self, oto_map):
+        """MainWindowから受け取った原音設定を格納"""
+        self.oto_map = oto_map
+
+    def set_voice_library(self, path):
+        """音源フォルダのパスを設定"""
+        self.current_voice_path = path
+
+    def _generate_single_note_world(self, wav_path, target_hz, duration_sec, offset_ms, preutter_ms):
+        """
+        【内部ロジック】WORLDエンジンを使用して1つの音素を合成
+        """
+        try:
+            # 1. ロード（左ブランク + 赤線移動分をスキップ）
+            x, fs = librosa.load(wav_path, sr=self.sample_rate, offset=offset_ms / 1000.0)
+            x = x.astype(np.float64)
+
+            # 2. WORLDで音声を分解（F0, スペクトル包絡, 非周期性指標）
+            _f0, t = pw.dio(x, fs)
+            f0 = pw.stonemask(x, _f0, t, fs)
+            sp = pw.cheaptrick(x, f0, t, fs)
+            ap = pw.d4c(x, f0, t, fs)
+
+            # 3. 目標ピッチに書き換え
+            modified_f0 = np.ones_like(f0) * target_hz
+
+            # 4. 再合成
+            y = pw.synthesize(modified_f0, sp, ap, fs)
             
-        return ctypes.CDLL(lib_path)
+            # 5. ノートの長さにリサイズ
+            target_samples = int(duration_sec * self.sample_rate)
+            if len(y) != target_samples:
+                y = librosa.resample(y, orig_sr=len(y), target_sr=target_samples)
+            return y
+        except Exception as e:
+            print(f"Synthesis error: {e}")
+            return np.zeros(int(duration_sec * self.sample_rate))
 
-    def _setup_ctypes(self):
-        """C関数の引数・戻り値の型を定義"""
-        # 音源初期化
-        self.lib.init_engine.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
-        self.lib.init_engine.restype = ctypes.c_int
-        
-        # 全体合成
-        self.lib.request_synthesis_full.argtypes = [SynthesisRequest, ctypes.POINTER(ctypes.c_int)]
-        self.lib.request_synthesis_full.restype = ctypes.POINTER(ctypes.c_float)
-        
-        # メモリ解放
-        self.lib.vse_free_buffer.argtypes = [ctypes.POINTER(ctypes.c_float)]
+    def synthesize(self, score_data: List) -> np.ndarray:
+        """
+        [統合版] 提示されたNoteEventリストからWORLD合成を行い、
+        一つのトラックとして結合したnumpy配列を返す
+        """
+        if not score_data:
+            return np.zeros(0)
 
-    def set_voice(self, voice_name: str, voice_path: str):
-        """使用する音源ライブラリを切り替える"""
-        self.current_voice_path = voice_path
-        self.lib.init_engine(voice_name.encode('utf-8'), voice_path.encode('utf-8'))
+        # 1. 全体のバッファサイズを計算
+        max_time = max(n.start_time + n.duration for n in score_data)
+        total_samples = int((max_time + 1.0) * self.sample_rate)
+        output_buffer = np.zeros(total_samples, dtype=np.float32)
 
-    def synthesize(self, score_data: List[NoteEvent]) -> np.ndarray:
-        """NoteEventのリストから音声を合成し、numpy配列を返す"""
-        count = len(score_data)
-        note_array = (CNoteEvent * count)()
-        self._refs = [] # 以前の参照をクリア
+        for note in score_data:
+            # 歌詞（エイリアス）が音源マップにあるか確認
+            lyric = note.lyrics if hasattr(note, 'lyrics') else note.lyric
+            if lyric not in self.oto_map:
+                continue
 
-        for i, note in enumerate(score_data):
-            # 先行発声(pre_utterance)分だけ開始を早める
-            # 例: 1.0秒開始で先行発声が0.1秒なら、0.9秒から子音を鳴らし始める
-            corrected_start = note.start_time - note.pre_utterance
-            corrected_duration = note.duration + note.pre_utterance
+            config = self.oto_map[lyric]
             
-            note_array[i].start_time = max(0.0, corrected_start)
-            note_array[i].duration = corrected_duration
-            note_array[i].note_number = note.note_number
-            note_array[i].velocity = note.velocity
-            note_array[i].pre_utterance = note.pre_utterance
-            note_array[i].overlap = note.overlap
+            # 2. 赤線(onset)による補正計算
+            # user_offset_ms: ユーザーが赤線を右に動かした量
+            user_offset_ms = getattr(note, 'onset', 0.0) * 1000.0
             
-            # 音素リストの処理
-            p_list = note.phonemes if note.phonemes else [note.lyric]
-            for j, ph in enumerate(p_list[:8]):
-                ph_b = ph.encode('utf-8')
-                self._refs.append(ph_b) # Python側で生存期間を保証
-                note_array[i].phonemes[j] = ph_b
-            note_array[i].phoneme_count = min(len(p_list), 8)
+            # 合成用のパラメータ確定
+            target_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
+            final_offset = config['offset'] + user_offset_ms
+            
+            # 3. WORLD合成実行
+            y_note = self._generate_single_note_world(
+                config['wav_path'],
+                target_hz,
+                note.duration,
+                final_offset,
+                config['preutterance']
+            )
 
-        # Cエンジンへ要求
-        req = SynthesisRequest(note_array, count, self.sample_rate)
-        out_samples = ctypes.c_int()
-        ptr = self.lib.request_synthesis_full(req, ctypes.byref(out_samples))
-        
-        if not ptr:
-            print("Synthesis failed: Engine returned null pointer.")
-            return None
+            # 4. 配置タイミングの計算（先行発声を考慮）
+            # 赤線を動かした分だけ、食い込みを浅くする補正
+            corrected_preutter = config['preutterance'] - user_offset_ms
+            start_idx = int((note.start_time - (corrected_preutter / 1000.0)) * self.sample_rate)
+            
+            if start_idx < 0: start_idx = 0
+            
+            # 5. オーバーラップ（クロスフェード）
+            overlap_samples = int(config['overlap'] / 1000.0 * self.sample_rate)
+            if overlap_samples > 0 and len(y_note) > overlap_samples:
+                fade_curve = np.linspace(0, 1, overlap_samples)
+                y_note[:overlap_samples] *= fade_curve
 
-        # Cのメモリをnumpy配列へコピーし、即座に解放
-        raw_array = np.ctypeslib.as_array(ptr, shape=(out_samples.value,))
-        audio_out = np.copy(raw_array)
-        self.lib.vse_free_buffer(ptr)
-        
-        return audio_out
+            # 6. バッファへ加算（Mix）
+            end_idx = start_idx + len(y_note)
+            if end_idx <= total_samples:
+                output_buffer[start_idx:end_idx] += y_note.astype(np.float32)
+
+        # 7. ノーマライズ（音割れ防止）
+        max_val = np.max(np.abs(output_buffer))
+        if max_val > 0:
+            output_buffer = (output_buffer / max_val) * 0.9
+
+        return output_buffer
 
     def play(self, audio_data: np.ndarray):
-        """合成結果を再生"""
-        if audio_data is not None:
+        """合成された音声データを再生"""
+        if audio_data is not None and len(audio_data) > 0:
             sd.play(audio_data, self.sample_rate)
-            sd.wait()
 
+    def stop(self):
+        """再生停止"""
+        sd.stop()
 
+    def export_to_wav(self, audio_data: np.ndarray, filepath: str):
+        """WAVファイルとして保存"""
+        import soundfile as sf
+        sf.write(filepath, audio_data, self.sample_rate)
 
-   def update_notes_data(self, notes):
-        """タイムラインから送られてきた最新のノートリストを保持する"""
-        self.current_notes = notes
-        # キャッシュをクリアして、次の再生で新しいonsetが反映されるようにする
-        self.clear_cache()
-
-    def calculate_wav_slice(self, note):
-        """
-        赤線(onset)の位置に基づいて、Wavファイルの切り出し範囲を計算する
-        """
-        # UTAU等の原音設定パラメータ
-        # pre_utterance: 先行発声 (例: 's'の音)
-        # overlap: オーバーラップ
-        
-        # 【重要】赤線(onset)によるオフセット計算
-        # ユーザーが赤線を右に動かすほど、実際の発音タイミングが遅れる（＝Wavの読み込み開始を遅くする）
-        if hasattr(note, 'onset'):
-            user_offset_ms = note.onset * 1000  # 秒をミリ秒に変換
-        else:
-            user_offset_ms = 0
-
-        # カット開始位置の計算式
-        # 原音設定の「左ブランク」 + 赤線の移動量
-        cut_start_ms = note.voice_config.left_blank + user_offset_ms
-        
-        # 先行発声を考慮した、タイムライン上の実際の配置位置
-        actual_start_time = note.start_time - note.pre_utterance
-
-        return {
-            "cut_start": cut_start_ms,
-            "play_at": actual_start_time,
-            "duration": note.duration + note.pre_utterance
-        }
+    # 互換性維持のための空メソッド
+    def clear_cache(self): pass
+    def update_notes_data(self, notes): pass
