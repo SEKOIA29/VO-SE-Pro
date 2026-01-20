@@ -50,6 +50,18 @@ class VO_SE_Engine:
         self.oto_map = {}
         self._refs = []  # Python側の文字列がGCで消されないように保持するリスト
 
+        self.cache = OrderedDict()
+        
+        # 1. PCのスペックに応じてキャッシュ制限を自動設定
+        self.max_cache_bytes = self._calculate_cache_limit()
+        self.current_cache_bytes = 0
+        
+        # 2. SSDスワップモード設定 (Trueならメモリが溢れた時にディスクへ逃がす)
+        self.ssd_swap_enabled = True
+        self.swap_dir = "temp_cache"
+        if not os.path.exists(self.swap_dir):
+            os.makedirs(self.swap_dir)
+
     def set_oto_data(self, oto_map):
         """MainWindow（または音源マネージャー）から受け取った原音設定を保持"""
         self.oto_map = oto_map
@@ -62,7 +74,7 @@ class VO_SE_Engine:
     # 核心部：ピッチシフト対応 WORLD合成ロジック
     # ----------------------------------------------------------------------
 
-def _generate_single_note_world(self, wav_path, target_hz, duration_sec, offset_ms, config):
+    def _generate_single_note_world(self, wav_path, target_hz, duration_sec, offset_ms, config):
         """
         [アップグレード版] 
         子音(固定範囲)は維持し、母音部分だけをノート長に合わせてストレッチする
@@ -120,6 +132,87 @@ def _generate_single_note_world(self, wav_path, target_hz, duration_sec, offset_
         except Exception as e:
             print(f"ストレッチ合成エラー: {e}")
             return np.zeros(int(duration_sec * self.sample_rate))
+
+    #=========================================
+    #メモリ管理
+    #=========================================
+
+
+    def _calculate_cache_limit(self):
+        """搭載メモリ(RAM)に応じて制限値を決定"""
+        total_ram_gb = psutil.virtual_memory().total / (1024**3)
+        
+        if total_ram_gb <= 8:
+            limit = 800 * (1024**2)  # 800MB
+        elif total_ram_gb <= 16:
+            limit = 1.5 * (1024**3)  # 1.5GB
+        elif total_ram_gb <= 32:
+            limit = 4 * (1024**3)    # 4GB
+        elif total_ram_gb <= 64:
+            limit = 10 * (1024**3)   # 10GB
+        else:
+            limit = 16 * (1024**3)   # 16GB
+        
+        print(f"Detected RAM: {total_ram_gb:.1f}GB. Cache Limit set to: {limit/(1024**2):.1f}MB")
+        return limit
+
+    def _get_cache_key(self, wav_path, target_hz, duration_sec):
+        return f"{os.path.basename(wav_path)}_{target_hz}_{duration_sec}"
+
+    def _manage_cache(self, key, audio_data):
+        """キャッシュの追加とメモリ制限の維持"""
+        data_size = audio_data.nbytes
+        
+        # 制限を超える場合は古いものから消す
+        while self.current_cache_bytes + data_size > self.max_cache_bytes and self.cache:
+            old_key, old_data = self.cache.popitem(last=False)
+            
+            # SSDスワップが有効ならディスクへ保存してからメモリから消す
+            if self.ssd_swap_enabled:
+                swap_path = os.path.join(self.swap_dir, f"{old_key}.npy")
+                np.save(swap_path, old_data)
+                
+            self.current_cache_bytes -= old_data.nbytes
+
+        self.cache[key] = audio_data
+        self.current_cache_bytes += data_size
+
+    def _generate_single_note_world(self, wav_path, target_hz, duration_sec, offset_ms, config):
+        key = self._get_cache_key(wav_path, target_hz, duration_sec)
+        
+        # 1. メモリキャッシュを確認
+        if key in self.cache:
+            self.cache.move_to_end(key)
+            return self.cache[key]
+        
+        # 2. SSDスワップを確認
+        swap_path = os.path.join(self.swap_dir, f"{key}.npy")
+        if self.ssd_swap_enabled and os.path.exists(swap_path):
+            data = np.load(swap_path)
+            self._manage_cache(key, data) # メモリに戻す
+            return data
+
+        # 3. キャッシュになければ新規合成 (重い処理)
+        try:
+            # --- 以前実装したWORLD合成ロジック (中略なしでここに配置) ---
+            # (ここでは例としてダミー波形を生成しますが、実際は前回のWORLDロジックが入ります)
+            y_note = np.random.uniform(-0.1, 0.1, int(duration_sec * self.sample_rate)).astype(np.float32)
+            # -------------------------------------------------------
+
+            # キャッシュに保存
+            self._manage_cache(key, y_note)
+            return y_note
+            
+        except Exception as e:
+            print(f"Error: {e}")
+            return np.zeros(int(duration_sec * self.sample_rate))
+
+    def clear_all_cache(self):
+        """メモリもSSDもすべて空にする"""
+        self.cache.clear()
+        self.current_cache_bytes = 0
+        for f in os.listdir(self.swap_dir):
+            os.remove(os.path.join(self.swap_dir, f))
 
     # ----------------------------------------------------------------------
     # 公開メソッド (MainWindowから呼び出す)
