@@ -115,11 +115,11 @@ except ImportError:
                 write_len = actual_end - start_idx
                 output_buffer[start_idx:actual_end] += y_note[:write_len]
 
-        # 最後に音割れ防止（ノーマライズ）
-        if np.max(np.abs(output_buffer)) > 0:
-            output_buffer = output_buffer / np.max(np.abs(output_buffer)) * 0.9
+            # 最後に音割れ防止（ノーマライズ）
+            if np.max(np.abs(output_buffer)) > 0:
+               output_buffer = output_buffer / np.max(np.abs(output_buffer)) * 0.9
 
-        return output_buffer
+            return output_buffer
 
 
 
