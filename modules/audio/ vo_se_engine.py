@@ -45,33 +45,40 @@ class VO_SE_Engine:
     # --- 合成核心部 (WORLDエンジン) ---
     def _generate_single_note_world(self, wav_path, target_hz, duration_sec, offset_ms):
         """
-        【内部ロジック】WORLDを使用して1つの音素を再合成する
+        1つの音素をWORLDエンジンで解析し、指定されたピッチ(target_hz)で再合成する
         """
         try:
-            # 1. ロード（左ブランク + 赤線移動分をスキップ）
-            # offsetは秒単位で指定
+            # 1. 音声のロード
             x, fs = librosa.load(wav_path, sr=self.sample_rate, offset=offset_ms / 1000.0)
             x = x.astype(np.float64)
 
-            # 2. WORLD解析 (基本周波数、スペクトル、非周期性)
+            # 2. WORLDによる解析（音の分解）
+            # dio: 基本周波数(F0)の推定
+            # cheaptrick: スペクトル包絡(フォルマント)の抽出
+            # d4c: 非周期性指標(気流雑音など)の抽出
             _f0, t = pw.dio(x, fs)
             f0 = pw.stonemask(x, _f0, t, fs)
             sp = pw.cheaptrick(x, f0, t, fs)
             ap = pw.d4c(x, f0, t, fs)
 
-            # 3. 目標ピッチに書き換え
+            # 3. 【核心部】ピッチの書き換え
+            # 元のF0を無視し、ノートで指定された target_hz で塗りつぶす
+            # これにより、元のWAVがどの高さであっても、指定した音程で歌うようになる
             modified_f0 = np.ones_like(f0) * target_hz
 
-            # 4. 再合成
+            # 4. 再合成（音の組み立て）
+            # 解析された声質(sp, ap)に、新しい音程(modified_f0)を適用する
             y = pw.synthesize(modified_f0, sp, ap, fs)
             
-            # 5. ノートの長さに厳密にリサイズ
+            # 5. 時間軸の調整
+            # 合成された音声がノートの長さ(duration_sec)に足りない、または超える場合にリサンプリング
             target_samples = int(duration_sec * self.sample_rate)
             if len(y) != target_samples:
                 y = librosa.resample(y, orig_sr=len(y), target_sr=target_samples)
+                
             return y
         except Exception as e:
-            print(f"Synthesis error for {wav_path}: {e}")
+            print(f"ピッチシフト合成エラー: {e}")
             return np.zeros(int(duration_sec * self.sample_rate))
 
     # --- 外部呼び出し用インターフェース ---
