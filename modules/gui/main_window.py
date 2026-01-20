@@ -105,8 +105,8 @@ except ImportError:
                     # 配置範囲の冒頭にフェードインをかける
                     wav_resized[:overlap_samples] *= fade_in
             
-                  # バッファへの加算（上書きではなく加算することで重なりを許容）
-                  output_buffer[start_idx:min(end_idx, total_samples)] += wav_resized[:min(len(wav_resized), total_samples-start_idx)]
+                # バッファへの加算（上書きではなく加算することで重なりを許容）
+                output_buffer[start_idx:min(end_idx, total_samples)] += wav_resized[:min(len(wav_resized), total_samples-start_idx)]
 
             return output_buffer
      
