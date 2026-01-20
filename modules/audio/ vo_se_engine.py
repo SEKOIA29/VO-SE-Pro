@@ -1,5 +1,6 @@
 # vo_se_engine.py
 
+
 import ctypes
 import os
 import platform
@@ -158,4 +159,86 @@ class VO_SE_Engine:
             y = pw.synthesize(new_f0, new_sp, new_ap, fs)
             
             # 最終リサイズ
-            target_samples = int(duration_sec * self.sample
+            target_samples = int(duration_sec * self.sample_rate)
+            if len(y) != target_samples:
+                y = librosa.resample(y, orig_sr=len(y), target_sr=target_samples)
+                
+            y_final = y.astype(np.float32)
+            self._manage_cache(key, y_final) # キャッシュに保存
+            return y_final
+
+        except Exception as e:
+            print(f"Synthesis Error: {e}")
+            return np.zeros(int(duration_sec * self.sample_rate), dtype=np.float32)
+
+    # ----------------------------------------------------------------------
+    # 公開メソッド
+    # ----------------------------------------------------------------------
+    def synthesize(self, notes_list: List) -> np.ndarray:
+        if not notes_list:
+            return np.zeros(0, dtype=np.float32)
+
+        max_time = max(n.start_time + n.duration for n in notes_list)
+        total_samples = int((max_time + 1.0) * self.sample_rate)
+        output_buffer = np.zeros(total_samples, dtype=np.float32)
+
+        for note in notes_list:
+            lyric = note.lyrics if hasattr(note, 'lyrics') else getattr(note, 'lyric', "ら")
+            if lyric not in self.oto_map:
+                continue
+
+            config = self.oto_map[lyric]
+            target_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
+            user_offset_ms = getattr(note, 'onset', 0.0) * 1000.0
+            
+            # 合成呼び出し
+            y_note = self._generate_single_note_world(
+                config['wav_path'], target_hz, note.duration, 
+                config['offset'] + user_offset_ms, config
+            )
+
+            # 配置
+            corrected_preutter = config['preutterance'] - user_offset_ms
+            start_idx = int((note.start_time - (corrected_preutter / 1000.0)) * self.sample_rate)
+            start_idx = max(0, start_idx)
+            
+            # オーバーラップ
+            ov_samples = int(config['overlap'] / 1000.0 * self.sample_rate)
+            if ov_samples > 0 and len(y_note) > ov_samples:
+                y_note[:ov_samples] *= np.linspace(0, 1, ov_samples)
+
+            # Mix
+            end_idx = start_idx + len(y_note)
+            if end_idx <= total_samples:
+                output_buffer[start_idx:end_idx] += y_note
+            else:
+                available = total_samples - start_idx
+                if available > 0:
+                    output_buffer[start_idx:] += y_note[:available]
+
+        # ノーマライズ
+        max_val = np.max(np.abs(output_buffer))
+        if max_val > 0:
+            output_buffer = (output_buffer / max_val) * 0.9
+        return output_buffer
+
+    def play(self, data):
+        if data is not None and len(data) > 0:
+            sd.play(data, self.sample_rate)
+
+    def stop(self):
+        sd.stop()
+
+    def export_to_wav(self, data, filepath):
+        sf.write(filepath, data, self.sample_rate)
+
+    def clear_all_cache(self):
+        """メモリ・SSDキャッシュを全削除"""
+        self.cache.clear()
+        self.current_cache_bytes = 0
+        for f in os.listdir(self.swap_dir):
+            if f.endswith(".npy"):
+                os.remove(os.path.join(self.swap_dir, f))
+
+    def update_notes_data(self, notes):
+        pass
