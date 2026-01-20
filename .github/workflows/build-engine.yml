@@ -3,6 +3,8 @@ name: Build VO-SE Pro (Multi-Platform)
 on:
   push:
     branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
 
 jobs:
   # --- Windowsビルド ---
@@ -10,44 +12,61 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - name: Install deps
+
+      - name: Install dependencies
         run: |
-          pip install numpy PySide6 pyinstaller pyopenjtalk
-      - name: Build C Engine
+          pip install numpy sounddevice librosa pyworld soundfile psutil PySide6 pyinstaller
+
+      - name: Build C++ Engine (DLL)
         run: |
           if (!(Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" }
-          gcc -shared -o bin/libvo_se.dll src/vo_se_engine.c
-      - name: Build EXE
-        run: pyinstaller vose_pro.spec
-      - name: Upload
+          # g++を使用してDLLをビルド (vose_core.cppを想定)
+          g++ -shared -fPIC -o bin/vose_core.dll vose_core.cpp
+
+      - name: Build EXE with PyInstaller
+        run: |
+          # --add-binary でビルドしたDLLを同梱させる
+          pyinstaller --noconfirm --onedir --windowed --add-binary "bin/vose_core.dll;." main.py
+
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: VO-SE_Pro_Windows
-          path: dist/VO-SE_Pro/
+          path: dist/main/
 
-  # --- Macビルド ---
+  # --- MacOSビルド ---
   build-macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - name: Install deps
+
+      - name: Install dependencies
         run: |
-          pip install numpy PySide6 pyinstaller pyopenjtalk
-      - name: Build C Engine
+          pip install numpy sounddevice librosa pyworld soundfile psutil PySide6 pyinstaller
+
+      - name: Build C++ Engine (dylib)
         run: |
           mkdir -p bin
-          # Macでは .dylib を作成する
-          gcc -shared -o bin/libvo_se.dylib src/vo_se_engine.c
-      - name: Build APP
-        run: pyinstaller vose_pro.spec
-      - name: Upload
+          # clang++を使用してdylibをビルド
+          clang++ -shared -fPIC -o bin/vose_core.dylib vose_core.cpp
+
+      - name: Build App Bundle
+        run: |
+          # Macではセミコロンではなくコロンで区切る
+          pyinstaller --noconfirm --onedir --windowed --add-binary "bin/vose_core.dylib:." main.py
+
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: VO-SE_Pro_MacOS
-          path: dist/VO-SE_Pro/
+          path: dist/main/
