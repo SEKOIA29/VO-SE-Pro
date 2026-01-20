@@ -44,6 +44,7 @@ class VO_SE_Engine:
         self.current_voice_path = ""
         self.oto_map = {}
         self._refs = []
+        self.lib = self._load_core_library()
 
         # --- メモリ管理 & SSDスワップ設定 ---
         self.cache = OrderedDict()
@@ -171,6 +172,38 @@ class VO_SE_Engine:
         except Exception as e:
             print(f"Synthesis Error: {e}")
             return np.zeros(int(duration_sec * self.sample_rate), dtype=np.float32)
+
+#エンジン接続関係
+    def _load_core_library(self):
+        """OSを判別して適切なライブラリをロードする"""
+        current_os = platform.system()
+        base_path = os.path.dirname(__file__) # スクリプトと同じ場所を探す
+        
+        if current_os == "Windows":
+            lib_name = "vose_core.dll"
+        elif current_os == "Darwin": # macOS
+            lib_name = "vose_core.dylib"
+        else: # Linux等
+            lib_name = "vose_core.so"
+            
+        lib_path = os.path.join(base_path, lib_name)
+        
+        if not os.path.exists(lib_path):
+            print(f"Warning: {lib_name} not found. C++ acceleration disabled.")
+            return None
+            
+        try:
+            return ctypes.CDLL(lib_path)
+        except Exception as e:
+            print(f"Failed to load library: {e}")
+            return None
+
+    def call_cpp_process(self, note):
+        if self.lib is None: return
+        
+        # C++関数の引数と戻り値を定義
+        self.lib.process_vocal.argtypes = [ctypes.POINTER(CNoteEvent)]
+        self.lib.process_vocal.restype = ctypes.c_int
 
     # ----------------------------------------------------------------------
     # 公開メソッド
