@@ -123,6 +123,44 @@ class VO_SE_Engine:
             self._manage_cache(key, data)
             return data
 
+        key = self._get_cache_key(wav_path, target_hz, duration_sec)
+        # ※ピッチカーブが変わると音も変わるため、本来はキャッシュキーにピッチ情報も含める
+        
+        try:
+            # 1. 解析 (解析結果のキャッシュがあればそこから取得)
+            # 解析部分はピッチに関係なく「原音の性質」なので、ここをC言語で高速化するメリット大
+            x, fs = librosa.load(wav_path, sr=self.sample_rate, offset=offset_ms / 1000.0)
+            _f0, t = pw.dio(x.astype(np.float64), fs)
+            f0, sp, ap = pw.stonemask(x.astype(np.float64), _f0, t, fs), pw.cheaptrick(x.astype(np.float64), _f0, t, fs), pw.d4c(x.astype(np.float64), _f0, t, fs)
+
+            # 2. ストレッチ（子音保持・母音延伸）
+            con_frames = int(config.get('consonant', 0) / 5.0)
+            target_total_frames = int((duration_sec * 1000.0) / 5.0)
+            
+            # パラメータの延伸
+            new_sp = self._stretch_param(sp, con_frames, target_total_frames)
+            new_ap = self._stretch_param(ap, con_frames, target_total_frames)
+
+            # 3. 【核心】ピッチ配列の生成
+            if pitch_curve is not None:
+                # ユーザー定義のカーブを使用（長さが足りない場合はリサイズ）
+                if len(pitch_curve) != len(new_sp):
+                    new_f0 = librosa.resample(pitch_curve, orig_sr=len(pitch_curve), target_sr=len(new_sp))
+                else:
+                    new_f0 = pitch_curve
+            else:
+                # カーブがなければ指定のHzで固定
+                new_f0 = np.ones(len(new_sp)) * target_hz
+
+            # 4. 再合成 (ここをC++化すると爆速になる)
+            y = pw.synthesize(new_f0.astype(np.float64), new_sp, new_ap, fs)
+            
+            return y.astype(np.float32)
+
+        except Exception as e:
+            print(f"Pitch Curve Synth Error: {e}")
+            return np.zeros(int(duration_sec * self.sample_rate), dtype=np.float32)
+
         # 3. 新規合成実行
         try:
             x, fs = librosa.load(wav_path, sr=self.sample_rate, offset=offset_ms / 1000.0)
