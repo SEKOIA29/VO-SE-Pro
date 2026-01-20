@@ -11,6 +11,8 @@ import threading
 import numpy as np
 import librosa
 import soundfile as sf
+import librosa
+import pyworld as pw
 from typing import List, Optional, Dict, Any
 
 # Qt関連
@@ -51,125 +53,112 @@ def get_resource_path(relative_path):
 try:
     from GUI.vo_se_engine import VO_SE_Engine
 except ImportError:
-    class VO_SE_Engine:
-        def __init__(self, sample_rate=44100):
-            self.sample_rate = sample_rate
-            self.oto_map = {}
-
-        def set_oto_data(self, oto_map):
-            self.oto_map = oto_map
-
-        def synthesize_track(self, notes, pitch_data=None):
-            """
-            全ノートを高品質合成(WORLD)し、クロスフェードで繋ぎ合わせる
-            """
-            if not notes:
-                return np.zeros(0)
-
-            # 1. 出力バッファの確保（最後のノートの終了時間に1秒の余韻を追加）
-            max_time = max(n.start_time + n.duration for n in notes)
-            total_samples = int((max_time + 1.0) * self.sample_rate)
-            output_buffer = np.zeros(total_samples, dtype=np.float64)
-
-            # 前のノートの終了位置を記録（クロスフェード用）
-            for note in notes:
-                if note.lyrics not in self.oto_map:
-                    continue
-
-                config = self.oto_map[note.lyrics]
-            
-                # --- 手順A: 1音の高品質合成 ---
-                # ターゲットの周波数(Hz)を計算
-                target_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
-            
-                # 実際の音声ファイルをロードしてWORLDで合成
-                # (※前述のprocess_note_vocalの処理をここに集約)
-                y_note = self.generate_single_note(
-                    config['wav_path'], 
-                    target_hz, 
-                    note.duration, 
-                    config
-                )
-
-                # --- 手順B: 配置位置の計算 (先行発声補正) ---
-                # Preutterance分だけ前にずらして配置開始位置を決める
-                start_sec = note.start_time - (config['preutterance'] / 1000.0)
-                start_idx = int(start_sec * self.sample_rate)
-            
-                if start_idx < 0: start_idx = 0
-                end_idx = start_idx + len(y_note)
-
-                # --- 手順C: クロスフェード (オーバーラップ) ---
-                # Overlap設定に基づき、前の音と重なる部分にフェードインをかける
-                overlap_sec = config['overlap'] / 1000.0
-                overlap_samples = int(overlap_sec * self.sample_rate)
-            
-                if overlap_samples > 0 and len(y_note) > overlap_samples:
-                    # 最初のoverlap_samples分だけフェードイン
-                    fade_curve = np.linspace(0, 1, overlap_samples)
-                    y_note[:overlap_samples] *= fade_curve
-
-                # --- 手順D: バッファへの書き込み (加算合成) ---
-                # 上書きではなく「+=」にすることで、重なり部分が綺麗に混ざる
-                actual_end = min(end_idx, total_samples)
-                write_len = actual_end - start_idx
-                output_buffer[start_idx:actual_end] += y_note[:write_len]
-
-            # 最後に音割れ防止（ノーマライズ）
-            if np.max(np.abs(output_buffer)) > 0:
-               output_buffer = output_buffer / np.max(np.abs(output_buffer)) * 0.9
-
-            return output_buffer
 
 
+class VO_SE_Engine:
+    def __init__(self, sample_rate=44100):
+        self.sample_rate = sample_rate
+        self.oto_map = {}
+        self.active_library_path = ""
 
-        def process_note_vocal(self, wav_path, target_midi, duration_sec, oto_config):
-            """
-            1つのノートを高品質に合成する
-            """
-            # 1. 音声の読み込み（Offsetを考慮）
+    def set_oto_data(self, oto_map):
+        self.oto_map = oto_map
+
+    def set_voice_library(self, path):
+        self.active_library_path = path
+
+    def generate_single_note(self, wav_path, target_hz, duration_sec, oto_config):
+        """1つのノートを高品質に合成（WORLD）"""
+        try:
+            # 1. ロード（左ブランクをカット）
             x, fs = librosa.load(wav_path, sr=self.sample_rate, 
                                  offset=oto_config['offset']/1000.0)
-            x = x.astype(np.float64) # WORLDはfloat64が必要
+            x = x.astype(np.float64)
 
-            # 2. 基本周波数(F0)・スペクトル・非周期性指標の抽出
-            # これが音を「分解」する工程
+            # 2. WORLDで分解
             _f0, t = pw.dio(x, fs)
             f0 = pw.stonemask(x, _f0, t, fs)
             sp = pw.cheaptrick(x, f0, t, fs)
             ap = pw.d4c(x, f0, t, fs)
 
-            # 3. ピッチの加工（目標のMIDI番号へ）
-            # MIDI番号から周波数(Hz)を計算
-            target_hz = 440.0 * (2.0 ** ((target_midi - 69) / 12.0))
-            # 全体のピッチを目標のHzに固定（これでお経にならず歌になる）
+            # 3. 音高固定
             modified_f0 = np.ones_like(f0) * target_hz
 
-            # 4. タイムストレッチ（母音を伸ばす）
-            # 録音された音の長さと、ノートの長さを比較して引き伸ばし率を計算
-            current_duration = len(x) / fs
-            stretch_ratio = duration_sec / current_duration
-        
-            # 5. 再合成（音を「組み立てる」工程）
-            # フォルマント(声質)を保ったまま、新しいピッチと長さで音を作る
+            # 4. 再合成（ここで長さも自動調整される）
             y = pw.synthesize(modified_f0, sp, ap, fs)
-        
+            
+            # 長さの調整（duration_secに合わせる）
+            target_samples = int(duration_sec * self.sample_rate)
+            if len(y) != target_samples:
+                y = librosa.resample(y, orig_sr=len(y), target_sr=target_samples)
+                
             return y
+        except Exception as e:
+            print(f"合成エラー ({wav_path}): {e}")
+            return np.zeros(int(duration_sec * self.sample_rate))
 
-        
-     
-        
-        def set_active_character(self, name): pass
-        def set_tempo(self, tempo): pass
-        def synthesize_track(self, notes, pitch, start, end): return np.array([])
-        def play_audio(self, audio): pass
-        def stop_playback(self): pass
-        def close(self): pass
-        def set_voice_library(self, path): pass
-        def prepare_cache(self, notes): pass
-        def export_to_wav(self, notes, pitch, path): pass
-        def play_realtime_note(self, note): pass
-        def stop_realtime_note(self, note): pass
+    def synthesize_track(self, notes, pitch_data=None):
+        """全ノートを繋ぎ合わせてトラック全体を生成"""
+        if not notes:
+            return np.zeros(0)
+
+        # 1. バッファ確保
+        max_time = max(n.start_time + n.duration for n in notes)
+        total_samples = int((max_time + 1.0) * self.sample_rate)
+        output_buffer = np.zeros(total_samples, dtype=np.float64)
+
+        for note in notes:
+            if note.lyrics not in self.oto_map:
+                continue
+
+            config = self.oto_map[note.lyrics]
+            target_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
+            
+            # 合成実行
+            y_note = self.generate_single_note(
+                config['wav_path'], 
+                target_hz, 
+                note.duration, 
+                config
+            )
+
+            # 配置（先行発声補正）
+            start_sec = note.start_time - (config['preutterance'] / 1000.0)
+            start_idx = int(start_sec * self.sample_rate)
+            if start_idx < 0: start_idx = 0
+            
+            # クロスフェード（オーバーラップ）
+            overlap_samples = int(config['overlap'] / 1000.0 * self.sample_rate)
+            if overlap_samples > 0 and len(y_note) > overlap_samples:
+                fade_curve = np.linspace(0, 1, overlap_samples)
+                y_note[:overlap_samples] *= fade_curve
+
+            # 書き込み
+            end_idx = start_idx + len(y_note)
+            if end_idx > total_samples:
+                y_note = y_note[:total_samples - start_idx]
+                end_idx = total_samples
+            
+            output_buffer[start_idx:end_idx] += y_note
+
+        # ノーマライズ
+        if np.max(np.abs(output_buffer)) > 0:
+            output_buffer = output_buffer / np.max(np.abs(output_buffer)) * 0.9
+
+        return output_buffer
+
+    def export_to_wav(self, notes, pitch, path):
+        """WAVファイルとして書き出し"""
+        audio_data = self.synthesize_track(notes, pitch)
+        sf.write(path, audio_data, self.sample_rate)
+
+    # --- 未実装のスタブ（エラー防止） ---
+    def set_active_character(self, name): pass
+    def set_tempo(self, tempo): pass
+    def play_audio(self, audio): pass
+    def stop_playback(self): pass
+    def close(self): pass
+    def prepare_cache(self, notes): pass
 
  
 from .timeline_widget import TimelineWidget
