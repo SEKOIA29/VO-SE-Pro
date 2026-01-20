@@ -28,6 +28,10 @@ from janome.tokenizer import Tokenizer
 import mido
 import numpy as np
 
+from .timeline_widget import TimelineWidget
+from .vo_se_engine import VO_SE_Engine
+from .voice_manager import VoiceManager
+
 # 1. パス解決用の関数（
 def get_resource_path(relative_path):
     """内蔵DLLなどのリソースパスを取得"""
@@ -48,7 +52,65 @@ try:
     from GUI.vo_se_engine import VO_SE_Engine
 except ImportError:
     class VO_SE_Engine:
-        def __init__(self): pass
+        def __init__(self, sample_rate=44100):
+            self.sample_rate = sample_rate
+            self.oto_map = {}
+
+        def set_oto_data(self, oto_map):
+            self.oto_map = oto_map
+
+        def synthesize_track(self, notes, pitch_data):
+            """
+            全ノートをスキャンし、一つの音声配列を生成する
+            """
+            if not notes: return np.zeros(0)
+
+            # 1. 最終的な音声の長さを計算（最後のノートの終了時間 + 余裕）
+            max_duration = max(n.start_time + n.duration for n in notes) + 1.0
+            total_samples = int(max_duration * self.sample_rate)
+            output_buffer = np.zeros(total_samples, dtype=np.float32)
+
+            for note in notes:
+                if note.lyrics not in self.oto_map:
+                continue
+            
+                config = self.oto_map[note.lyrics]
+            
+                # 2. 音声ファイルの読み込み
+                # offset(左ブランク)の位置から読み込む
+                wav_data, _ = librosa.load(
+                    config["wav_path"], 
+                    sr=self.sample_rate,
+                    offset=config["offset"] / 1000.0
+                )
+            
+                # 3. 簡易的なタイムストレッチ（ノートの長さに合わせる）
+                # ※本来はWORLD等の高品質エンジンを使うが、ここでは基本ロジック
+                target_duration_samples = int(note.duration * self.sample_rate)
+                # 子音部分(Consonant)を除いた母音部分を伸ばすのが理想だが、簡易的に全体をリサイズ
+                wav_resized = librosa.resample(wav_data, orig_sr=len(wav_data), target_sr=target_duration_samples)
+
+                # 4. 配置位置の計算（先行発声 Preutterance を考慮）
+                # ノート開始位置から Preutterance 分だけ前にずらして配置
+                start_idx = int((note.start_time - (config["preutterance"] / 1000.0)) * self.sample_rate)
+                end_idx = start_idx + len(wav_resized)
+
+                if start_idx < 0: start_idx = 0
+            
+                # 5. オーバーラップとクロスフェードの適用
+                # 既にバッファにある音（前のノート）と、新しい音を滑らかに混ぜる
+                overlap_samples = int(config["overlap"] / 1000.0 * self.sample_rate)
+                if overlap_samples > 0 and start_idx > 0:
+                    fade_in = np.linspace(0, 1, overlap_samples)
+                    # 配置範囲の冒頭にフェードインをかける
+                    wav_resized[:overlap_samples] *= fade_in
+            
+                  # バッファへの加算（上書きではなく加算することで重なりを許容）
+                  output_buffer[start_idx:min(end_idx, total_samples)] += wav_resized[:min(len(wav_resized), total_samples-start_idx)]
+
+            return output_buffer
+     
+        
         def set_active_character(self, name): pass
         def set_tempo(self, tempo): pass
         def synthesize_track(self, notes, pitch, start, end): return np.array([])
