@@ -60,110 +60,8 @@ try:
     from GUI.vo_se_engine import VO_SE_Engine
 except ImportError:
 
-class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.engine = VO_SE_Engine()
-        self.init_ui()
-
-    def init_ui(self):
-        self.setWindowTitle("VO-SE Engine DAW")
-        layout = QVBoxLayout()
-        self.play_btn = QPushButton("再生")
-        self.play_btn.clicked.connect(self.handle_playback)
-        layout.addWidget(self.play_btn)
-        
-        container = QWidget()
-        container.setLayout(layout)
-        self.setCentralWidget(container)
-
-    def generate_pitch_curve(self, note, prev_note=None):
-        """ノートのピッチをHz配列として生成（ポルタメント対応）"""
-        target_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
-        num_frames = int((note.duration * 1000.0) / 5.0)
-        curve = np.ones(num_frames) * target_hz
-        
-        if prev_note:
-            prev_hz = 440.0 * (2.0 ** ((prev_note.note_number - 69) / 12.0))
-            port_f = min(10, num_frames)
-            curve[:port_f] = np.linspace(prev_hz, target_hz, port_f)
-        return curve
-
-    def handle_playback(self):
-        # 1. Timelineからノートを取得(例)
-        notes = self.get_notes_from_timeline() 
-        
-        # 2. 各ノートにピッチカーブを付与
-        prev = None
-        for n in notes:
-            n.pitch_curve = self.generate_pitch_curve(n, prev)
-            prev = n
-            
-        # 3. 合成と再生
-        audio = self.engine.synthesize(notes)
-        self.engine.play(audio)
-
-    def get_notes_from_timeline(self):
-        # 本来はGUIのピアノロールからデータを取ってくる部分
-        # ここではテスト用にダミーのリストを返します
-        return []
-
-    # ==========================================================================
-    # エンジン接続スロット
-    # ==========================================================================
-
-    def start_playback(self):
-        """再生ボタンが押された時の処理"""
-        # タイムライン上のノートリストを取得（NoteEventオブジェクトのリスト）
-        notes = self.timeline_widget.get_all_notes()
-        
-        if not notes:
-            self.statusBar().showMessage("再生するノートがありません。")
-            return
-
-        self.statusBar().showMessage("音声を合成中...")
-        
-        # 2. 合成実行 (最新のピッチシフト対応版を呼び出し)
-        # 内部でMIDI番号→Hz変換、WORLD合成が行われる
-        audio_data = self.vo_se_engine.synthesize(notes)
-
-        if audio_data is not None and len(audio_data) > 0:
-            # 3. 再生
-            self.vo_se_engine.play(audio_data)
-            self.statusBar().showMessage("再生中")
-        else:
-            self.statusBar().showMessage("合成に失敗しました。")
-
-    def stop_playback(self):
-        """停止ボタンが押された時の処理"""
-        self.vo_se_engine.stop()
-        self.statusBar().showMessage("停止しました。")
-
-    def export_wav(self):
-        """WAV書き出し処理"""
-        notes = self.timeline_widget.get_all_notes()
-        if not notes: return
-
-        path, _ = QFileDialog.getSaveFileName(self, "WAV保存", "", "WAV (*.wav)")
-        if path:
-            audio_data = self.vo_se_engine.synthesize(notes)
-            self.vo_se_engine.export_to_wav(audio_data, path)
-            self.statusBar().showMessage(f"保存完了: {path}")
-
-    # --- 音源選択時に呼び出す連携 ---
-    def on_voice_library_changed(self, voice_path, oto_map):
-        """音源フォルダが切り替わった時にエンジンにデータを渡す"""
-        self.vo_se_engine.set_voice_library(voice_path)
-        self.vo_se_engine.set_oto_data(oto_map)
 
 
-    # --- 未実装のスタブ（エラー防止） ---
-    def set_active_character(self, name): pass
-    def set_tempo(self, tempo): pass
-    def play_audio(self, audio): pass
-    def stop_playback(self): pass
-    def close(self): pass
-    def prepare_cache(self, notes): pass
 
  
 from .timeline_widget import TimelineWidget
@@ -438,6 +336,9 @@ class MainWindow(QMainWindow):
         self.render_timer.timeout.connect(self.execute_async_render)
         self.vo_se_engine = VO_SE_Engine()
 
+                
+        self.init_ui()
+
 
         self.init_engine()
         
@@ -489,6 +390,109 @@ class MainWindow(QMainWindow):
         self.scan_utau_voices()
         # ウィンドウタイトル
         self.setWindowTitle("VO-SE Pro")
+
+    #---------
+    #エンジン接続関係
+    #---------
+
+    def init_ui(self):
+        self.setWindowTitle("VO-SE Engine DAW")
+        layout = QVBoxLayout()
+        self.play_btn = QPushButton("再生")
+        self.play_btn.clicked.connect(self.handle_playback)
+        layout.addWidget(self.play_btn)
+        
+        container = QWidget()
+        container.setLayout(layout)
+        self.setCentralWidget(container)
+
+    def generate_pitch_curve(self, note, prev_note=None):
+        """ノートのピッチをHz配列として生成（ポルタメント対応）"""
+        target_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
+        num_frames = int((note.duration * 1000.0) / 5.0)
+        curve = np.ones(num_frames) * target_hz
+        
+        if prev_note:
+            prev_hz = 440.0 * (2.0 ** ((prev_note.note_number - 69) / 12.0))
+            port_f = min(10, num_frames)
+            curve[:port_f] = np.linspace(prev_hz, target_hz, port_f)
+        return curve
+
+    def handle_playback(self):
+        # 1. Timelineからノートを取得(例)
+        notes = self.get_notes_from_timeline() 
+        
+        # 2. 各ノートにピッチカーブを付与
+        prev = None
+        for n in notes:
+            n.pitch_curve = self.generate_pitch_curve(n, prev)
+            prev = n
+            
+        # 3. 合成と再生
+        audio = self.engine.synthesize(notes)
+        self.engine.play(audio)
+
+    def get_notes_from_timeline(self):
+        # 本来はGUIのピアノロールからデータを取ってくる部分
+        # ここではテスト用にダミーのリストを返します
+        return []
+
+    # ==========================================================================
+    # エンジン接続スロット
+    # ==========================================================================
+
+    def start_playback(self):
+        """再生ボタンが押された時の処理"""
+        # タイムライン上のノートリストを取得（NoteEventオブジェクトのリスト）
+        notes = self.timeline_widget.get_all_notes()
+        
+        if not notes:
+            self.statusBar().showMessage("再生するノートがありません。")
+            return
+
+        self.statusBar().showMessage("音声を合成中...")
+        
+        # 2. 合成実行 (最新のピッチシフト対応版を呼び出し)
+        # 内部でMIDI番号→Hz変換、WORLD合成が行われる
+        audio_data = self.vo_se_engine.synthesize(notes)
+
+        if audio_data is not None and len(audio_data) > 0:
+            # 3. 再生
+            self.vo_se_engine.play(audio_data)
+            self.statusBar().showMessage("再生中")
+        else:
+            self.statusBar().showMessage("合成に失敗しました。")
+
+    def stop_playback(self):
+        """停止ボタンが押された時の処理"""
+        self.vo_se_engine.stop()
+        self.statusBar().showMessage("停止しました。")
+
+    def export_wav(self):
+        """WAV書き出し処理"""
+        notes = self.timeline_widget.get_all_notes()
+        if not notes: return
+
+        path, _ = QFileDialog.getSaveFileName(self, "WAV保存", "", "WAV (*.wav)")
+        if path:
+            audio_data = self.vo_se_engine.synthesize(notes)
+            self.vo_se_engine.export_to_wav(audio_data, path)
+            self.statusBar().showMessage(f"保存完了: {path}")
+
+    # --- 音源選択時に呼び出す連携 ---
+    def on_voice_library_changed(self, voice_path, oto_map):
+        """音源フォルダが切り替わった時にエンジンにデータを渡す"""
+        self.vo_se_engine.set_voice_library(voice_path)
+        self.vo_se_engine.set_oto_data(oto_map)
+
+
+    # --- 未実装のスタブ（エラー防止） ---
+    def set_active_character(self, name): pass
+    def set_tempo(self, tempo): pass
+    def play_audio(self, audio): pass
+    def stop_playback(self): pass
+    def close(self): pass
+    def prepare_cache(self, notes): pass
 
     
     # ==========================================================================
