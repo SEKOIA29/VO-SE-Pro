@@ -11,8 +11,10 @@ import threading
 import numpy as np
 import librosa
 import soundfile as sf
+import sounddevice as sd
 import librosa
 import pyworld as pw
+from typing import List
 from typing import List, Optional, Dict, Any
 
 # Qt関連
@@ -58,103 +60,69 @@ try:
     from GUI.vo_se_engine import VO_SE_Engine
 except ImportError:
 
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        # 1. エンジンのインスタンス化
+        self.vo_se_engine = VO_SE_Engine(sample_rate=44100)
+        
+        # UIの初期化など...
+        self.setup_connections()
 
-class VO_SE_Engine:
-    def __init__(self, sample_rate=44100):
-        self.sample_rate = sample_rate
-        self.oto_map = {}
-        self.active_library_path = ""
+    def setup_connections(self):
+        """UIボタンとエンジンの動作を接続"""
+        self.play_button.clicked.connect(self.start_playback)
+        self.stop_button.clicked.connect(self.stop_playback)
+        self.export_button.clicked.connect(self.export_wav)
 
-    def set_oto_data(self, oto_map):
-        self.oto_map = oto_map
+    # ==========================================================================
+    # エンジン接続スロット
+    # ==========================================================================
 
-    def set_voice_library(self, path):
-        self.active_library_path = path
-
-    def generate_single_note(self, wav_path, target_hz, duration_sec, oto_config):
-        """1つのノートを高品質に合成（WORLD）"""
-        try:
-            # 1. ロード（左ブランクをカット）
-            x, fs = librosa.load(wav_path, sr=self.sample_rate, 
-                                 offset=oto_config['offset']/1000.0)
-            x = x.astype(np.float64)
-
-            # 2. WORLDで分解
-            _f0, t = pw.dio(x, fs)
-            f0 = pw.stonemask(x, _f0, t, fs)
-            sp = pw.cheaptrick(x, f0, t, fs)
-            ap = pw.d4c(x, f0, t, fs)
-
-            # 3. 音高固定
-            modified_f0 = np.ones_like(f0) * target_hz
-
-            # 4. 再合成（ここで長さも自動調整される）
-            y = pw.synthesize(modified_f0, sp, ap, fs)
-            
-            # 長さの調整（duration_secに合わせる）
-            target_samples = int(duration_sec * self.sample_rate)
-            if len(y) != target_samples:
-                y = librosa.resample(y, orig_sr=len(y), target_sr=target_samples)
-                
-            return y
-        except Exception as e:
-            print(f"合成エラー ({wav_path}): {e}")
-            return np.zeros(int(duration_sec * self.sample_rate))
-
-    def synthesize_track(self, notes, pitch_data=None):
-        """全ノートを繋ぎ合わせてトラック全体を生成"""
+    def start_playback(self):
+        """再生ボタンが押された時の処理"""
+        # タイムライン上のノートリストを取得（NoteEventオブジェクトのリスト）
+        notes = self.timeline_widget.get_all_notes()
+        
         if not notes:
-            return np.zeros(0)
+            self.statusBar().showMessage("再生するノートがありません。")
+            return
 
-        # 1. バッファ確保
-        max_time = max(n.start_time + n.duration for n in notes)
-        total_samples = int((max_time + 1.0) * self.sample_rate)
-        output_buffer = np.zeros(total_samples, dtype=np.float64)
+        self.statusBar().showMessage("音声を合成中...")
+        
+        # 2. 合成実行 (最新のピッチシフト対応版を呼び出し)
+        # 内部でMIDI番号→Hz変換、WORLD合成が行われる
+        audio_data = self.vo_se_engine.synthesize(notes)
 
-        for note in notes:
-            if note.lyrics not in self.oto_map:
-                continue
+        if audio_data is not None and len(audio_data) > 0:
+            # 3. 再生
+            self.vo_se_engine.play(audio_data)
+            self.statusBar().showMessage("再生中")
+        else:
+            self.statusBar().showMessage("合成に失敗しました。")
 
-            config = self.oto_map[note.lyrics]
-            target_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
-            
-            # 合成実行
-            y_note = self.generate_single_note(
-                config['wav_path'], 
-                target_hz, 
-                note.duration, 
-                config
-            )
+    def stop_playback(self):
+        """停止ボタンが押された時の処理"""
+        self.vo_se_engine.stop()
+        self.statusBar().showMessage("停止しました。")
 
-            # 配置（先行発声補正）
-            start_sec = note.start_time - (config['preutterance'] / 1000.0)
-            start_idx = int(start_sec * self.sample_rate)
-            if start_idx < 0: start_idx = 0
-            
-            # クロスフェード（オーバーラップ）
-            overlap_samples = int(config['overlap'] / 1000.0 * self.sample_rate)
-            if overlap_samples > 0 and len(y_note) > overlap_samples:
-                fade_curve = np.linspace(0, 1, overlap_samples)
-                y_note[:overlap_samples] *= fade_curve
+    def export_wav(self):
+        """WAV書き出し処理"""
+        notes = self.timeline_widget.get_all_notes()
+        if not notes: return
 
-            # 書き込み
-            end_idx = start_idx + len(y_note)
-            if end_idx > total_samples:
-                y_note = y_note[:total_samples - start_idx]
-                end_idx = total_samples
-            
-            output_buffer[start_idx:end_idx] += y_note
+        path, _ = QFileDialog.getSaveFileName(self, "WAV保存", "", "WAV (*.wav)")
+        if path:
+            audio_data = self.vo_se_engine.synthesize(notes)
+            self.vo_se_engine.export_to_wav(audio_data, path)
+            self.statusBar().showMessage(f"保存完了: {path}")
 
-        # ノーマライズ
-        if np.max(np.abs(output_buffer)) > 0:
-            output_buffer = output_buffer / np.max(np.abs(output_buffer)) * 0.9
+    # --- 音源選択時に呼び出す連携 ---
+    def on_voice_library_changed(self, voice_path, oto_map):
+        """音源フォルダが切り替わった時にエンジンにデータを渡す"""
+        self.vo_se_engine.set_voice_library(voice_path)
+        self.vo_se_engine.set_oto_data(oto_map)
 
-        return output_buffer
-
-    def export_to_wav(self, notes, pitch, path):
-        """WAVファイルとして書き出し"""
-        audio_data = self.synthesize_track(notes, pitch)
-        sf.write(path, audio_data, self.sample_rate)
 
     # --- 未実装のスタブ（エラー防止） ---
     def set_active_character(self, name): pass
