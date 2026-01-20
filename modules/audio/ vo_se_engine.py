@@ -1,6 +1,5 @@
 # vo_se_engine.py
 
-
 import ctypes
 import os
 import platform
@@ -11,14 +10,13 @@ import sounddevice as sd
 import librosa
 import pyworld as pw
 import soundfile as sf
-from collections import OrderedDict  # 必須インポート
+from collections import OrderedDict
 from typing import List
 
 # ==========================================================================
 # C言語エンジン互換の構造体定義 (ctypes)
 # ==========================================================================
 class CNoteEvent(ctypes.Structure):
-    """C/C++エンジン側とメモリレイアウトを統一した構造体"""
     _fields_ = [
         ("note_number", ctypes.c_int),
         ("start_time", ctypes.c_float),
@@ -31,7 +29,6 @@ class CNoteEvent(ctypes.Structure):
     ]
 
 class SynthesisRequest(ctypes.Structure):
-    """合成リクエスト全体を包む構造体"""
     _fields_ = [
         ("notes", ctypes.POINTER(CNoteEvent)),
         ("note_count", ctypes.c_int),
@@ -59,109 +56,71 @@ class VO_SE_Engine:
             os.makedirs(self.swap_dir)
 
     def set_oto_data(self, oto_map):
-        """原音設定データをエンジンに同期"""
         self.oto_map = oto_map
 
     def set_voice_library(self, path):
-        """音源フォルダのパスを設定"""
         self.current_voice_path = path
 
     # ----------------------------------------------------------------------
     # メモリ管理サブシステム
     # ----------------------------------------------------------------------
     def _calculate_cache_limit(self):
-        """搭載メモリ(RAM)に応じて制限値を決定（ご指定の仕様）"""
         total_ram_gb = psutil.virtual_memory().total / (1024**3)
-        
         if total_ram_gb <= 8:
-            limit = 800 * (1024**2)   # 800MB
+            limit = 800 * (1024**2) #800MB
         elif total_ram_gb <= 16:
-            limit = 1.5 * (1024**3)   # 1.5GB
+            limit = 1.5 * (1024**3) #1.5GB
         elif total_ram_gb <= 32:
-            limit = 4 * (1024**3)     # 4GB
+            limit = 4 * (1024**3) #4GB
         elif total_ram_gb <= 64:
-            limit = 10 * (1024**3)    # 10GB
+            limit = 10 * (1024**3) #10
         else:
-            limit = 16 * (1024**3)    # 16GB
-        
+            limit = 16 * (1024**3)
         print(f"Detected RAM: {total_ram_gb:.1f}GB. Cache Limit: {limit/(1024**2):.1f}MB")
         return limit
 
     def _get_cache_key(self, wav_path, target_hz, duration_sec):
-        """キャッシュ用のユニークキーを生成"""
         return f"{os.path.basename(wav_path)}_{int(target_hz)}_{int(duration_sec*1000)}"
 
     def _manage_cache(self, key, audio_data):
-        """メモリ制限の維持。溢れたらSSDへ退避（スワップアウト）"""
         data_size = audio_data.nbytes
-        
         while self.current_cache_bytes + data_size > self.max_cache_bytes and self.cache:
             old_key, old_data = self.cache.popitem(last=False)
             if self.ssd_swap_enabled:
                 swap_path = os.path.join(self.swap_dir, f"{old_key}.npy")
                 np.save(swap_path, old_data)
             self.current_cache_bytes -= old_data.nbytes
-
         self.cache[key] = audio_data
         self.current_cache_bytes += data_size
 
     # ----------------------------------------------------------------------
-    # 合成核心部：ストレッチ・ピッチシフト・WORLD
+    # 補助関数：パラメータストレッチ
     # ----------------------------------------------------------------------
-    def _generate_single_note_world(self, wav_path, target_hz, duration_sec, offset_ms, config):
+    def _stretch_param(self, param, c_frames, v_needed):
+        consonant_part = param[:c_frames]
+        vowel_part = param[c_frames:]
+        if len(vowel_part) <= 1: return param # 安全策
+        indices = np.linspace(0, len(vowel_part) - 1, v_needed).astype(int)
+        stretched_vowel = vowel_part[indices]
+        return np.concatenate([consonant_part, stretched_vowel])
+
+    # ----------------------------------------------------------------------
+    # 合成核心部：ストレッチ・ピッチカーブ対応WORLD
+    # ----------------------------------------------------------------------
+    def _generate_single_note_world(self, wav_path, target_hz, duration_sec, offset_ms, config, pitch_curve=None):
+        # キャッシュキー作成（ピッチカーブがある場合はハッシュ値などで識別するのが理想ですが、一旦簡易化）
         key = self._get_cache_key(wav_path, target_hz, duration_sec)
         
-        # 1. メモリキャッシュ確認
         if key in self.cache:
             self.cache.move_to_end(key)
             return self.cache[key]
         
-        # 2. SSDスワップ確認
         swap_path = os.path.join(self.swap_dir, f"{key}.npy")
         if self.ssd_swap_enabled and os.path.exists(swap_path):
             data = np.load(swap_path)
             self._manage_cache(key, data)
             return data
 
-        key = self._get_cache_key(wav_path, target_hz, duration_sec)
-        # ※ピッチカーブが変わると音も変わるため、本来はキャッシュキーにピッチ情報も含める
-        
-        try:
-            # 1. 解析 (解析結果のキャッシュがあればそこから取得)
-            # 解析部分はピッチに関係なく「原音の性質」なので、ここをC言語で高速化するメリット大
-            x, fs = librosa.load(wav_path, sr=self.sample_rate, offset=offset_ms / 1000.0)
-            _f0, t = pw.dio(x.astype(np.float64), fs)
-            f0, sp, ap = pw.stonemask(x.astype(np.float64), _f0, t, fs), pw.cheaptrick(x.astype(np.float64), _f0, t, fs), pw.d4c(x.astype(np.float64), _f0, t, fs)
-
-            # 2. ストレッチ（子音保持・母音延伸）
-            con_frames = int(config.get('consonant', 0) / 5.0)
-            target_total_frames = int((duration_sec * 1000.0) / 5.0)
-            
-            # パラメータの延伸
-            new_sp = self._stretch_param(sp, con_frames, target_total_frames)
-            new_ap = self._stretch_param(ap, con_frames, target_total_frames)
-
-            # 3. 【核心】ピッチ配列の生成
-            if pitch_curve is not None:
-                # ユーザー定義のカーブを使用（長さが足りない場合はリサイズ）
-                if len(pitch_curve) != len(new_sp):
-                    new_f0 = librosa.resample(pitch_curve, orig_sr=len(pitch_curve), target_sr=len(new_sp))
-                else:
-                    new_f0 = pitch_curve
-            else:
-                # カーブがなければ指定のHzで固定
-                new_f0 = np.ones(len(new_sp)) * target_hz
-
-            # 4. 再合成 (ここをC++化すると爆速になる)
-            y = pw.synthesize(new_f0.astype(np.float64), new_sp, new_ap, fs)
-            
-            return y.astype(np.float32)
-
-        except Exception as e:
-            print(f"Pitch Curve Synth Error: {e}")
-            return np.zeros(int(duration_sec * self.sample_rate), dtype=np.float32)
-
-        # 3. 新規合成実行
         try:
             x, fs = librosa.load(wav_path, sr=self.sample_rate, offset=offset_ms / 1000.0)
             x = x.astype(np.float64)
@@ -174,27 +133,31 @@ class VO_SE_Engine:
             sp = pw.cheaptrick(x, f0, t, fs)
             ap = pw.d4c(x, f0, t, fs)
 
-            # ストレッチ計算（子音固定・母音延伸）
+            # ストレッチ計算
             consonant_ms = config.get('consonant', 0)
             consonant_frames = np.sum(t < (consonant_ms / 1000.0))
-            
-            frame_period = 5.0 
-            target_total_frames = int((duration_sec * 1000.0) / frame_period)
+            target_total_frames = int((duration_sec * 1000.0) / 5.0) # 5ms period
             vowel_frames_needed = max(1, target_total_frames - consonant_frames)
             
-            def stretch_param(param, c_frames, v_needed):
-                consonant_part = param[:c_frames]
-                vowel_part = param[c_frames:]
-                indices = np.linspace(0, len(vowel_part) - 1, v_needed).astype(int)
-                stretched_vowel = vowel_part[indices]
-                return np.concatenate([consonant_part, stretched_vowel])
+            new_sp = self._stretch_param(sp, consonant_frames, vowel_frames_needed)
+            new_ap = self._stretch_param(ap, consonant_frames, vowel_frames_needed)
 
-            new_sp = stretch_param(sp, consonant_frames, vowel_frames_needed)
-            new_ap = stretch_param(ap, consonant_frames, vowel_frames_needed)
-            new_f0 = np.ones(len(new_sp)) * target_hz
+            # ピッチ配列の適用
+            if pitch_curve is not None:
+                # ユーザー定義カーブをフレーム数にリサイズ
+                if len(pitch_curve) != len(new_sp):
+                    new_f0 = np.interp(
+                        np.linspace(0, len(pitch_curve), len(new_sp)),
+                        np.arange(len(pitch_curve)),
+                        pitch_curve
+                    )
+                else:
+                    new_f0 = pitch_curve
+            else:
+                new_f0 = np.ones(len(new_sp)) * target_hz
 
             # 再合成
-            y = pw.synthesize(new_f0, new_sp, new_ap, fs)
+            y = pw.synthesize(new_f0.astype(np.float64), new_sp, new_ap, fs)
             
             # 最終リサイズ
             target_samples = int(duration_sec * self.sample_rate)
@@ -202,7 +165,7 @@ class VO_SE_Engine:
                 y = librosa.resample(y, orig_sr=len(y), target_sr=target_samples)
                 
             y_final = y.astype(np.float32)
-            self._manage_cache(key, y_final) # キャッシュに保存
+            self._manage_cache(key, y_final)
             return y_final
 
         except Exception as e:
@@ -226,13 +189,19 @@ class VO_SE_Engine:
                 continue
 
             config = self.oto_map[lyric]
+            
+            # ピッチ取得（カーブがあればそれを優先、なければ固定値）
+            pitch_curve = getattr(note, 'pitch_curve', None)
             target_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
+            if pitch_curve is not None:
+                target_hz = np.mean(pitch_curve) # キャッシュキー用の代表値
+            
             user_offset_ms = getattr(note, 'onset', 0.0) * 1000.0
             
-            # 合成呼び出し
             y_note = self._generate_single_note_world(
                 config['wav_path'], target_hz, note.duration, 
-                config['offset'] + user_offset_ms, config
+                config['offset'] + user_offset_ms, config,
+                pitch_curve=pitch_curve
             )
 
             # 配置
@@ -240,12 +209,12 @@ class VO_SE_Engine:
             start_idx = int((note.start_time - (corrected_preutter / 1000.0)) * self.sample_rate)
             start_idx = max(0, start_idx)
             
-            # オーバーラップ
+            # クロスフェード
             ov_samples = int(config['overlap'] / 1000.0 * self.sample_rate)
             if ov_samples > 0 and len(y_note) > ov_samples:
                 y_note[:ov_samples] *= np.linspace(0, 1, ov_samples)
 
-            # Mix
+            # ミックス
             end_idx = start_idx + len(y_note)
             if end_idx <= total_samples:
                 output_buffer[start_idx:end_idx] += y_note
@@ -271,12 +240,14 @@ class VO_SE_Engine:
         sf.write(filepath, data, self.sample_rate)
 
     def clear_all_cache(self):
-        """メモリ・SSDキャッシュを全削除"""
         self.cache.clear()
         self.current_cache_bytes = 0
-        for f in os.listdir(self.swap_dir):
-            if f.endswith(".npy"):
-                os.remove(os.path.join(self.swap_dir, f))
+        if os.path.exists(self.swap_dir):
+            for f in os.listdir(self.swap_dir):
+                if f.endswith(".npy"):
+                    os.remove(os.path.join(self.swap_dir, f))
 
-    def update_notes_data(self, notes):
-        pass
+
+
+
+                        
