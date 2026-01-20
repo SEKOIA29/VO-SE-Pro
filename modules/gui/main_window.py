@@ -8,6 +8,9 @@ import ctypes
 import zipfile
 import platform
 import threading
+import numpy as np
+import librosa
+import soundfile as sf
 from typing import List, Optional, Dict, Any
 
 # Qt関連
@@ -321,7 +324,7 @@ class AnalysisThread(QThread):
 # ==============================================================================
 
 class MainWindow(QMainWindow):
-    """VO-SE Pro 2026 メインウィンドウ"""
+    """VO-SE Pro  メインウィンドウ"""
 
     def __init__(self, parent=None, engine=None, ai=None, config=None):
         super().__init__(parent)
