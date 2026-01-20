@@ -62,44 +62,63 @@ class VO_SE_Engine:
     # 核心部：ピッチシフト対応 WORLD合成ロジック
     # ----------------------------------------------------------------------
 
-    def _generate_single_note_world(self, wav_path, target_hz, duration_sec, offset_ms):
+def _generate_single_note_world(self, wav_path, target_hz, duration_sec, offset_ms, config):
         """
-        1つの音素(WAV)を、WORLDエンジンで解析し、指定ピッチで再合成する
+        [アップグレード版] 
+        子音(固定範囲)は維持し、母音部分だけをノート長に合わせてストレッチする
         """
         try:
             # 1. 音声のロード
-            # offsetは秒単位で指定 (ミリ秒 / 1000)
             x, fs = librosa.load(wav_path, sr=self.sample_rate, offset=offset_ms / 1000.0)
-            
-            # 極端に短いデータ（無音など）に対するクラッシュ防止
-            if len(x) < 128:
-                return np.zeros(int(duration_sec * self.sample_rate))
-                
             x = x.astype(np.float64)
+            if len(x) < 128: return np.zeros(int(duration_sec * self.sample_rate))
 
-            # 2. WORLDによる解析（分解）
-            # dio: 基本周波数(F0)推定 / cheaptrick: スペクトル包絡 / d4c: 非周期性指標
+            # 2. WORLD解析
             _f0, t = pw.dio(x, fs)
             f0 = pw.stonemask(x, _f0, t, fs)
             sp = pw.cheaptrick(x, f0, t, fs)
             ap = pw.d4c(x, f0, t, fs)
 
-            # 3. 【ピッチシフト実行】
-            # ノートで指定された Hz で塗りつぶし、完璧な音程を生成
-            modified_f0 = np.ones_like(f0) * target_hz
-
-            # 4. 再合成
-            y = pw.synthesize(modified_f0, sp, ap, fs)
+            # 3. 【核心】ストレッチ・ロジック
+            # config['consonant'] は固定する範囲（ミリ秒）
+            consonant_ms = config.get('consonant', 0)
+            consonant_frames = np.sum(t < (consonant_ms / 1000.0))
             
-            # 5. 時間軸の調整
-            # 合成された音声がノートの長さに足りない、または超える場合にリサンプリング
+            # 目標のフレーム数を計算
+            target_frames = int(duration_sec * fs / (t[1] - t[0]) / fs) # 簡易計算
+            # 実際にはもっと単純に: WORLDのデフォルトフレーム周期(5ms)で計算
+            frame_period = 5.0 
+            target_total_frames = int((duration_sec * 1000.0) / frame_period)
+            
+            vowel_frames_needed = max(1, target_total_frames - consonant_frames)
+            
+            # 母音部分（固定範囲より後ろ）をリサンプリングして伸ばす
+            def stretch_param(param, c_frames, v_needed):
+                consonant_part = param[:c_frames]
+                vowel_part = param[c_frames:]
+                # 母音部分だけを必要な長さに補間
+                indices = np.linspace(0, len(vowel_part) - 1, v_needed)
+                stretched_vowel = np.array([vowel_part[int(i)] for i in indices])
+                return np.concatenate([consonant_part, stretched_vowel])
+
+            # 各パラメータをストレッチ
+            new_sp = stretch_param(sp, consonant_frames, vowel_frames_needed)
+            new_ap = stretch_param(ap, consonant_frames, vowel_frames_needed)
+            
+            # 4. ピッチ(F0)の上書き（ストレッチ後の長さに合わせる）
+            new_f0 = np.ones(len(new_sp)) * target_hz
+
+            # 5. 再合成
+            y = pw.synthesize(new_f0, new_sp, new_ap, fs)
+            
+            # 念のための最終リサイズ（サンプリング単位の微調整）
             target_samples = int(duration_sec * self.sample_rate)
             if len(y) != target_samples:
                 y = librosa.resample(y, orig_sr=len(y), target_sr=target_samples)
                 
             return y
         except Exception as e:
-            print(f"Synthesis error for {wav_path}: {e}")
+            print(f"ストレッチ合成エラー: {e}")
             return np.zeros(int(duration_sec * self.sample_rate))
 
     # ----------------------------------------------------------------------
