@@ -59,56 +59,69 @@ except ImportError:
         def set_oto_data(self, oto_map):
             self.oto_map = oto_map
 
-        def synthesize_track(self, notes, pitch_data):
+        def synthesize_track(self, notes, pitch_data=None):
             """
-            全ノートをスキャンし、一つの音声配列を生成する
+            全ノートを高品質合成(WORLD)し、クロスフェードで繋ぎ合わせる
             """
-            if not notes: return np.zeros(0)
+            if not notes:
+                return np.zeros(0)
 
-            # 1. 最終的な音声の長さを計算（最後のノートの終了時間 + 余裕）
-            max_duration = max(n.start_time + n.duration for n in notes) + 1.0
-            total_samples = int(max_duration * self.sample_rate)
-            output_buffer = np.zeros(total_samples, dtype=np.float32)
+            # 1. 出力バッファの確保（最後のノートの終了時間に1秒の余韻を追加）
+            max_time = max(n.start_time + n.duration for n in notes)
+            total_samples = int((max_time + 1.0) * self.sample_rate)
+            output_buffer = np.zeros(total_samples, dtype=np.float64)
 
+            # 前のノートの終了位置を記録（クロスフェード用）
             for note in notes:
                 if note.lyrics not in self.oto_map:
-                continue
-            
+                    continue
+
                 config = self.oto_map[note.lyrics]
             
-                # 2. 音声ファイルの読み込み
-                # offset(左ブランク)の位置から読み込む
-                wav_data, _ = librosa.load(
-                    config["wav_path"], 
-                    sr=self.sample_rate,
-                    offset=config["offset"] / 1000.0
+                # --- 手順A: 1音の高品質合成 ---
+                # ターゲットの周波数(Hz)を計算
+                target_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
+            
+                # 実際の音声ファイルをロードしてWORLDで合成
+                # (※前述のprocess_note_vocalの処理をここに集約)
+                y_note = self.generate_single_note(
+                    config['wav_path'], 
+                    target_hz, 
+                    note.duration, 
+                    config
                 )
+
+                # --- 手順B: 配置位置の計算 (先行発声補正) ---
+                # Preutterance分だけ前にずらして配置開始位置を決める
+                start_sec = note.start_time - (config['preutterance'] / 1000.0)
+                start_idx = int(start_sec * self.sample_rate)
             
-                # 3. 簡易的なタイムストレッチ（ノートの長さに合わせる）
-                # ※本来はWORLD等の高品質エンジンを使うが、ここでは基本ロジック
-                target_duration_samples = int(note.duration * self.sample_rate)
-                # 子音部分(Consonant)を除いた母音部分を伸ばすのが理想だが、簡易的に全体をリサイズ
-                wav_resized = librosa.resample(wav_data, orig_sr=len(wav_data), target_sr=target_duration_samples)
-
-                # 4. 配置位置の計算（先行発声 Preutterance を考慮）
-                # ノート開始位置から Preutterance 分だけ前にずらして配置
-                start_idx = int((note.start_time - (config["preutterance"] / 1000.0)) * self.sample_rate)
-                end_idx = start_idx + len(wav_resized)
-
                 if start_idx < 0: start_idx = 0
-            
-                # 5. オーバーラップとクロスフェードの適用
-                # 既にバッファにある音（前のノート）と、新しい音を滑らかに混ぜる
-                overlap_samples = int(config["overlap"] / 1000.0 * self.sample_rate)
-                if overlap_samples > 0 and start_idx > 0:
-                    fade_in = np.linspace(0, 1, overlap_samples)
-                    # 配置範囲の冒頭にフェードインをかける
-                    wav_resized[:overlap_samples] *= fade_in
-            
-                # バッファへの加算（上書きではなく加算することで重なりを許容）
-                output_buffer[start_idx:min(end_idx, total_samples)] += wav_resized[:min(len(wav_resized), total_samples-start_idx)]
+                end_idx = start_idx + len(y_note)
 
-            return output_buffer
+                # --- 手順C: クロスフェード (オーバーラップ) ---
+                # Overlap設定に基づき、前の音と重なる部分にフェードインをかける
+                overlap_sec = config['overlap'] / 1000.0
+                overlap_samples = int(overlap_sec * self.sample_rate)
+            
+                if overlap_samples > 0 and len(y_note) > overlap_samples:
+                    # 最初のoverlap_samples分だけフェードイン
+                    fade_curve = np.linspace(0, 1, overlap_samples)
+                    y_note[:overlap_samples] *= fade_curve
+
+                # --- 手順D: バッファへの書き込み (加算合成) ---
+                # 上書きではなく「+=」にすることで、重なり部分が綺麗に混ざる
+                actual_end = min(end_idx, total_samples)
+                write_len = actual_end - start_idx
+                output_buffer[start_idx:actual_end] += y_note[:write_len]
+
+        # 最後に音割れ防止（ノーマライズ）
+        if np.max(np.abs(output_buffer)) > 0:
+            output_buffer = output_buffer / np.max(np.abs(output_buffer)) * 0.9
+
+        return output_buffer
+
+
 
         def process_note_vocal(self, wav_path, target_midi, duration_sec, oto_config):
             """
@@ -142,6 +155,8 @@ except ImportError:
             y = pw.synthesize(modified_f0, sp, ap, fs)
         
             return y
+
+        
      
         
         def set_active_character(self, name): pass
