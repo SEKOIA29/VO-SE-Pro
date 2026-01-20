@@ -34,7 +34,11 @@ from .timeline_widget import TimelineWidget
 from .vo_se_engine import VO_SE_Engine
 from .voice_manager import VoiceManager
 
+
+    
+#----------
 # 1. パス解決用の関数（
+#----------
 def get_resource_path(relative_path):
     """内蔵DLLなどのリソースパスを取得"""
     if getattr(sys, 'frozen', False):
@@ -431,6 +435,7 @@ class MainWindow(QMainWindow):
         self.render_timer = QTimer()
         self.render_timer.setSingleShot(True)
         self.render_timer.timeout.connect(self.execute_async_render)
+        self.vo_se_engine = VO_SE_Engine()
 
 
         self.init_engine()
@@ -829,6 +834,12 @@ class MainWindow(QMainWindow):
     # ==========================================================================
     # 再生・録音制御
     # ==========================================================================
+
+
+    def on_click_play(self):
+        # タイムラインのデータを渡して合成・再生
+        audio = self.vo_se_engine.synthesize(self.timeline_widget.notes_list)
+        self.vo_se_engine.play(audio)
 
     @Slot()
     def on_play_pause_toggled(self):
