@@ -63,17 +63,50 @@ except ImportError:
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        # 1. エンジンのインスタンス化
-        self.vo_se_engine = VO_SE_Engine(sample_rate=44100)
-        
-        # UIの初期化など...
-        self.setup_connections()
+        self.engine = VO_SE_Engine()
+        self.init_ui()
 
-    def setup_connections(self):
-        """UIボタンとエンジンの動作を接続"""
-        self.play_button.clicked.connect(self.start_playback)
-        self.stop_button.clicked.connect(self.stop_playback)
-        self.export_button.clicked.connect(self.export_wav)
+    def init_ui(self):
+        self.setWindowTitle("VO-SE Engine DAW")
+        layout = QVBoxLayout()
+        self.play_btn = QPushButton("再生")
+        self.play_btn.clicked.connect(self.handle_playback)
+        layout.addWidget(self.play_btn)
+        
+        container = QWidget()
+        container.setLayout(layout)
+        self.setCentralWidget(container)
+
+    def generate_pitch_curve(self, note, prev_note=None):
+        """ノートのピッチをHz配列として生成（ポルタメント対応）"""
+        target_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
+        num_frames = int((note.duration * 1000.0) / 5.0)
+        curve = np.ones(num_frames) * target_hz
+        
+        if prev_note:
+            prev_hz = 440.0 * (2.0 ** ((prev_note.note_number - 69) / 12.0))
+            port_f = min(10, num_frames)
+            curve[:port_f] = np.linspace(prev_hz, target_hz, port_f)
+        return curve
+
+    def handle_playback(self):
+        # 1. Timelineからノートを取得(例)
+        notes = self.get_notes_from_timeline() 
+        
+        # 2. 各ノートにピッチカーブを付与
+        prev = None
+        for n in notes:
+            n.pitch_curve = self.generate_pitch_curve(n, prev)
+            prev = n
+            
+        # 3. 合成と再生
+        audio = self.engine.synthesize(notes)
+        self.engine.play(audio)
+
+    def get_notes_from_timeline(self):
+        # 本来はGUIのピアノロールからデータを取ってくる部分
+        # ここではテスト用にダミーのリストを返します
+        return []
 
     # ==========================================================================
     # エンジン接続スロット
