@@ -19,24 +19,27 @@ jobs:
       - name: Create bin directory
         run: mkdir -p bin
 
-      # 1. フォルダ構造の強制・大文字小文字対策
-      - name: Force setup WORLD structure
+      # 1. WORLDが求める「world/xxx.h」というパスを物理的に作る
+      - name: Reconstruct world directory
         shell: bash
         run: |
-          mkdir -p build_inc/world
-          # include/world フォルダから .h ファイルを全て build_inc/world にコピー
-          # ※ -L はシンボリックリンク対策、-f は上書き強制
-          cp -f include/world/*.h build_inc/world/ 2>/dev/null || true
-          # 自作ヘッダーも build_inc 直下に置く
-          cp -f include/vose_core.h build_inc/ 2>/dev/null || true
+          # すでに world フォルダがあれば消して作り直す（クリーンビルド）
+          rm -rf world
+          mkdir -p world
+          # include/world 内の全ヘッダーを、ルートの world/ フォルダへコピー
+          cp -f include/world/*.h world/ || true
+          # vose_core.h もルートに置く
+          cp -f include/vose_core.h ./ || true
           
-          # 確認ログ（ビルドに失敗した際、ここを見ればファイルがあるか分かります）
-          echo "Checking build_inc structure:"
-          ls -R build_inc
+          # デバッグ用：フォルダの中身を表示
+          echo "Current directory structure:"
+          ls -F
+          echo "Inside world/:"
+          ls world/
 
       # 2. ビルド実行
-      # -Ibuild_inc を指定することで、コード内の #include "world/matlabfunctions.h" が 
-      # build_inc/world/matlabfunctions.h として100%解決されます。
+      # -I. (ドット) を指定することで、#include "world/matlabfunctions.h" が
+      # 「現在のフォルダにある world フォルダの中」から確実に見つかります。
 
       # --- Windows (g++) ---
       - if: matrix.os == 'windows-latest'
@@ -45,7 +48,7 @@ jobs:
           g++ -shared -fPIC -o bin/vose_core.dll `
               src/vose_core.cpp `
               src/world/*.cpp `
-              -Ibuild_inc
+              -I.
 
       # --- MacOS (clang++) ---
       - if: matrix.os == 'macos-latest'
@@ -54,7 +57,7 @@ jobs:
           clang++ -shared -fPIC -o bin/vose_core.dylib \
               src/vose_core.cpp \
               src/world/*.cpp \
-              -Ibuild_inc
+              -I.
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
