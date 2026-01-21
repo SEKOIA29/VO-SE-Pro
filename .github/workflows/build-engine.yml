@@ -16,29 +16,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # WindowsとMac両方で「エラーを出さずに」フォルダを作る
       - name: Create bin directory
+        shell: bash
         run: mkdir -p bin
 
-      # 1. 物理的に「world/xxx.h」という構造を確実に構築
+      # ヘッダーの再配置（これもBashで統一して確実性を高める）
       - name: Setup WORLD Headers
         shell: bash
         run: |
           mkdir -p build_inc/world
-          # 小文字のファイルを確実にコピー
           cp include/world/*.h build_inc/world/
           cp include/vose_core.h build_inc/
           
           echo "Checking files in build_inc/world:"
           ls "${{ github.workspace }}/build_inc/world"
-          
-          # matlabfunctions.h が存在するかチェック（なければここでエラーにする）
-          if [ ! -f "build_inc/world/matlabfunctions.h" ]; then
-            echo "Error: matlabfunctions.h not found in build_inc/world"
-            exit 1
-          fi
 
-      # 2. 絶対パスを使用してビルド実行
-      # Windows (g++)
+      # --- Windows (g++) ---
       - if: matrix.os == 'windows-latest'
         name: Build for Windows
         run: |
@@ -47,7 +41,7 @@ jobs:
               src/world/*.cpp `
               -I"${{ github.workspace }}/build_inc"
 
-      # MacOS (clang++)
+      # --- MacOS (clang++) ---
       - if: matrix.os == 'macos-latest'
         name: Build for MacOS
         run: |
