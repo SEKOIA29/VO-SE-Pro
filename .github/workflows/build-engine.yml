@@ -19,20 +19,6 @@ jobs:
       - name: Create bin directory
         run: mkdir -p bin
 
-      # 1. フォルダ構成を WORLD の想定に強制的に合わせる
-      - name: Setup Header Structure
-        shell: bash
-        run: |
-          # 一旦整理
-          mkdir -p build_include/world
-          # 全てのヘッダーを build_include/world にコピー
-          cp include/world/*.h build_include/world/ || true
-          cp include/vose_core.h build_include/ || true
-
-      # 2. ビルド実行
-      # -Ibuild_include を指定することで、#include "world/fft.h" が
-      # build_include/world/fft.h として正しく解決されます。
-
       # --- Windows (g++) ---
       - if: matrix.os == 'windows-latest'
         name: Build for Windows
@@ -40,7 +26,7 @@ jobs:
           g++ -shared -fPIC -o bin/vose_core.dll `
               src/vose_core.cpp `
               src/world/*.cpp `
-              -Ibuild_include
+              -Iinclude
 
       # --- MacOS (clang++) ---
       - if: matrix.os == 'macos-latest'
@@ -49,7 +35,7 @@ jobs:
           clang++ -shared -fPIC -o bin/vose_core.dylib \
               src/vose_core.cpp \
               src/world/*.cpp \
-              -Ibuild_include
+              -Iinclude
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
