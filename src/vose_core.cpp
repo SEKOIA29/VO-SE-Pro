@@ -1,32 +1,24 @@
-#include "vose_core.h"
-#include "world/synthesis.h"   // 再合成用
-#include "world/cheaptrick.h"  // スペクトル解析用
+#include "vose_core.h"        // include/ フォルダにある想定
+#include "world/synthesis.h"  // include/world/ フォルダにある想定
 #include <vector>
-#include <cmath>
+#include <cstdio>
 
 extern "C" {
-    // Pythonから呼ばれるメイン関数
     DLLEXPORT int process_vocal(CNoteEvent* note) {
         if (!note || !note->pitch_curve) return -1;
 
-        // 1. 基本パラメータの準備
-        double frame_period = 5.0; // 5ms周期
-        int fs = 44100;           // サンプリングレート
+        // Pythonから渡されたHz配列(float)を、WORLDが求めるdouble配列に変換
         int num_frames = note->pitch_length;
-        
-        // 2. Pythonから届いた float* のピッチ配列を WORLD用の double* にコピー
-        // (WORLDは精度のため double型を要求します)
         std::vector<double> f0(num_frames);
         for (int i = 0; i < num_frames; ++i) {
             f0[i] = static_cast<double>(note->pitch_curve[i]);
         }
 
-        // --- ここで本来は解析(CheapTrick / D4C)したデータを使いますが ---
-        // --- 移行の第一歩として、構造が正しいかチェックする処理をここに書きます ---
+        // 解析データ（スペクトル包絡など）が揃えば、ここで WORLD の Synthesis を呼ぶ
+        // 例: Synthesis(f0.data(), num_frames, spectrogram, aperiodicity, fft_size, frame_period, fs, y);
 
-        std::printf("[C++ WORLD] Synthesis ready for Note:%d, Frames:%d\n", 
-                    note->note_number, num_frames);
-
-        return 0; // 成功
+        std::printf("[C++ Core] Header linked successfully. Processing Note: %d\n", note->note_number);
+        
+        return 0;
     }
 }
