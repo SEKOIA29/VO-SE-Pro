@@ -16,6 +16,7 @@ from typing import List
 # ==========================================================================
 # C言語エンジン互換の構造体定義 (ctypes)
 # ==========================================================================
+
 class CNoteEvent(ctypes.Structure):
     _fields_ = [
         ("note_number", ctypes.c_int),
@@ -25,7 +26,9 @@ class CNoteEvent(ctypes.Structure):
         ("pre_utterance", ctypes.c_float),
         ("overlap", ctypes.c_float),
         ("phonemes", ctypes.c_char_p * 8),
-        ("phoneme_count", ctypes.c_int)
+        ("phoneme_count", ctypes.c_int),
+        ("pitch_curve", ctypes.POINTER(ctypes.c_float)),
+        ("pitch_length", ctypes.c_int)
     ]
 
 class SynthesisRequest(ctypes.Structure):
@@ -173,37 +176,48 @@ class VO_SE_Engine:
             print(f"Synthesis Error: {e}")
             return np.zeros(int(duration_sec * self.sample_rate), dtype=np.float32)
 
+
 #エンジン接続関係
+#------------
     def _load_core_library(self):
-        """OSを判別して適切なライブラリをロードする"""
+        """EXE化後も対応したライブラリロード"""
+        # PyInstaller環境かどうかの判定
+        if hasattr(sys, '_MEIPASS'):
+            base_path = sys._MEIPASS
+        else:
+            # 開発時は bin フォルダまたはカレントディレクトリを探す
+            base_path = os.path.join(os.path.dirname(__file__), "bin")
+
         current_os = platform.system()
-        base_path = os.path.dirname(__file__) # スクリプトと同じ場所を探す
-        
         if current_os == "Windows":
             lib_name = "vose_core.dll"
-        elif current_os == "Darwin": # macOS
+        elif current_os == "Darwin":
             lib_name = "vose_core.dylib"
-        else: # Linux等
-            lib_name = "vose_core.so"
-            
-        lib_path = os.path.join(base_path, lib_name)
-        
-        if not os.path.exists(lib_path):
-            print(f"Warning: {lib_name} not found. C++ acceleration disabled.")
-            return None
-            
-        try:
-            return ctypes.CDLL(lib_path)
-        except Exception as e:
-            print(f"Failed to load library: {e}")
+        else:
             return None
 
-    def call_cpp_process(self, note):
-        if self.lib is None: return
+        for path in [os.path.join(base_path, lib_name), lib_name]:
+            if os.path.exists(path):
+                return ctypes.CDLL(path)
+        return None
+
+    def call_cpp_engine(self, note):
+        if not self.lib or not hasattr(note, 'pitch_curve'):
+            return
         
-        # C++関数の引数と戻り値を定義
+        # NumPy配列をCポインタに変換
+        pitch_data = note.pitch_curve.astype(np.float32)
+        pitch_ptr = pitch_data.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+
+        c_note = CNoteEvent()
+        c_note.note_number = note.note_number
+        c_note.start_time = note.start_time
+        c_note.duration = note.duration
+        c_note.pitch_curve = pitch_ptr
+        c_note.pitch_length = len(pitch_data)
+
         self.lib.process_vocal.argtypes = [ctypes.POINTER(CNoteEvent)]
-        self.lib.process_vocal.restype = ctypes.c_int
+        self.lib.process_vocal(ctypes.byref(c_note))
 
     # ----------------------------------------------------------------------
     # 公開メソッド
