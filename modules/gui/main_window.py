@@ -33,8 +33,8 @@ import mido
 import numpy as np
 
 from .timeline_widget import TimelineWidget
-from .vo_se_engine import VO_SE_Engine
-from .voice_manager import VoiceManager
+from audio.vo_se_engine import VO_SE_Engine
+from audio.voice_manager import VoiceManager
 
 
     
