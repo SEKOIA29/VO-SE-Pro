@@ -19,26 +19,26 @@ jobs:
       - name: Create bin directory
         run: mkdir -p bin
 
-      # --- 物理的に "world" ディレクトリをルートに作ってヘッダーを放り込む ---
-      - name: Setup Header Structure
+      # --- ここが心臓部：住所を物理的に一致させる ---
+      - name: Setup Include Path
         shell: bash
         run: |
-          # クリーンなインクルード用フォルダを作成
-          mkdir -p build_inc/world
+          # 1. きれいな作業用フォルダを作る
+          mkdir -p build_temp/world
           
-          # 1. あなたの include/world/ 内の全ヘッダーを build_inc/world/ へコピー
-          cp include/world/*.h build_inc/world/ || true
+          # 2. あなたの include/world/ にある全 .h を build_temp/world/ へコピー
+          cp include/world/*.h build_temp/world/ || true
           
-          # 2. vose_core.h も build_inc 直下に置く
-          cp include/vose_core.h build_inc/ || true
+          # 3. vose_core.h も build_temp 直下に置く
+          cp include/vose_core.h build_temp/ || true
           
-          # 【確認用ログ】ここでファイルがリストアップされなければ、リポジトリにファイルがありません
-          echo "Content of build_inc/world:"
-          ls build_inc/world/
+          # 4. 【デバッグ】もしここでファイルが出なければ、そもそもリポジトリにファイルがない
+          echo "Current build_temp structure:"
+          ls -R build_temp
 
       # --- ビルド実行 ---
-      # -Ibuild_inc を指定することで、#include "world/matlabfunctions.h" は
-      # build_inc/world/matlabfunctions.h として100%解決されます。
+      # -Ibuild_temp を指定。
+      # これにより "world/matlabfunctions.h" は build_temp/world/matlabfunctions.h として100%見つかる。
 
       - if: matrix.os == 'windows-latest'
         name: Build for Windows
@@ -46,7 +46,7 @@ jobs:
           g++ -shared -fPIC -o bin/vose_core.dll `
               src/vose_core.cpp `
               src/world/*.cpp `
-              -Ibuild_inc
+              -Ibuild_temp
 
       - if: matrix.os == 'macos-latest'
         name: Build for MacOS
@@ -54,7 +54,7 @@ jobs:
           clang++ -shared -fPIC -o bin/vose_core.dylib \
               src/vose_core.cpp \
               src/world/*.cpp \
-              -Ibuild_inc
+              -Ibuild_temp
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
