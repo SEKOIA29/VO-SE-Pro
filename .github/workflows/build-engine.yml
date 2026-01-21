@@ -19,27 +19,19 @@ jobs:
       - name: Create bin directory
         run: mkdir -p bin
 
-      # 1. WORLDが求める「world/xxx.h」というパスを物理的に作る
-      - name: Reconstruct world directory
+      # WORLDのソースが求める "world/xxx.h" という構造を一時的に作成する
+      - name: Reconstruct world directory for build
         shell: bash
         run: |
-          # すでに world フォルダがあれば消して作り直す（クリーンビルド）
-          rm -rf world
           mkdir -p world
-          # include/world 内の全ヘッダーを、ルートの world/ フォルダへコピー
+          # include/world フォルダにある .h をルートの world/ フォルダにコピー
           cp -f include/world/*.h world/ || true
           # vose_core.h もルートに置く
           cp -f include/vose_core.h ./ || true
           
-          # デバッグ用：フォルダの中身を表示
-          echo "Current directory structure:"
-          ls -F
-          echo "Inside world/:"
+          # 確認ログ（ビルド失敗時にファイルがあるか確認できる）
+          echo "Files in world/ folder:"
           ls world/
-
-      # 2. ビルド実行
-      # -I. (ドット) を指定することで、#include "world/matlabfunctions.h" が
-      # 「現在のフォルダにある world フォルダの中」から確実に見つかります。
 
       # --- Windows (g++) ---
       - if: matrix.os == 'windows-latest'
