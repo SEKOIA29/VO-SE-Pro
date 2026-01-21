@@ -13,6 +13,7 @@
 #include "world/dio.h"
 #include "world/stonemask.h"
 #include "world/constantnumbers.h"
+#include "world/audioio.h"
 
 extern "C" {
 
@@ -35,6 +36,17 @@ void FreeMatrix(double** matrix, int rows) {
     for (int i = 0; i < rows; ++i) delete[] matrix[i];
     delete[] matrix;
 }
+
+// 解析の核心部分（ループ内に追加予定）
+int x_length = getAudioLength(n->wav_path); 
+double* x = new double[x_length];
+int fs_actual, nbit;
+wavread(n->wav_path, &fs_actual, &nbit, x); // WAVを読み込む
+
+// CheapTrickで音色（スペクトラム）を解析
+CheapTrick(x, x_length, fs, time_axis.data(), f0.data(), f0_length, &ct_option, spectrogram);
+// D4Cでハスキーさを解析
+D4C(x, x_length, fs, time_axis.data(), f0.data(), f0_length, fft_size, &d4c_option, aperiodicity);
 
 /**
  * execute_render: Pythonからの指示で音声を合成する
