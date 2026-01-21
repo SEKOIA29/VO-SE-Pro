@@ -19,42 +19,42 @@ jobs:
       - name: Create bin directory
         run: mkdir -p bin
 
-      # --- ここが心臓部：住所を物理的に一致させる ---
-      - name: Setup Include Path
+      # 1. 物理的に「world/xxx.h」という構造を確実に構築
+      - name: Setup WORLD Headers
         shell: bash
         run: |
-          # 1. きれいな作業用フォルダを作る
-          mkdir -p build_temp/world
+          mkdir -p build_inc/world
+          # 小文字のファイルを確実にコピー
+          cp include/world/*.h build_inc/world/
+          cp include/vose_core.h build_inc/
           
-          # 2. あなたの include/world/ にある全 .h を build_temp/world/ へコピー
-          cp include/world/*.h build_temp/world/ || true
+          echo "Checking files in build_inc/world:"
+          ls "${{ github.workspace }}/build_inc/world"
           
-          # 3. vose_core.h も build_temp 直下に置く
-          cp include/vose_core.h build_temp/ || true
-          
-          # 4. 【デバッグ】もしここでファイルが出なければ、そもそもリポジトリにファイルがない
-          echo "Current build_temp structure:"
-          ls -R build_temp
+          # matlabfunctions.h が存在するかチェック（なければここでエラーにする）
+          if [ ! -f "build_inc/world/matlabfunctions.h" ]; then
+            echo "Error: matlabfunctions.h not found in build_inc/world"
+            exit 1
+          fi
 
-      # --- ビルド実行 ---
-      # -Ibuild_temp を指定。
-      # これにより "world/matlabfunctions.h" は build_temp/world/matlabfunctions.h として100%見つかる。
-
+      # 2. 絶対パスを使用してビルド実行
+      # Windows (g++)
       - if: matrix.os == 'windows-latest'
         name: Build for Windows
         run: |
           g++ -shared -fPIC -o bin/vose_core.dll `
               src/vose_core.cpp `
               src/world/*.cpp `
-              -Ibuild_temp
+              -I"${{ github.workspace }}/build_inc"
 
+      # MacOS (clang++)
       - if: matrix.os == 'macos-latest'
         name: Build for MacOS
         run: |
           clang++ -shared -fPIC -o bin/vose_core.dylib \
               src/vose_core.cpp \
               src/world/*.cpp \
-              -Ibuild_temp
+              -I"${{ github.workspace }}/build_inc"
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
