@@ -2,8 +2,10 @@
 #include <stdlib.h>
 #include <vector>
 
-// ビルド時に -I include を指定するため、パスは include/ からの相対で書く
-#include "vose_core.h"
+// 自分のヘッダー
+#include "vose_core.h" 
+
+// WORLDのヘッダー（パスを world/ から始める）
 #include "world/synthesis.h"
 #include "world/cheaptrick.h"
 #include "world/d4c.h"
