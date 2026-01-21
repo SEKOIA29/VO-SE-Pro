@@ -16,18 +16,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # フォルダ作成（既に存在してもエラーにしない設定）
       - name: Create bin directory
         run: mkdir -p bin
 
-      # ビルド用にヘッダーをルートに再配置
-      # Windows/Mac両対応のためシェルスクリプト形式で実行
-      - name: Reorganize WORLD headers
+      # 1. フォルダ構成を WORLD の想定に強制的に合わせる
+      - name: Setup Header Structure
         shell: bash
         run: |
-          mkdir -p world
-          cp include/world/*.h world/ || true
-          cp include/vose_core.h ./ || true
+          # 一旦整理
+          mkdir -p build_include/world
+          # 全てのヘッダーを build_include/world にコピー
+          cp include/world/*.h build_include/world/ || true
+          cp include/vose_core.h build_include/ || true
+
+      # 2. ビルド実行
+      # -Ibuild_include を指定することで、#include "world/fft.h" が
+      # build_include/world/fft.h として正しく解決されます。
 
       # --- Windows (g++) ---
       - if: matrix.os == 'windows-latest'
@@ -36,7 +40,7 @@ jobs:
           g++ -shared -fPIC -o bin/vose_core.dll `
               src/vose_core.cpp `
               src/world/*.cpp `
-              -I.
+              -Ibuild_include
 
       # --- MacOS (clang++) ---
       - if: matrix.os == 'macos-latest'
@@ -45,7 +49,7 @@ jobs:
           clang++ -shared -fPIC -o bin/vose_core.dylib \
               src/vose_core.cpp \
               src/world/*.cpp \
-              -I.
+              -Ibuild_include
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
