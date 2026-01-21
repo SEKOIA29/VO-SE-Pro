@@ -46,16 +46,16 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         NoteEvent* n = &notes[i];
         if (n->pitch_length <= 0 || n->pitch_curve == nullptr || n->wav_path == nullptr) continue;
 
-        // 1. WAV読み込み
-        int x_length = getAudioLength(n->wav_path);
+        // 1. WAV読み込み (エラー修正: 大文字スタート)
+        int x_length = GetAudioLength(n->wav_path);
         if (x_length <= 0) {
-            printf("  [Error] File not found: %s\n", n->wav_path);
+            printf("  [Error] File not found or empty: %s\n", n->wav_path);
             continue;
         }
         
         double* x = new double[x_length];
         int fs_actual, nbit;
-        wavread(n->wav_path, &fs_actual, &nbit, x);
+        WavRead(n->wav_path, &fs_actual, &nbit, x); // エラー修正: 大文字スタート
 
         // 2. 解析準備
         int f0_length = n->pitch_length;
@@ -69,7 +69,7 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         CheapTrickOption ct_option = { 0 };
         InitializeCheapTrickOption(fs, &ct_option);
         D4COption d4c_option = { 0 };
-        InitializeD4COption(&d4c_option); // 引数はポインタのみ
+        InitializeD4COption(&d4c_option); 
 
         int fft_size = GetFFTSizeForCheapTrick(fs, &ct_option);
         int spec_bins = fft_size / 2 + 1;
@@ -87,7 +87,7 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         Synthesis(f0_new.data(), f0_length, spectrogram, aperiodicity, fft_size, frame_period, fs, y_length, y);
 
         // 5. 出力
-        wavwrite(y, y_length, fs, 16, output_path);
+        WavWrite(y, y_length, fs, 16, output_path); // エラー修正: 大文字スタート
         printf("  [Success] Saved: %s\n", output_path);
 
         // 6. 解放
