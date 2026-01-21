@@ -441,6 +441,33 @@ class MainWindow(QMainWindow):
     # エンジン接続スロット
     # ==========================================================================
 
+    def prepare_rendering_data(self):
+        """GUIのノート情報をエンジン用のデータ構造に変換する"""
+        gui_notes = self.timeline_widget.get_all_notes()
+        song_data = []
+
+        for note in gui_notes:
+            # 1. MIDIノート番号を基本周波数(Hz)に変換
+            # 公式: f = 440 * 2^((n-69)/12)
+            base_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
+
+            # 2. 5msごとのフレーム数を計算 (例: 0.5秒なら100フレーム)
+            # WORLDエンジンは5ms(0.005s)間隔のデータを求める
+            num_frames = int(max(1, (note.duration * 1000) / 5))
+        
+            # 3. ピッチ配列の作成
+            # 本来はここで graph_editor_widget からピッチベンド値を取得して加算します
+            # 現時点では、安定した基本周波数の配列を作成
+            pitch_list = np.ones(num_frames, dtype=np.float32) * base_hz
+
+            song_data.append({
+                'lyric': note.lyrics,  # 「あ」「い」など
+                'pitch_list': pitch_list
+            })
+    
+        return song_data
+    
+    
     def start_playback(self):
         """再生ボタンが押された時の処理"""
         # タイムライン上のノートリストを取得（NoteEventオブジェクトのリスト）
