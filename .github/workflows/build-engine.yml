@@ -1,48 +1,48 @@
-name: Build VO-SE Pro (Multi-Platform)
+name: Build C++ Engine
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-      - name: Install dependencies
-        run: pip install numpy sounddevice librosa pyworld soundfile psutil PySide6 pyinstaller
-      - name: Build C++ Engine
-        run: |
-          if (!(Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" }
-          g++ -shared -fPIC -o bin/vose_core.dll src/vose_core.cpp
-      - name: Build EXE
-        run: pyinstaller --noconfirm --onedir --windowed --add-binary "bin/vose_core.dll;." main.py
-      - name: Upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: VO-SE_Pro_Windows
-          path: dist/main/
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        # WindowsとMacOSの両方でビルド
+        os: [windows-latest, macos-latest]
 
-  build-macos:
-    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-      - name: Install dependencies
-        run: pip install numpy sounddevice librosa pyworld soundfile psutil PySide6 pyinstaller
-      - name: Build C++ Engine
+
+      - name: Create bin directory
+        run: mkdir -p bin
+
+      # --- Windows (g++) ---
+      - if: matrix.os == 'windows-latest'
+        name: Build for Windows
         run: |
-          mkdir -p bin
-          clang++ -shared -fPIC -o bin/vose_core.dylib src/vose_core.cpp
-      - name: Build APP
-        run: pyinstaller --noconfirm --onedir --windowed --add-binary "bin/vose_core.dylib:." main.py
-      - name: Upload
+          g++ -shared -fPIC -o bin/vose_core.dll `
+              src/vose_core.cpp `
+              src/world/*.cpp `
+              -I include `
+              -I include/world
+
+      # --- MacOS (clang++) ---
+      - if: matrix.os == 'macos-latest'
+        name: Build for MacOS
+        run: |
+          clang++ -shared -fPIC -o bin/vose_core.dylib \
+              src/vose_core.cpp \
+              src/world/*.cpp \
+              -I include \
+              -I include/world
+
+      # ビルドされたファイルをGitHub上に保存（ダウンロード可能にする）
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: VO-SE_Pro_MacOS
-          path: dist/main/
+          name: vose-engine-${{ matrix.os }}
+          path: bin/
