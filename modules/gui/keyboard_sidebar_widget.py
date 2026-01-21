@@ -15,6 +15,11 @@ class KeyboardSidebarWidget(QWidget):
         self.label_font = QFont("Segoe UI", 7)
         self.label_font.setBold(True)
 
+    def set_vertical_offset(self, offset):
+        """メインウィンドウのスクロールバーから値を受け取る"""
+        self.vertical_offset = offset
+        self.update() # 再描画して位置をずらす
+
     def sizeHint(self) -> QSize:
         return QSize(50, 600)
 
