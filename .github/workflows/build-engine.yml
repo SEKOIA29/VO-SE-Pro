@@ -15,32 +15,25 @@ jobs:
       - name: Create bin directory
         run: mkdir -p bin
 
-      - name: Setup Include Path
-        shell: bash
-        run: |
-          mkdir -p build_temp/world
-          # 全てのヘッダーを強制コピー（audioio.hを含む）
-          cp include/world/*.h build_temp/world/
-          cp include/vose_core.h build_temp/
-          echo "Checked headers:"
-          ls build_temp/world/
-
-      - if: matrix.os == 'windows-latest'
-        name: Build for Windows
+      - name: Build for Windows
+        if: matrix.os == 'windows-latest'
         run: |
           g++ -shared -fPIC -o bin/vose_core.dll `
               src/vose_core.cpp `
               src/world/*.cpp `
-              -I"${{ github.workspace }}/build_temp"
+              -Iinclude `
+              -Iinclude/world
 
-      - if: matrix.os == 'macos-latest'
-        name: Build for MacOS
+      - name: Build for MacOS
+        if: matrix.os == 'macos-latest'
         run: |
           clang++ -shared -fPIC -o bin/vose_core.dylib \
               src/vose_core.cpp \
               src/world/*.cpp \
-              -I"${{ github.workspace }}/build_temp"
-
+              -Iinclude \
+              -Iinclude/world \
+              -undefined dynamic_lookup
+      
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
