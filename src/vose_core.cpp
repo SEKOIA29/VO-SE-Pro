@@ -16,6 +16,7 @@
 
 extern "C" {
 
+// メモリ確保ヘルパー
 double** AllocateMatrix(int rows, int cols) {
     double** matrix = new double*[rows];
     for (int i = 0; i < rows; ++i) {
@@ -30,8 +31,13 @@ void FreeMatrix(double** matrix, int rows) {
     delete[] matrix;
 }
 
+/**
+ * execute_render: メインの合成処理
+ */
 DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* output_path) {
     if (notes == nullptr || output_path == nullptr) return;
+
+    printf("[VO-SE Core] Rendering Engine v2.0 - Running\n");
 
     const int fs = 44100;           
     const double frame_period = 5.0; 
@@ -40,14 +46,18 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         NoteEvent* n = &notes[i];
         if (n->pitch_length <= 0 || n->pitch_curve == nullptr || n->wav_path == nullptr) continue;
 
-        // WAV読み込み
+        // 1. WAV読み込み
         int x_length = getAudioLength(n->wav_path);
-        if (x_length <= 0) continue;
+        if (x_length <= 0) {
+            printf("  [Error] File not found: %s\n", n->wav_path);
+            continue;
+        }
         
         double* x = new double[x_length];
         int fs_actual, nbit;
         wavread(n->wav_path, &fs_actual, &nbit, x);
 
+        // 2. 解析準備
         int f0_length = n->pitch_length;
         std::vector<double> f0_new(f0_length);
         std::vector<double> time_axis(f0_length);
@@ -59,7 +69,7 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         CheapTrickOption ct_option = { 0 };
         InitializeCheapTrickOption(fs, &ct_option);
         D4COption d4c_option = { 0 };
-        InitializeD4COption(&d4c_option);
+        InitializeD4COption(&d4c_option); // 引数はポインタのみ
 
         int fft_size = GetFFTSizeForCheapTrick(fs, &ct_option);
         int spec_bins = fft_size / 2 + 1;
@@ -67,19 +77,20 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         double** spectrogram = AllocateMatrix(f0_length, spec_bins);
         double** aperiodicity = AllocateMatrix(f0_length, spec_bins);
 
-        // 解析
+        // 3. 解析 (Analysis)
         CheapTrick(x, x_length, fs, time_axis.data(), f0_new.data(), f0_length, &ct_option, spectrogram);
         D4C(x, x_length, fs, time_axis.data(), f0_new.data(), f0_length, fft_size, &d4c_option, aperiodicity);
 
-        // 合成
+        // 4. 合成 (Synthesis)
         int y_length = (int)((f0_length - 1) * frame_period / 1000.0 * fs) + 1;
         double* y = new double[y_length];
         Synthesis(f0_new.data(), f0_length, spectrogram, aperiodicity, fft_size, frame_period, fs, y_length, y);
 
-        // 出力
+        // 5. 出力
         wavwrite(y, y_length, fs, 16, output_path);
+        printf("  [Success] Saved: %s\n", output_path);
 
-        // 解放
+        // 6. 解放
         delete[] x;
         delete[] y;
         FreeMatrix(spectrogram, f0_length);
@@ -89,4 +100,4 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
 
 DLLEXPORT float get_engine_version(void) { return 2.0f; }
 
-}
+} // extern "C"
