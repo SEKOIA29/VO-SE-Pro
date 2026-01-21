@@ -763,7 +763,17 @@ class MainWindow(QMainWindow):
 
     def setup_connections(self):
         """シグナル/スロット接続"""
+        # 1. 垂直スクロールの同期（鍵盤とノート）
+        self.v_scrollbar.valueChanged.connect(self.keyboard_sidebar.set_vertical_offset)
+        self.v_scrollbar.valueChanged.connect(self.timeline_widget.set_vertical_offset)
+
+        # 2. 水平スクロールの同期（ノートとピッチグラフ）
+        self.h_scrollbar.valueChanged.connect(self.timeline_widget.set_horizontal_offset)
+        self.h_scrollbar.valueChanged.connect(self.graph_editor_widget.set_horizontal_offset)  
+
+        # 3. データの更新通知
         self.timeline_widget.notes_changed_signal.connect(self.on_timeline_updated)
+        
 
     def setup_formant_slider(self):
         """フォルマントスライダーの設定"""
