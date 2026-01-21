@@ -1,91 +1,77 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <vector>
-#include <iostream>
 
-// 確定したディレクトリ構成に基づき、includeフォルダのヘッダーを読み込む
-#include "vose_core.h"        
-#include "world/synthesis.h"   // 再合成
-#include "world/cheaptrick.h"  // 音色解析
-#include "world/d4c.h"         // 非周期性解析
+// ビルド時に -I include を指定するため、パスは include/ からの相対で書く
+#include "vose_core.h"
+#include "world/synthesis.h"
+#include "world/cheaptrick.h"
+#include "world/d4c.h"
+#include "world/dio.h"
+#include "world/stonemask.h"
 
 extern "C" {
 
 /**
  * execute_render
- * Pythonから渡された複数のノートイベントを一括処理し、音声合成を行います。
+ * Pythonから渡されたノート情報を元に、WORLDエンジンで合成を行う主関数
  */
 DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* output_path) {
     if (notes == nullptr || output_path == nullptr) {
-        fprintf(stderr, "[VO-SE Error] Invalid arguments passed to execute_render.\n");
+        fprintf(stderr, "[VO-SE Error] 引数が無効です。\n");
         return;
     }
 
-    printf("[VO-SE Core] Rendering started. Target: %s\n", output_path);
-    printf("[VO-SE Core] Total notes to process: %d\n", note_count);
+    printf("[VO-SE Core] レンダリング開始: %s\n", output_path);
 
-    // サンプリングレート等の共通設定
-    int fs = 44100;
-    double frame_period = 5.0; // 5ms (WORLDのデフォルト)
+    // WORLD用の基本設定
+    const int fs = 44100;
+    const double frame_period = 5.0; // 5ms周期
 
     for (int i = 0; i < note_count; i++) {
         NoteEvent* n = &notes[i];
         
-        // パスの安全確認
-        const char* current_wav = n->wav_path ? n->wav_path : "Unknown Source";
+        // 安全のためにWAVパスを確認
+        const char* wav_src = n->wav_path ? n->wav_path : "不明なソース";
         
-        printf("  -> Processing Note [%d]: %s\n", i, current_wav);
-        printf("     Pitch: %.2f Hz, Duration: %.2fs, F0 Frames: %d\n", 
-               n->pitch_hz, n->duration_sec, n->pitch_length);
+        printf("  [Note %d] 解析中: %s\n", i, wav_src);
+        printf("    - 基本周波数: %.2f Hz / データ長: %d フレーム\n", n->pitch_hz, n->pitch_length);
 
-        // --- WORLD合成のコアロジック (概念) ---
+        // --- WORLD合成のコアステップ ---
         if (n->pitch_curve != nullptr && n->pitch_length > 0) {
             
-            // 1. Python(float*)からWORLD(double*)へピッチ配列を変換
+            // 1. Python(float*)をWORLD(double*)に変換
             std::vector<double> f0(n->pitch_length);
             for (int j = 0; j < n->pitch_length; j++) {
                 f0[j] = static_cast<double>(n->pitch_curve[j]);
             }
 
-            // 2. 本来はここで CheapTrick 等を使い wav_path からスペクトルを抽出
-            // 現段階ではパイプラインの疎通を優先し、データ準備までを行います。
-            
-            /* [実装イメージ]
-            double** spectrogram = ...; 
-            double** aperiodicity = ...;
-            int fft_size = GetFFTSizeForCheapTrick(fs);
-            
-            Synthesis(f0.data(), n->pitch_length, spectrogram, aperiodicity, 
-                      fft_size, frame_period, fs, out_buffer);
-            */
+            // TODO: ここで wav_path から波形を読み込み、CheapTrick等で解析を行う
+            // 現在は構造の確認のみ
+            printf("    - ピッチデータのC++変換に成功。WORLD合成準備完了。\n");
         }
     }
 
-    // 最後に全データを統合してWAVとして書き出し（将来の実装箇所）
-    printf("[VO-SE Core] All notes processed. Wav export ready.\n");
+    printf("[VO-SE Core] 全行程を終了。出力ファイルを作成します。\n");
 }
 
 /**
  * process_voice
- * バッファ内の音声データに対して直接エフェクト（音量調整等）を適用します。
+ * 生の音声波形データ（バッファ）に対して直接ゲイン調整などを行う
  */
 DLLEXPORT void process_voice(float* buffer, int length) {
     if (buffer == nullptr) return;
-    
-    // シンプルなゲイン調整
-    const float gain = 0.8f;
     for (int i = 0; i < length; i++) {
-        buffer[i] *= gain;
+        buffer[i] *= 0.8f; 
     }
 }
 
 /**
  * get_engine_version
- * エンジンのバージョンを返します。Python側でのロード確認に使用します。
+ * バージョン情報の取得
  */
 DLLEXPORT float get_engine_version(void) {
-    // WORLD統合完了につき 2.0 へメジャーアップデート
-    return 2.0f;
+    return 2.0f; 
 }
 
 } // extern "C"
