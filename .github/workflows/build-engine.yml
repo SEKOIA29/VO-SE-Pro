@@ -22,15 +22,20 @@ jobs:
       # --- Windows (g++) ---
       - if: matrix.os == 'windows-latest'
         name: Build for Windows
-        # 改行をなくし、1行で確実にパスを通すスタイルに変更
         run: |
-          g++ -shared -fPIC -o bin/vose_core.dll src/vose_core.cpp src/world/*.cpp "-Iinclude" "-Iinclude/world"
+          g++ -shared -fPIC -o bin/vose_core.dll `
+              src/vose_core.cpp `
+              src/world/*.cpp `
+              "-Iinclude"
 
       # --- MacOS (clang++) ---
       - if: matrix.os == 'macos-latest'
         name: Build for MacOS
         run: |
-          clang++ -shared -fPIC -o bin/vose_core.dylib src/vose_core.cpp src/world/*.cpp "-Iinclude" "-Iinclude/world"
+          clang++ -shared -fPIC -o bin/vose_core.dylib \
+              src/vose_core.cpp \
+              src/world/*.cpp \
+              "-Iinclude"
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
