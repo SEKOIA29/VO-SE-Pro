@@ -16,16 +16,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # フォルダ作成（既に存在してもエラーにしない設定）
       - name: Create bin directory
         run: mkdir -p bin
 
-      # --- ここがポイント：WORLDが期待するフォルダ構造を強制的に作る ---
-      - name: Reorganize WORLD headers for build
+      # ビルド用にヘッダーをルートに再配置
+      # Windows/Mac両対応のためシェルスクリプト形式で実行
+      - name: Reorganize WORLD headers
+        shell: bash
         run: |
           mkdir -p world
-          cp include/world/*.h world/ 2>/dev/null || copy include\world\*.h world\
-          # vose_core.h もカレントディレクトリに置いて確実に読み込めるようにする
-          cp include/vose_core.h ./ 2>/dev/null || copy include\vose_core.h .\
+          cp include/world/*.h world/ || true
+          cp include/vose_core.h ./ || true
 
       # --- Windows (g++) ---
       - if: matrix.os == 'windows-latest'
