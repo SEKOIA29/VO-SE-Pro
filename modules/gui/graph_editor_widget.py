@@ -28,6 +28,33 @@ class GraphEditorWidget(QWidget):
         self.drag_start_value = None
         self.tempo = 120.0
 
+    def prepare_rendering_data(self):
+        gui_notes = self.timeline_widget.get_all_notes()
+        song_data = []
+
+        for note in gui_notes:
+            base_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
+            num_frames = int(max(1, (note.duration * 1000) / 5))
+        
+            # --- ここが重要！グラフからピッチ補正を取得 ---
+            pitches = []
+            for i in range(num_frames):
+                # 5msごとの絶対時間を計算
+                current_time = note.start_time + (i * 0.005) 
+                # グラフマネージャーからその時間の「ベンド値（半音単位）」を取得
+                bend = self.graph_editor_widget.get_value_at(current_time) 
+            
+                # ベンド値を加味した周波数計算
+                hz = 440.0 * (2.0 ** ((note.note_number + bend - 69) / 12.0))
+                pitches.append(hz)
+             # ------------------------------------------
+
+            song_data.append({
+                'lyric': note.lyrics,
+                'pitch_list': np.array(pitches, dtype=np.float32)
+            })
+        return song_data
+
     # --- 座標変換ユーティリティ ---
     def time_to_x(self, seconds: float) -> float:
         beats = (seconds * self.tempo) / 60.0
@@ -87,6 +114,11 @@ class GraphEditorWidget(QWidget):
             # Y方向の移動距離をピッチ値に変換
             range_y = (self.height() / 2) * 0.9
             value_delta = -(delta_y /
+
+
+
+
+                            
 　
 
     
