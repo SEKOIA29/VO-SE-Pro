@@ -19,6 +19,25 @@ jobs:
       - name: Create bin directory
         run: mkdir -p bin
 
+      # 1. フォルダ構造の強制・大文字小文字対策
+      - name: Force setup WORLD structure
+        shell: bash
+        run: |
+          mkdir -p build_inc/world
+          # include/world フォルダから .h ファイルを全て build_inc/world にコピー
+          # ※ -L はシンボリックリンク対策、-f は上書き強制
+          cp -f include/world/*.h build_inc/world/ 2>/dev/null || true
+          # 自作ヘッダーも build_inc 直下に置く
+          cp -f include/vose_core.h build_inc/ 2>/dev/null || true
+          
+          # 確認ログ（ビルドに失敗した際、ここを見ればファイルがあるか分かります）
+          echo "Checking build_inc structure:"
+          ls -R build_inc
+
+      # 2. ビルド実行
+      # -Ibuild_inc を指定することで、コード内の #include "world/matlabfunctions.h" が 
+      # build_inc/world/matlabfunctions.h として100%解決されます。
+
       # --- Windows (g++) ---
       - if: matrix.os == 'windows-latest'
         name: Build for Windows
@@ -26,7 +45,7 @@ jobs:
           g++ -shared -fPIC -o bin/vose_core.dll `
               src/vose_core.cpp `
               src/world/*.cpp `
-              -Iinclude
+              -Ibuild_inc
 
       # --- MacOS (clang++) ---
       - if: matrix.os == 'macos-latest'
@@ -35,7 +54,7 @@ jobs:
           clang++ -shared -fPIC -o bin/vose_core.dylib \
               src/vose_core.cpp \
               src/world/*.cpp \
-              -Iinclude
+              -Ibuild_inc
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
