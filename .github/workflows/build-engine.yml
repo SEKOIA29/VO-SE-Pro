@@ -12,11 +12,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create bin directory
+      # Windows用のディレクトリ作成（PowerShell）
+      - if: matrix.os == 'windows-latest'
+        name: Create bin directory (Windows)
+        run: if (!(Test-Path bin)) { New-Item -ItemType Directory -Path bin }
+
+      # MacOS用のディレクトリ作成（Bash）
+      - if: matrix.os == 'macos-latest'
+        name: Create bin directory (MacOS)
         run: mkdir -p bin
 
-      - name: Build for Windows
-        if: matrix.os == 'windows-latest'
+      - if: matrix.os == 'windows-latest'
+        name: Build for Windows
         run: |
           g++ -shared -fPIC -o bin/vose_core.dll `
               src/vose_core.cpp `
@@ -24,8 +31,8 @@ jobs:
               -Iinclude `
               -Iinclude/world
 
-      - name: Build for MacOS
-        if: matrix.os == 'macos-latest'
+      - if: matrix.os == 'macos-latest'
+        name: Build for MacOS
         run: |
           clang++ -shared -fPIC -o bin/vose_core.dylib \
               src/vose_core.cpp \
