@@ -22,16 +22,24 @@ jobs:
       # --- Windows (g++) ---
       - if: matrix.os == 'windows-latest'
         name: Build for Windows
-        # -I. を追加して "world/fft.h" を "include/world/fft.h" ではなく "world/fft.h" として探させるための準備
-        # さらに、念のため include 自体もパスに入れます
         run: |
-          g++ -shared -fPIC -o bin/vose_core.dll src/vose_core.cpp src/world/*.cpp -I. -Iinclude
+          g++ -shared -fPIC -o bin/vose_core.dll `
+              src/vose_core.cpp `
+              src/world/*.cpp `
+              -Iinclude `
+              -Iinclude/world `
+              -Isrc
 
       # --- MacOS (clang++) ---
       - if: matrix.os == 'macos-latest'
         name: Build for MacOS
         run: |
-          clang++ -shared -fPIC -o bin/vose_core.dylib src/vose_core.cpp src/world/*.cpp -I. -Iinclude
+          clang++ -shared -fPIC -o bin/vose_core.dylib \
+              src/vose_core.cpp \
+              src/world/*.cpp \
+              -Iinclude \
+              -Iinclude/world \
+              -Isrc
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
