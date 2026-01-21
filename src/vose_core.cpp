@@ -1,25 +1,32 @@
-#include "world/synthesis.h" // cppworldのヘッダ
+#include "vose_core.h"
+#include "world/synthesis.h"   // 再合成用
+#include "world/cheaptrick.h"  // スペクトル解析用
 #include <vector>
+#include <cmath>
 
 extern "C" {
-    // Pythonから渡されたピッチ配列を元に、C++側で波形を生成する
-    DLLEXPORT float* process_and_synthesize(CNoteEvent* note, int* out_sample_count) {
-        
-        // 1. Pythonから届いた pitch_curve (float*) を doubleに変換
-        int num_frames = note->pitch_length;
-        std::vector<double> f0(num_frames);
-        for(int i=0; i<num_frames; ++i) f0[i] = (double)note->pitch_curve[i];
+    // Pythonから呼ばれるメイン関数
+    DLLEXPORT int process_vocal(CNoteEvent* note) {
+        if (!note || !note->pitch_curve) return -1;
 
-        // 2. スペクトル包絡(sp)と非周期性指標(ap)の準備
-        // ※ 本来はここで原音(WAV)の解析データが必要
+        // 1. 基本パラメータの準備
+        double frame_period = 5.0; // 5ms周期
+        int fs = 44100;           // サンプリングレート
+        int num_frames = note->pitch_length;
         
-        // 3. WORLD合成関数の呼び出し
-        // Synthesis(f0.data(), f0_length, spectrogram, aperiodicity, fft_size, frame_period, fs, y);
-        
-        // 4. 生成した波形を Python に返す
-        // ※ Python側で受け取れるようにメモリを確保してポインタを渡す
-        float* result_buffer = (float*)malloc(sizeof(float) * total_samples);
-        *out_sample_count = total_samples;
-        return result_buffer; 
+        // 2. Pythonから届いた float* のピッチ配列を WORLD用の double* にコピー
+        // (WORLDは精度のため double型を要求します)
+        std::vector<double> f0(num_frames);
+        for (int i = 0; i < num_frames; ++i) {
+            f0[i] = static_cast<double>(note->pitch_curve[i]);
+        }
+
+        // --- ここで本来は解析(CheapTrick / D4C)したデータを使いますが ---
+        // --- 移行の第一歩として、構造が正しいかチェックする処理をここに書きます ---
+
+        std::printf("[C++ WORLD] Synthesis ready for Note:%d, Frames:%d\n", 
+                    note->note_number, num_frames);
+
+        return 0; // 成功
     }
 }
