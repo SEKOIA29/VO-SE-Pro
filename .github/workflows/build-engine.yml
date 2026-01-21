@@ -11,7 +11,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        # WindowsとMacOSの両方でビルド
         os: [windows-latest, macos-latest]
 
     steps:
@@ -23,24 +22,16 @@ jobs:
       # --- Windows (g++) ---
       - if: matrix.os == 'windows-latest'
         name: Build for Windows
+        # 改行をなくし、1行で確実にパスを通すスタイルに変更
         run: |
-          g++ -shared -fPIC -o bin/vose_core.dll `
-              src/vose_core.cpp `
-              src/world/*.cpp `
-              -I include `
-              -I include/world
+          g++ -shared -fPIC -o bin/vose_core.dll src/vose_core.cpp src/world/*.cpp "-Iinclude" "-Iinclude/world"
 
       # --- MacOS (clang++) ---
       - if: matrix.os == 'macos-latest'
         name: Build for MacOS
         run: |
-          clang++ -shared -fPIC -o bin/vose_core.dylib \
-              src/vose_core.cpp \
-              src/world/*.cpp \
-              -I include \
-              -I include/world
+          clang++ -shared -fPIC -o bin/vose_core.dylib src/vose_core.cpp src/world/*.cpp "-Iinclude" "-Iinclude/world"
 
-      # ビルドされたファイルをGitHub上に保存（ダウンロード可能にする）
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
