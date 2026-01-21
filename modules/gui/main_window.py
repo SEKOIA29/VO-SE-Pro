@@ -1021,28 +1021,26 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def on_render_button_clicked(self):
-        """合成ボタンが押された時の動作"""
-        self.statusBar().showMessage("歌唱を生成中...")
-        
-        gui_notes = self.timeline_widget.get_notes_data()
-        if not gui_notes:
+        """合成ボタンの最終接続"""
+        self.statusBar().showMessage("レンダリング中...")
+    
+        # 1. データの準備
+        song_data = self.prepare_rendering_data()
+        if not song_data:
             self.statusBar().showMessage("ノートがありません")
             return
-        
-        if not self.lib:
-            QMessageBox.warning(self, "エラー", "レンダリングエンジンが利用できません")
-            return
-        
-        try:
-            # 簡易実装：プレビュー再生
-            audio_data = self.vo_se_engine.synthesize_track(
-                gui_notes, self.pitch_data, 0.0, 100.0
-            )
-            self.audio_player.play(audio_data)
-            self.statusBar().showMessage("レンダリング完了！")
-            
-        except Exception as e:
-            QMessageBox.critical(self, "エラー", f"レンダリングエラー: {e}")
+
+        # 2. C++エンジンでWAV生成
+        # vo_se_engine.py の render() を呼び出す
+        output_filename = "preview_render.wav"
+        result_path = self.vo_se_engine.render(song_data, output_filename)
+
+        # 3. 再生
+        if result_path and os.path.exists(result_path):
+            self.statusBar().showMessage("再生中...")
+            self.vo_se_engine.play_result(result_path)
+        else:
+            QMessageBox.critical(self, "エラー", "合成に失敗しました。DLLまたは音源パスを確認してください。")
 
     @Slot()
     def on_ai_button_clicked(self):
