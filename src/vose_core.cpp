@@ -16,7 +16,6 @@
 
 extern "C" {
 
-// メモリ確保ヘルパー
 double** AllocateMatrix(int rows, int cols) {
     double** matrix = new double*[rows];
     for (int i = 0; i < rows; ++i) {
@@ -31,13 +30,8 @@ void FreeMatrix(double** matrix, int rows) {
     delete[] matrix;
 }
 
-/**
- * execute_render: メインの合成処理
- */
 DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* output_path) {
     if (notes == nullptr || output_path == nullptr) return;
-
-    printf("[VO-SE Core] Rendering Engine v2.0 - Running\n");
 
     const int fs = 44100;           
     const double frame_period = 5.0; 
@@ -46,16 +40,13 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         NoteEvent* n = &notes[i];
         if (n->pitch_length <= 0 || n->pitch_curve == nullptr || n->wav_path == nullptr) continue;
 
-        // 1. WAV読み込み (エラー修正: 大文字スタート)
+        // 1. WAV読み込み (GetAudioLengthは大文字、wavreadは小文字)
         int x_length = GetAudioLength(n->wav_path);
-        if (x_length <= 0) {
-            printf("  [Error] File not found or empty: %s\n", n->wav_path);
-            continue;
-        }
+        if (x_length <= 0) continue;
         
         double* x = new double[x_length];
         int fs_actual, nbit;
-        WavRead(n->wav_path, &fs_actual, &nbit, x); // エラー修正: 大文字スタート
+        wavread(n->wav_path, &fs_actual, &nbit, x); 
 
         // 2. 解析準備
         int f0_length = n->pitch_length;
@@ -77,18 +68,17 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         double** spectrogram = AllocateMatrix(f0_length, spec_bins);
         double** aperiodicity = AllocateMatrix(f0_length, spec_bins);
 
-        // 3. 解析 (Analysis)
+        // 3. 解析
         CheapTrick(x, x_length, fs, time_axis.data(), f0_new.data(), f0_length, &ct_option, spectrogram);
         D4C(x, x_length, fs, time_axis.data(), f0_new.data(), f0_length, fft_size, &d4c_option, aperiodicity);
 
-        // 4. 合成 (Synthesis)
+        // 4. 合成
         int y_length = (int)((f0_length - 1) * frame_period / 1000.0 * fs) + 1;
         double* y = new double[y_length];
         Synthesis(f0_new.data(), f0_length, spectrogram, aperiodicity, fft_size, frame_period, fs, y_length, y);
 
-        // 5. 出力
-        WavWrite(y, y_length, fs, 16, output_path); // エラー修正: 大文字スタート
-        printf("  [Success] Saved: %s\n", output_path);
+        // 5. 出力 (wavwriteは小文字)
+        wavwrite(y, y_length, fs, 16, output_path);
 
         // 6. 解放
         delete[] x;
@@ -100,4 +90,4 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
 
 DLLEXPORT float get_engine_version(void) { return 2.0f; }
 
-} // extern "C"
+}
