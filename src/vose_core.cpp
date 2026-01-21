@@ -58,26 +58,28 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
             time_axis[j] = j * frame_period / 1000.0;
         }
 
-        // 2. スペクトラム包絡と非周期性成分のメモリ確保
-        // CheapTrickなどの解析結果を格納するために必要
-        int fft_size = GetFFTSizeForCheapTrick(fs);
+        // 2. WORLD解析用オプションの初期化（ここがエラーの修正ポイント）
+        CheapTrickOption ct_option = { 0 };
+        InitializeCheapTrickOption(fs, &ct_option);
+        
+        D4COption d4c_option = { 0 };
+        InitializeD4COption(fs, &d4c_option);
+
+        // FFTサイズとスペクトルビン数の計算
+        int fft_size = GetFFTSizeForCheapTrick(fs, &ct_option);
         int spec_bins = fft_size / 2 + 1;
         
+        // メモリ確保
         double** spectrogram = AllocateMatrix(f0_length, spec_bins);
         double** aperiodicity = AllocateMatrix(f0_length, spec_bins);
-
-        // --- 本来はここで wav_path を読み込み解析を行う ---
-        // 現時点では構造の完全化のため、解析器(CheapTrick/D4C)の準備だけ記述
-        printf("  [Note %d] Processing: FFT Size %d\n", i, fft_size);
 
         // 3. 合成 (Synthesis)
         // 合成される波形の長さを計算
         int y_length = (int)((f0_length - 1) * frame_period / 1000.0 * fs) + 1;
         double* y = new double[y_length];
 
-        // WORLD合成実行
-        // ※解析データが空なので、このままだと無音またはエラーですが
-        // 関数呼び出しとして完全な形にしています。
+        // --- 本来はこの直前で CheapTrick / D4C を回して音色を決定します ---
+        // Synthesis関数の呼び出し
         Synthesis(f0.data(), f0_length, spectrogram, aperiodicity, fft_size, frame_period, fs, y_length, y);
 
         printf("  [Note %d] Synthesis Completed. (Length: %d samples)\n", i, y_length);
@@ -96,3 +98,4 @@ DLLEXPORT float get_engine_version(void) {
 }
 
 } // extern "C"
+    
