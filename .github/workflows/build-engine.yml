@@ -3,69 +3,45 @@ name: Build VO-SE Pro (Multi-Platform)
 on:
   push:
     branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
 
 jobs:
-  # --- Windowsビルド ---
   build-windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-
       - name: Install dependencies
-        run: |
-          pip install numpy sounddevice librosa pyworld soundfile psutil PySide6 pyinstaller
-
-      - name: Build C++ Engine (DLL)
+        run: pip install numpy sounddevice librosa pyworld soundfile psutil PySide6 pyinstaller
+      - name: Build C++ Engine
         run: |
           if (!(Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" }
-          # g++を使用してDLLをビルド (vose_core.cppを想定)
-          g++ -shared -fPIC -o bin/vose_core.dll vose_core.cpp
-
-      - name: Build EXE with PyInstaller
-        run: |
-          # --add-binary でビルドしたDLLを同梱させる
-          pyinstaller --noconfirm --onedir --windowed --add-binary "bin/vose_core.dll;." main.py
-
-      - name: Upload Artifact
+          g++ -shared -fPIC -o bin/vose_core.dll src/vose_core.cpp
+      - name: Build EXE
+        run: pyinstaller --noconfirm --onedir --windowed --add-binary "bin/vose_core.dll;." main.py
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: VO-SE_Pro_Windows
           path: dist/main/
 
-  # --- MacOSビルド ---
   build-macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-
       - name: Install dependencies
-        run: |
-          pip install numpy sounddevice librosa pyworld soundfile psutil PySide6 pyinstaller
-
-      - name: Build C++ Engine (dylib)
+        run: pip install numpy sounddevice librosa pyworld soundfile psutil PySide6 pyinstaller
+      - name: Build C++ Engine
         run: |
           mkdir -p bin
-          # clang++を使用してdylibをビルド
-          clang++ -shared -fPIC -o bin/vose_core.dylib vose_core.cpp
-
-      - name: Build App Bundle
-        run: |
-          # Macではセミコロンではなくコロンで区切る
-          pyinstaller --noconfirm --onedir --windowed --add-binary "bin/vose_core.dylib:." main.py
-
-      - name: Upload Artifact
+          clang++ -shared -fPIC -o bin/vose_core.dylib src/vose_core.cpp
+      - name: Build APP
+        run: pyinstaller --noconfirm --onedir --windowed --add-binary "bin/vose_core.dylib:." main.py
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: VO-SE_Pro_MacOS
