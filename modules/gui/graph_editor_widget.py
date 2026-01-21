@@ -1,21 +1,21 @@
 #graph_editor_widget.py
 
+import numpy as np
 from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Qt, Signal, Slot, QRect, QPoint
+from PySide6.QtCore import Qt, Signal, Slot, QRect, QPoint, QPointF
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QPaintEvent, QMouseEvent
 from .data_models import PitchEvent
 
 class GraphEditorWidget(QWidget):
     pitch_data_changed = Signal(list) 
 
-    # MIDI Pitch Bendの定数
     PITCH_MAX = 8191
     PITCH_MIN = -8192
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumHeight(120)
-        self.setMouseTracking(True) # ホバー検知のため有効化
+        self.setMouseTracking(True)
         
         self.scroll_x_offset = 0
         self.pixels_per_beat = 40.0
@@ -25,37 +25,29 @@ class GraphEditorWidget(QWidget):
         self.editing_point_index = None
         self.hover_point_index = None
         self.drag_start_pos = None
-        self.drag_start_value = None
         self.tempo = 120.0
 
-    def prepare_rendering_data(self):
-        gui_notes = self.timeline_widget.get_all_notes()
-        song_data = []
+    # --- 1. エンジンへの接続ブリッジ用関数 ---
+    def get_value_at(self, time: float) -> float:
+        """指定時間のピッチ補正値を返す（半音単位）"""
+        if not self.pitch_events:
+            return 0.0
 
-        for note in gui_notes:
-            base_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
-            num_frames = int(max(1, (note.duration * 1000) / 5))
-        
-            # --- ここが重要！グラフからピッチ補正を取得 ---
-            pitches = []
-            for i in range(num_frames):
-                # 5msごとの絶対時間を計算
-                current_time = note.start_time + (i * 0.005) 
-                # グラフマネージャーからその時間の「ベンド値（半音単位）」を取得
-                bend = self.graph_editor_widget.get_value_at(current_time) 
-            
-                # ベンド値を加味した周波数計算
-                hz = 440.0 * (2.0 ** ((note.note_number + bend - 69) / 12.0))
-                pitches.append(hz)
-             # ------------------------------------------
+        events = sorted(self.pitch_events, key=lambda p: p.time)
 
-            song_data.append({
-                'lyric': note.lyrics,
-                'pitch_list': np.array(pitches, dtype=np.float32)
-            })
-        return song_data
+        if time <= events[0].time: return events[0].value / 4096.0
+        if time >= events[-1].time: return events[-1].value / 4096.0
 
-    # --- 座標変換ユーティリティ ---
+        for i in range(len(events) - 1):
+            p1, p2 = events[i], events[i+1]
+            if p1.time <= time <= p2.time:
+                t = (time - p1.time) / (p2.time - p1.time)
+                # 線形補間
+                val = p1.value + (p2.value - p1.value) * t
+                return val / 4096.0 # 4096 = 1半音として計算
+        return 0.0
+
+    # --- 2. 座標変換 ---
     def time_to_x(self, seconds: float) -> float:
         beats = (seconds * self.tempo) / 60.0
         return (beats * self.pixels_per_beat) - self.scroll_x_offset
@@ -68,56 +60,96 @@ class GraphEditorWidget(QWidget):
     def value_to_y(self, value: int) -> float:
         h = self.height()
         center_y = h / 2
-        # 上下5%のマージンを残して描画
-        range_y = center_y * 0.9
+        range_y = center_y * 0.8 # 余裕を持たせる
         return center_y - (value / self.PITCH_MAX) * range_y
 
     def y_to_value(self, y: float) -> int:
         h = self.height()
         center_y = h / 2
-        range_y = center_y * 0.9
+        range_y = center_y * 0.8
         val = -((y - center_y) / range_y) * self.PITCH_MAX
         return int(max(self.PITCH_MIN, min(self.PITCH_MAX, val)))
 
-    # --- スロット ---
-    @Slot(int)
-    def set_scroll_x_offset(self, offset_pixels: int):
-        self.scroll_x_offset = offset_pixels
-        self.update()
-
-    @Slot(float)
-    def set_current_time(self, time_in_seconds: float):
-        self._current_playback_time = time_in_seconds
-        self.update()
-
-    # --- イベント処理 ---
-    def mousePressEvent(self, event: QMouseEvent):
+    # --- 3. マウスイベント（編集機能） ---
+    def mouseDoubleClickEvent(self, event: QMouseEvent):
+        """ダブルクリックで新しい点を追加"""
         if event.button() == Qt.LeftButton:
-            pos = event.position()
+            time = self.x_to_time(event.position().x())
+            val = self.y_to_value(event.position().y())
+            new_point = PitchEvent(time=time, value=val)
+            self.pitch_events.append(new_point)
+            self.pitch_events.sort(key=lambda x: x.time)
+            self.pitch_data_changed.emit(self.pitch_events)
+            self.update()
+
+    def mousePressEvent(self, event: QMouseEvent):
+        pos = event.position()
+        if event.button() == Qt.LeftButton:
             self.editing_point_index = None
-            
             for i, p in enumerate(self.pitch_events):
                 px, py = self.time_to_x(p.time), self.value_to_y(p.value)
-                if QRect(int(px)-6, int(py)-6, 12, 12).contains(pos.toPoint()):
+                if QRect(int(px)-8, int(py)-8, 16, 16).contains(pos.toPoint()):
                     self.editing_point_index = i
                     self.drag_start_pos = pos
-                    self.drag_start_value = p.value
                     break
-            self.update()
+        elif event.button() == Qt.RightButton:
+            # 右クリックで点を削除
+            for i, p in enumerate(self.pitch_events):
+                px, py = self.time_to_x(p.time), self.value_to_y(p.value)
+                if QRect(int(px)-8, int(py)-8, 16, 16).contains(pos.toPoint()):
+                    self.pitch_events.pop(i)
+                    self.pitch_data_changed.emit(self.pitch_events)
+                    break
+        self.update()
 
     def mouseMoveEvent(self, event: QMouseEvent):
         pos = event.position()
-        
-        # ドラッグ編集
         if event.buttons() & Qt.LeftButton and self.editing_point_index is not None:
-            delta_y = pos.y() - self.drag_start_pos.y()
-            # Y方向の移動距離をピッチ値に変換
-            range_y = (self.height() / 2) * 0.9
-            value_delta = -(delta_y /
+            # ドラッグ移動（時間と値の両方を更新可能にする）
+            new_time = self.x_to_time(pos.x())
+            new_val = self.y_to_value(pos.y())
+            
+            p = self.pitch_events[self.editing_point_index]
+            p.time = max(0, new_time)
+            p.value = new_val
+            
+            # 再ソートが必要になる可能性があるが、ドラッグ中はインデックスが狂うので注意
+            self.pitch_data_changed.emit(self.pitch_events)
+        
+        # ホバー状態の更新
+        self.hover_point_index = None
+        for i, p in enumerate(self.pitch_events):
+            px, py = self.time_to_x(p.time), self.value_to_y(p.value)
+            if QRect(int(px)-8, int(py)-8, 16, 16).contains(pos.toPoint()):
+                self.hover_point_index = i
+                break
+        self.update()
 
+    def paintEvent(self, event: QPaintEvent):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # 背景
+        w, h = self.width(), self.height()
+        painter.fillRect(self.rect(), QColor(25, 25, 25))
 
+        # センターライン
+        painter.setPen(QPen(QColor(70, 70, 70), 1, Qt.DashLine))
+        painter.drawLine(0, h/2, w, h/2)
 
+        # データの描画
+        if len(self.pitch_events) >= 2:
+            painter.setPen(QPen(QColor(0, 255, 127), 2))
+            points = [QPointF(self.time_to_x(p.time), self.value_to_y(p.value)) for p in self.pitch_events]
+            for i in range(len(points) - 1):
+                painter.drawLine(points[i], points[i+1])
 
+        for i, p in enumerate(self.pitch_events):
+            px, py = self.time_to_x(p.time), self.value_to_y(p.value)
+            color = QColor(255, 255, 255) if i == self.hover_point_index else QColor(0, 255, 127)
+            painter.setBrush(QBrush(color))
+            painter.setPen(Qt.NoPen)
+            painter.drawEllipse(QPointF(px, py), 5, 5)
                             
 　
 
