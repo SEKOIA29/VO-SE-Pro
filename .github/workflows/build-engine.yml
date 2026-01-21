@@ -1,10 +1,6 @@
 name: Build C++ Engine
 
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+on: [push, pull_request]
 
 jobs:
   build:
@@ -16,39 +12,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # WindowsとMac両方で「エラーを出さずに」フォルダを作る
       - name: Create bin directory
-        shell: bash
         run: mkdir -p bin
 
-      # ヘッダーの再配置（これもBashで統一して確実性を高める）
-      - name: Setup WORLD Headers
+      - name: Setup Include Path
         shell: bash
         run: |
-          mkdir -p build_inc/world
-          cp include/world/*.h build_inc/world/
-          cp include/vose_core.h build_inc/
-          
-          echo "Checking files in build_inc/world:"
-          ls "${{ github.workspace }}/build_inc/world"
+          mkdir -p build_temp/world
+          # 全てのヘッダーを強制コピー（audioio.hを含む）
+          cp include/world/*.h build_temp/world/
+          cp include/vose_core.h build_temp/
+          echo "Checked headers:"
+          ls build_temp/world/
 
-      # --- Windows (g++) ---
       - if: matrix.os == 'windows-latest'
         name: Build for Windows
         run: |
           g++ -shared -fPIC -o bin/vose_core.dll `
               src/vose_core.cpp `
               src/world/*.cpp `
-              -I"${{ github.workspace }}/build_inc"
+              -I"${{ github.workspace }}/build_temp"
 
-      # --- MacOS (clang++) ---
       - if: matrix.os == 'macos-latest'
         name: Build for MacOS
         run: |
           clang++ -shared -fPIC -o bin/vose_core.dylib \
               src/vose_core.cpp \
               src/world/*.cpp \
-              -I"${{ github.workspace }}/build_inc"
+              -I"${{ github.workspace }}/build_temp"
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
