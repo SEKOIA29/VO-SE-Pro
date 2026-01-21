@@ -1,56 +1,91 @@
-##include <stdio.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <vector>
-#include "vose_core.h"        // 構造体定義
-#include "world/synthesis.h"  // WORLD合成
-#include "world/cheaptrick.h" // 音色解析（将来用）
+#include <iostream>
+
+// 確定したディレクトリ構成に基づき、includeフォルダのヘッダーを読み込む
+#include "vose_core.h"        
+#include "world/synthesis.h"   // 再合成
+#include "world/cheaptrick.h"  // 音色解析
+#include "world/d4c.h"         // 非周期性解析
 
 extern "C" {
 
-/* --- 関数1: レンダリング処理 (WORLD統合版) --- */
-DLLEXPORT void execute_render(CNoteEvent* notes, int note_count, const char* output_path) {
-    printf("[VO-SE Core] レンダリング開始: %s\n", output_path);
+/**
+ * execute_render
+ * Pythonから渡された複数のノートイベントを一括処理し、音声合成を行います。
+ */
+DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* output_path) {
+    if (notes == nullptr || output_path == nullptr) {
+        fprintf(stderr, "[VO-SE Error] Invalid arguments passed to execute_render.\n");
+        return;
+    }
+
+    printf("[VO-SE Core] Rendering started. Target: %s\n", output_path);
+    printf("[VO-SE Core] Total notes to process: %d\n", note_count);
+
+    // サンプリングレート等の共通設定
+    int fs = 44100;
+    double frame_period = 5.0; // 5ms (WORLDのデフォルト)
 
     for (int i = 0; i < note_count; i++) {
-        CNoteEvent* note = &notes[i];
+        NoteEvent* n = &notes[i];
         
-        if (note->pitch_length <= 0 || note->pitch_curve == nullptr) continue;
+        // パスの安全確認
+        const char* current_wav = n->wav_path ? n->wav_path : "Unknown Source";
+        
+        printf("  -> Processing Note [%d]: %s\n", i, current_wav);
+        printf("     Pitch: %.2f Hz, Duration: %.2fs, F0 Frames: %d\n", 
+               n->pitch_hz, n->duration_sec, n->pitch_length);
 
-        // 1. Pythonから届いた float配列を WORLD用の double配列に変換
-        std::vector<double> f0(note->pitch_length);
-        for (int j = 0; j < note->pitch_length; j++) {
-            f0[j] = static_cast<double>(note->pitch_curve[j]);
+        // --- WORLD合成のコアロジック (概念) ---
+        if (n->pitch_curve != nullptr && n->pitch_length > 0) {
+            
+            // 1. Python(float*)からWORLD(double*)へピッチ配列を変換
+            std::vector<double> f0(n->pitch_length);
+            for (int j = 0; j < n->pitch_length; j++) {
+                f0[j] = static_cast<double>(n->pitch_curve[j]);
+            }
+
+            // 2. 本来はここで CheapTrick 等を使い wav_path からスペクトルを抽出
+            // 現段階ではパイプラインの疎通を優先し、データ準備までを行います。
+            
+            /* [実装イメージ]
+            double** spectrogram = ...; 
+            double** aperiodicity = ...;
+            int fft_size = GetFFTSizeForCheapTrick(fs);
+            
+            Synthesis(f0.data(), n->pitch_length, spectrogram, aperiodicity, 
+                      fft_size, frame_period, fs, out_buffer);
+            */
         }
-
-        // 2. WORLD合成の準備 (サンプリングレートやフレーム周期の設定)
-        double frame_period = 5.0; // 5ms
-        int fs = 44100;
-        
-        // ※ 本来はここで CheapTrick 等で解析したスペクトルデータ(spectrogram)を使います
-        // 現時点では構造の疎通確認のため、ログ出力までを行います
-        printf("   [Note %d] Processing %d frames, Pitch[0]: %.2f Hz\n", 
-               i, note->pitch_length, f0[0]);
-
-        /* 実際の合成処理(例):
-           Synthesis(f0.data(), note->pitch_length, spectrogram, aperiodicity, 
-                     fft_size, frame_period, fs, out_wave);
-        */
     }
 
-    printf("[VO-SE Core] 全ノートの処理完了。\n");
+    // 最後に全データを統合してWAVとして書き出し（将来の実装箇所）
+    printf("[VO-SE Core] All notes processed. Wav export ready.\n");
 }
 
-/* --- 関数2: 音声エフェクト処理 --- */
+/**
+ * process_voice
+ * バッファ内の音声データに対して直接エフェクト（音量調整等）を適用します。
+ */
 DLLEXPORT void process_voice(float* buffer, int length) {
-    if (buffer == NULL) return;
+    if (buffer == nullptr) return;
+    
+    // シンプルなゲイン調整
+    const float gain = 0.8f;
     for (int i = 0; i < length; i++) {
-        buffer[i] *= 0.8f; // 音量調整
+        buffer[i] *= gain;
     }
 }
 
-/* --- 関数3: バージョン確認 --- */
+/**
+ * get_engine_version
+ * エンジンのバージョンを返します。Python側でのロード確認に使用します。
+ */
 DLLEXPORT float get_engine_version(void) {
-    return 2.0f; // WORLD統合版は 2.0
+    // WORLD統合完了につき 2.0 へメジャーアップデート
+    return 2.0f;
 }
 
 } // extern "C"
