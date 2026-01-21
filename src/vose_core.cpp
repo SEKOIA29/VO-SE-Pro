@@ -1,7 +1,6 @@
 #include <iostream>
-#include <vector>
+#include <cstdio>
 
-// WindowsとmacOS/Linuxでエクスポート宣言を切り替える
 #ifdef _WIN32
   #define DLLEXPORT __declspec(dllexport)
 #else
@@ -9,7 +8,6 @@
 #endif
 
 extern "C" {
-    // Python側の CNoteEvent とメモリレイアウトを完全に一致させる
     struct CNoteEvent {
         int note_number;
         float start_time;
@@ -19,20 +17,21 @@ extern "C" {
         float overlap;
         const char* phonemes[8];
         int phoneme_count;
-        float* pitch_curve; // Pythonから渡される float32 配列へのポインタ
-        int pitch_length;   // 配列の要素数
+        float* pitch_curve; // PythonのNumPy配列(float32)のポインタ
+        int pitch_length;
     };
 
-    // 音声処理のメイン関数
     DLLEXPORT int process_vocal(CNoteEvent* note) {
-        if (!note || !note->pitch_curve) {
-            return -1;
-        }
+        if (!note || !note->pitch_curve) return -1;
 
-        // 標準出力に出力（macOSのターミナルに表示されます）
-        std::printf("[Engine] Note:%d, Frames:%d, FirstPitch:%.2f Hz\n", 
-                    note->note_number, note->pitch_length, note->pitch_curve[0]);
+        // ビルド後のデバッグ用出力
+        std::printf("[C++ Core] Note:%d Start:%.2f Duration:%.2f Frames:%d\n", 
+                    note->note_number, note->start_time, note->duration, note->pitch_length);
         
-        return 0;
+        if (note->pitch_length > 0) {
+            std::printf("[C++ Core] Initial Pitch: %.2f Hz\n", note->pitch_curve[0]);
+        }
+        
+        return 0; // 成功
     }
 }
