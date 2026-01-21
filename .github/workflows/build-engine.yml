@@ -19,19 +19,22 @@ jobs:
       - name: Create bin directory
         run: mkdir -p bin
 
-      # WORLDのソースが求める "world/xxx.h" という構造を一時的に作成する
+      # 1. 物理的に "world" フォルダをルートに作ってヘッダーを放り込む
       - name: Reconstruct world directory for build
         shell: bash
         run: |
           mkdir -p world
-          # include/world フォルダにある .h をルートの world/ フォルダにコピー
           cp -f include/world/*.h world/ || true
-          # vose_core.h もルートに置く
           cp -f include/vose_core.h ./ || true
           
-          # 確認ログ（ビルド失敗時にファイルがあるか確認できる）
-          echo "Files in world/ folder:"
+          echo "Listing files in ./world/ to verify:"
           ls world/
+
+      # 2. ビルド実行
+      # -I. (カレントのworld/を探せる) 
+      # -Iinclude (vose_core.hを探せる)
+      # -Iinclude/world (直接ファイル名だけで探せる)
+      # この3段構えで、どんな include の書き方にも対応させます。
 
       # --- Windows (g++) ---
       - if: matrix.os == 'windows-latest'
@@ -40,7 +43,9 @@ jobs:
           g++ -shared -fPIC -o bin/vose_core.dll `
               src/vose_core.cpp `
               src/world/*.cpp `
-              -I.
+              -I. `
+              -Iinclude `
+              -Iinclude/world
 
       # --- MacOS (clang++) ---
       - if: matrix.os == 'macos-latest'
@@ -49,7 +54,9 @@ jobs:
           clang++ -shared -fPIC -o bin/vose_core.dylib \
               src/vose_core.cpp \
               src/world/*.cpp \
-              -I.
+              -I. \
+              -Iinclude \
+              -Iinclude/world
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
