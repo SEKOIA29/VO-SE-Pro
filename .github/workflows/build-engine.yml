@@ -27,8 +27,7 @@ jobs:
               src/vose_core.cpp `
               src/world/*.cpp `
               -Iinclude `
-              -Iinclude/world `
-              -Isrc
+              -Isrc/world
 
       # --- MacOS (clang++) ---
       - if: matrix.os == 'macos-latest'
@@ -38,8 +37,7 @@ jobs:
               src/vose_core.cpp \
               src/world/*.cpp \
               -Iinclude \
-              -Iinclude/world \
-              -Isrc
+              -Isrc/world
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
