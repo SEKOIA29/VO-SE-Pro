@@ -19,44 +19,42 @@ jobs:
       - name: Create bin directory
         run: mkdir -p bin
 
-      # --- ここが最重要：コンパイラが期待する「world/」フォルダを物理的に構築 ---
-      - name: Reconstruct world directory
+      # --- 物理的に "world" ディレクトリをルートに作ってヘッダーを放り込む ---
+      - name: Setup Header Structure
         shell: bash
         run: |
-          # 以前の残骸を削除してクリーンな環境を作る
-          rm -rf world_build
-          mkdir -p world_build/world
+          # クリーンなインクルード用フォルダを作成
+          mkdir -p build_inc/world
           
-          # include/world 以下の全ヘッダーを world_build/world/ へコピー
-          # これにより "world/matlabfunctions.h" というパスが物理的に成立する
-          cp include/world/*.h world_build/world/ || true
+          # 1. あなたの include/world/ 内の全ヘッダーを build_inc/world/ へコピー
+          cp include/world/*.h build_inc/world/ || true
           
-          # vose_core.h も含める
-          cp include/vose_core.h world_build/ || true
+          # 2. vose_core.h も build_inc 直下に置く
+          cp include/vose_core.h build_inc/ || true
           
-          # デバッグ用：構造をログに出力（ここでファイルがないならファイル欠損です）
-          echo "Build-time directory structure:"
-          ls -R world_build
+          # 【確認用ログ】ここでファイルがリストアップされなければ、リポジトリにファイルがありません
+          echo "Content of build_inc/world:"
+          ls build_inc/world/
 
-      # --- Windows (g++) ---
+      # --- ビルド実行 ---
+      # -Ibuild_inc を指定することで、#include "world/matlabfunctions.h" は
+      # build_inc/world/matlabfunctions.h として100%解決されます。
+
       - if: matrix.os == 'windows-latest'
         name: Build for Windows
-        # -Iworld_build を指定することで、#include "world/xxx.h" が 
-        # world_build/world/xxx.h として100%解決される
         run: |
           g++ -shared -fPIC -o bin/vose_core.dll `
               src/vose_core.cpp `
               src/world/*.cpp `
-              -Iworld_build
+              -Ibuild_inc
 
-      # --- MacOS (clang++) ---
       - if: matrix.os == 'macos-latest'
         name: Build for MacOS
         run: |
           clang++ -shared -fPIC -o bin/vose_core.dylib \
               src/vose_core.cpp \
               src/world/*.cpp \
-              -Iworld_build
+              -Ibuild_inc
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
