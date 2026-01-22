@@ -4,6 +4,8 @@ import numpy as np
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt, Signal, Slot, QRect, QPoint, QPointF
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QPaintEvent, QMouseEvent
+from PySide6.QtCore import Qt, QRect, QPoint, Signal, Slot
+from PySide6.QtGui import QPainter, QPen, QColor
 from .data_models import PitchEvent
 
 class GraphEditorWidget(QWidget):
@@ -34,6 +36,61 @@ class GraphEditorWidget(QWidget):
         self.hover_point_index = None
         self.drag_start_pos = None
         self.tempo = 120.0
+
+    self.setMinimumHeight(150)
+        
+        # 1. 全パラメーターを保持する辞書
+        self.all_parameters = {
+            "Pitch": [],
+            "Gender": [],
+            "Tension": [],
+            "Breath": []
+        }
+        
+        # 2. 現在の編集モードと色の定義
+        self.current_mode = "Pitch"
+        self.colors = {
+            "Pitch": QColor(52, 152, 219),   # 青
+            "Gender": QColor(231, 76, 60),  # 赤
+            "Tension": QColor(46, 204, 113), # 緑
+            "Breath": QColor(241, 196, 15)   # 黄
+        }
+
+    @Slot(str)
+    def set_mode(self, mode):
+        """MainWindowのボタンから呼ばれるモード切り替え"""
+        if mode in self.all_parameters:
+            self.current_mode = mode
+            self.update() # 描画更新（色が変わる）
+
+    # --- 描画ロジック ---
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # 背景
+        painter.fillRect(self.rect(), QColor(40, 40, 40))
+        
+        # 現在のモードに応じた色のペンを設定
+        current_color = self.colors.get(self.current_mode, Qt.white)
+        painter.setPen(QPen(current_color, 2))
+        
+        # 3. 現在選択されているモードの点（イベント）を描画
+        events = self.all_parameters[self.current_mode]
+        for i in range(len(events) - 1):
+            p1 = self.val_to_pixel(events[i])
+            p2 = self.val_to_pixel(events[i+1])
+            painter.drawLine(p1, p2)
+            
+        # (オプション) 他のパラメーターを薄くガイドとして表示したい場合はここでループを回す
+
+    # --- マウス操作（現在のモードのリストを編集） ---
+    def mouseMoveEvent(self, event):
+        # 現在のモードのリストに対してデータを追加・修正
+        new_event = self.pixel_to_val(event.position())
+        self.all_parameters[self.current_mode].append(new_event)
+        # 時間順にソートするロジックなどをここに入れる
+        self.update()
 
     # --- 1. エンジンへの接続ブリッジ用関数 ---
     def get_value_at(self, time: float) -> float:
