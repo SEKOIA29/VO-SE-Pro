@@ -649,12 +649,14 @@ class MainWindow(QMainWindow):
         panel_layout.addWidget(self.loop_button)
         
         # テンポ入力
-        self.tempo_label = QLabel("BPM:")
+        self.tempo_label = QLabel("BPM（テンポ）:")
         self.tempo_input = QLineEdit("120")
         self.tempo_input.setFixedWidth(60)
         self.tempo_input.returnPressed.connect(self.update_tempo_from_input)
         panel_layout.addWidget(self.tempo_label)
         panel_layout.addWidget(self.tempo_input)
+
+       
         
         # キャラクター選択
         panel_layout.addWidget(QLabel("Voice:"))
