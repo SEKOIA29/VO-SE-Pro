@@ -3,8 +3,9 @@
 #include <vector>
 #include <iostream>
 #include <algorithm> // std::max, std::min用
+#include <cmath>     // ← これを追加（pow関数を使用するために必要）
 
-#include "vose_core.h" 
+#include "vose_core.h"
 
 // WORLD Headers
 #include "world/synthesis.h"
