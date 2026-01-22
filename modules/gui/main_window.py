@@ -1216,24 +1216,35 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def on_export_button_clicked(self):
-        """WAV書き出し"""
-        notes = self.timeline_widget.notes_list
-        if not notes:
+        """WAV書き出し（統合版）"""
+        # 1. データの準備（最新のグラフとタイムラインをHz配列に変換）
+        song_data = self.prepare_rendering_data() 
+        if not song_data:
             QMessageBox.warning(self, "エラー", "書き出すノートがありません")
             return
 
+        # 2. 保存ダイアログ
         file_path, _ = QFileDialog.getSaveFileName(
             self, "音声ファイルを保存", "output.wav", "WAV Files (*.wav)"
         )
         
         if file_path:
+            self.statusBar().showMessage("WAV書き出し中...")
             try:
-                self.vo_se_engine.export_to_wav(notes, self.pitch_data, file_path)
-                QMessageBox.information(self, "完了", f"書き出し完了:\n{file_path}")
+                # 3. エンジンの render メソッドを呼び出す
+                # 第2引数にファイルパスを渡すと、ファイル保存モードで動くようにします
+                success_path = self.vo_se_engine.render(song_data, output_path=file_path)
+                
+                if success_path:
+                    QMessageBox.information(self, "完了", f"書き出しが完了しました:\n{file_path}")
+                    self.statusBar().showMessage("エクスポート完了")
+                else:
+                    raise Exception("合成エンジンでエラーが発生しました")
             except Exception as e:
                 QMessageBox.critical(self, "エラー", f"書き出し失敗: {e}")
+                self.statusBar().showMessage("エクスポート失敗")
 
-@Slot()
+    @Slot()
     def export_to_midi_file(self):  #同じクラスになるだけで9分の1だね
         """
         MIDIファイルエクスポート（標準的な1ノート1歌詞形式）
