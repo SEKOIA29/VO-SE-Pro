@@ -1239,16 +1239,16 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"MIDI読み込み失敗: {e}")
 
+
     @Slot()
     def on_export_button_clicked(self):
-        """WAV書き出し（統合版）"""
-        # 1. データの準備（最新のグラフとタイムラインをHz配列に変換）
-        song_data = self.prepare_rendering_data() 
-        if not song_data:
-            QMessageBox.warning(self, "エラー", "書き出すノートがありません")
+        """音声をファイルとして書き出す（全パラメーター統合版）"""
+        notes = self.timeline_widget.notes_list
+        if not notes:
+            # 遊び心のあるエラーメッセージを引き継ぎました
+            QMessageBox.warning(self, "エラーʕ⁎̯͡⁎ʔ༄", "ノートがありません")
             return
 
-        # 2. 保存ダイアログ
         file_path, _ = QFileDialog.getSaveFileName(
             self, "音声ファイルを保存", "output.wav", "WAV Files (*.wav)"
         )
@@ -1256,18 +1256,25 @@ class MainWindow(QMainWindow):
         if file_path:
             self.statusBar().showMessage("WAV書き出し中...")
             try:
-                # 3. エンジンの render メソッドを呼び出す
-                # 第2引数にファイルパスを渡すと、ファイル保存モードで動くようにします
-                success_path = self.vo_se_engine.render(song_data, output_path=file_path)
+                # 1. グラフエディタから「全てのレイヤー（Pitch, Gender等）」を取得
+                # graph_editor_widget.all_parameters は辞書形式 { "Pitch": [...], "Gender": [...] }
+                all_vocal_params = self.graph_editor_widget.all_parameters
                 
-                if success_path:
-                    QMessageBox.information(self, "完了", f"書き出しが完了しました:\n{file_path}")
-                    self.statusBar().showMessage("エクスポート完了")
-                else:
-                    raise Exception("合成エンジンでエラーが発生しました")
+                # 2. エンジンに「書き出し」を依頼
+                # 楽譜(notes) と 全調声データ(all_vocal_params) をまとめて送信！
+                self.vo_se_engine.export_to_wav(
+                    notes=notes, 
+                    parameters=all_vocal_params, 
+                    file_path=file_path
+                )
+                
+                QMessageBox.information(self, "完了", f"書き出し完了しました！:\n{file_path}")
+                self.statusBar().showMessage("エクスポート完了")
+
             except Exception as e:
-                QMessageBox.critical(self, "エラー", f"書き出し失敗: {e}")
+                QMessageBox.critical(self, "エラーʕ⁎̯͡⁎ʔ༄", f"書き出し失敗: {e}")
                 self.statusBar().showMessage("エクスポート失敗")
+                
 
     @Slot()
     def export_to_midi_file(self):  #同じクラスになるだけで9分の1だね
@@ -1391,31 +1398,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "エラーʕ⁎̯͡⁎ʔ༄", f"プロジェクトの読み込みに失敗しました:\n{e}")
 
 
-    @Slot()
-    def on_export_button_clicked(self):
-        """音声をファイルとして書き出す"""
-        notes = self.timeline_widget.notes_list
-        if not notes:
-            QMessageBox.warning(self, "エラーʕ⁎̯͡⁎ʔ༄", "ノートがありません")
-            return
 
-        # 保存先を指定（ここで好きな場所を選べます）
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "音声ファイルを保存", "output.wav", "WAV Files (*.wav)"
-        )
-        
-        if file_path:
-            try:
-                # 1. グラフエディタから最新のピッチデータを取得
-                pitch_data = self.graph_editor_widget.pitch_events
-                
-                # 2. エンジンに「書き出し」を依頼
-                # 内部で prepare_rendering_data 相当の処理を行い、WAVとして保存
-                self.vo_se_engine.export_to_wav(notes, pitch_data, file_path)
-                
-                QMessageBox.information(self, "完了", f"書き出し完了:\n{file_path}")
-            except Exception as e:
-                QMessageBox.critical(self, "エラーʕ⁎̯͡⁎ʔ༄", f"書き出し失敗: {e}")
 
     # ==========================================================================
     # 音源管理
