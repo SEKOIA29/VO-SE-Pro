@@ -64,7 +64,7 @@ class VO_SE_Engine:
                     print(f"○ Engine Core Connected: {path}")
                     return lib
                 except Exception as e:
-                    print(f"✖ Load Error: {e}")
+                    print(f"ʕ⁎̯͡⁎ʔ༄ Load Error: {e}")
         return None
 
     # --- 削られていた重要機能：高度な音源スキャン ---
