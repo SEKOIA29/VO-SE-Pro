@@ -892,6 +892,15 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Talkモード: '{text}' を展開しました")
         self.text_input.clear()
 
+
+    @Slot(QPushButton)
+    def on_param_mode_changed(self, button):
+        """パラメーター切り替えボタンが押された時の処理"""
+        mode = button.text()
+        # グラフエディタにモード変更を通知（色やデータの入れ替え）
+        self.graph_editor_widget.set_mode(mode)
+        self.statusBar().showMessage(f"編集モード: {mode}")
+
     
 
     # ==========================================================================
