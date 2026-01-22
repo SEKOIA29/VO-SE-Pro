@@ -7,6 +7,8 @@ import sys
 import numpy as np
 import sounddevice as sd
 import soundfile as sf
+import subprocess
+import wave
 
 # ==========================================================================
 # C言語エンジン互換の構造体定義 (ctypes)
@@ -25,11 +27,13 @@ class VO_SE_Engine:
     def __init__(self, voice_lib_dir="voices"):
         self.lib = self._load_core_library()
         self._temp_pitch_refs = []  # C++実行中のメモリ解放を防ぐ参照保持
+        self.sample_rate = 44100
         
         # 音源ライブラリのパス設定とインポート
         self.voice_lib_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", voice_lib_dir))
         self.oto_map = {}
         self.refresh_voice_library()
+        
 
     def _load_core_library(self):
         """ビルドした vose_core.dll / dylib をロード"""
