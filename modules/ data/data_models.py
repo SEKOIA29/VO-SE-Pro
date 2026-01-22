@@ -56,6 +56,25 @@ class NoteEvent:
         self.note_number = note_number  # MIDI番号 (60=C4)
         self.onset = onset              # 発音位置オフセット（AI赤線）
 
+    def to_dict(self):
+        return {
+            "start": self.start_time,
+            "duration": self.duration,
+            "note_num": self.note_number,
+            "lyrics": self.lyrics,
+            "onset": getattr(self, 'onset', 0.0)
+        }
+
+    @staticmethod
+    def from_dict(d):
+        return NoteEvent(
+            start_time=d["start"],
+            duration=d["duration"],
+            note_number=d["note_num"],
+            lyrics=d["lyrics"]
+        )
+
+    
     def __repr__(self):
         mode = "Talk" if self.pitch_end is not None else "Sing"
         return f"Note({mode}, pitch={self.note_number}, lyric='{self.lyric}', start={self.start_time:.2f}s)"
