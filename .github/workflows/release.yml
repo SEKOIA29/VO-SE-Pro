@@ -1,12 +1,14 @@
-name: Release VO-SE PRO
+name: Release VO-SE Pro
 
 on:
-  workflow_dispatch: # ボタン一つで手動実行可能にする
   push:
     tags:
-      - '*' # 全てのタグで発動（vなしでもOK）
-  release:
-    types: [published] # GitHubのWEB画面でReleaseを公開した時に発動
+      - '*' # タグがプッシュされたら発動
+  workflow_dispatch: # 手動実行も可能
+
+# ここが重要：書き込み権限を与える
+permissions:
+  contents: write
 
 jobs:
   build-and-release:
@@ -42,10 +44,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install PySide6 numpy sounddevice soundfile mido janome pyinstaller
 
-      # 3. PyInstaller によるパッケージング（パス指定を最も安全な形に変更）
+      # 3. PyInstaller によるパッケージング
       - name: Package with PyInstaller (Windows)
         if: matrix.os == 'windows-latest'
         run: |
+          # 確実にパスを通すため、bin/vose_core.dll を指定
           pyinstaller --windowed --noconsole --onefile --add-data "bin/vose_core.dll;bin" --name "VO-SE_PRO_Win" main.py
 
       - name: Package with PyInstaller (MacOS)
@@ -53,13 +56,18 @@ jobs:
         run: |
           pyinstaller --windowed --noconsole --onefile --add-data "bin/vose_core.dylib:bin" --name "VO-SE_PRO_Mac" main.py
 
-      # 4. 成果物のアップロード（ここが最も重要）
+      # 4. 成果物の確認（デバッグ用：パスに何があるかログに出す）
+      - name: List files in dist
+        run: ls -R dist
+        shell: bash
+
+      # 5. リリースへアップロード
       - name: Upload Assets to Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2 # 最新のv2を使用
         with:
-          # distフォルダ内のファイルを確実に見つける
+          # ワイルドカードを使用して、名前の微差を許容する
           files: |
-            dist/VO-SE_PRO_Win.exe
+            dist/*.exe
             dist/VO-SE_PRO_Mac
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
