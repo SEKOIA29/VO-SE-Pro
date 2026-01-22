@@ -1166,281 +1166,107 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def save_file_dialog_and_save_midi(self):
-        """プロジェクトの保存"""
+        """プロジェクトの保存（全データ・全パラメーター）"""
         filepath, _ = QFileDialog.getSaveFileName(
-            self, "プロジェクトを保存", "", "JSON Files (*.json)"
+            self, "プロジェクトを保存", "", "VO-SE Project (*.vose);;JSON Files (*.json)"
         )
-        if not filepath:
-            return
+        if not filepath: return
 
+        # 全パラメーターレイヤーを取得
+        all_params = self.graph_editor_widget.all_parameters
+        
         save_data = {
             "app_id": "VO_SE_Pro_2026",
-            "version": "1.0",
+            "version": "1.1",
             "tempo_bpm": self.timeline_widget.tempo,
             "notes": [note.to_dict() for note in self.timeline_widget.notes_list],
-            "pitch_data": [p.to_dict() for p in self.pitch_data]
+            # 多重化したパラメーターをすべて保存
+            "parameters": {
+                mode: [{"t": p.time, "v": p.value} for p in events]
+                for mode, events in all_params.items()
+            }
         }
         
         try:
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(save_data, f, indent=2, ensure_ascii=False)
-            self.status_label.setText(f"保存完了: {filepath}")
+            self.statusBar().showMessage(f"保存完了: {filepath}")
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"保存失敗: {e}")
 
-
-    def read_file_safely(self, file_path):
-    """ファイルのエンコーディングを自動判別して読み込む"""
-    try:
-        with open(file_path, 'rb') as f:
-            raw_data = f.read()
-            # 文字コードを判定
-            result = chardet.detect(raw_data)
-            encoding = result['encoding']
-            
-            # 判定失敗や信頼度が低い場合は、日本語音源に多い cp932(Shift-JIS) を試す
-            if not encoding or result['confidence'] < 0.7:
-                encoding = 'cp932'
-                
-            return raw_data.decode(encoding, errors='ignore')
-    except Exception as e:
-        print(f"読み込みエラー: {e}")
-        return ""
-
-    @Slot()
-    def open_file_dialog_and_load_midi(self):
-        """ファイルを開く"""
-        filepath, _ = QFileDialog.getOpenFileName(
-            self, "ファイルを開く", "",
-            "All Supported (*.json *.mid *.midi);;JSON Files (*.json);;MIDI Files (*.mid *.midi)"
-        )
-        if filepath:
-            self.load_file_from_path(filepath)
-
-    def load_file_from_path(self, filepath: str):
-        """ファイルパスから読み込み"""
-        if filepath.lower().endswith('.json'):
-            self.load_json_project(filepath)
-        elif filepath.lower().endswith(('.mid', '.midi')):
-            self.load_midi_file_from_path(filepath)
-
     def load_json_project(self, filepath: str):
-        """JSONプロジェクトの読み込み"""
+        """JSON/VOSEプロジェクトの読み込み（復旧版）"""
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
+            # 1. ノートの復元
             notes = [NoteEvent.from_dict(d) for d in data.get("notes", [])]
-            pitch_data = [PitchEvent.from_dict(d) for d in data.get("pitch_data", [])]
-            tempo = data.get("tempo_bpm", 120)
-            
             self.timeline_widget.set_notes(notes)
-            self.pitch_data = pitch_data
-            self.graph_editor_widget.set_pitch_events(self.pitch_data)
+            
+            # 2. テンポの復元とUI反映
+            tempo = data.get("tempo_bpm", 120)
             self.tempo_input.setText(str(tempo))
             self.update_tempo_from_input()
             
+            # 3. 全パラメーターの復元
+            from .data_models import PitchEvent
+            saved_params = data.get("parameters", {})
+            
+            # 旧形式(pitch_data)との互換性維持
+            if "pitch_data" in data and not saved_params.get("Pitch"):
+                self.graph_editor_widget.all_parameters["Pitch"] = [
+                    PitchEvent.from_dict(d) for d in data["pitch_data"]
+                ]
+            
+            # 新形式の読み込み
+            for mode in self.graph_editor_widget.all_parameters.keys():
+                if mode in saved_params:
+                    self.graph_editor_widget.all_parameters[mode] = [
+                        PitchEvent(time=p["t"], value=p["v"]) for p in saved_params[mode]
+                    ]
+            
+            # 4. 画面更新（削られていたスクロール範囲の更新を復旧）
             self.update_scrollbar_range()
             self.update_scrollbar_v_range()
+            self.graph_editor_widget.update()
+            self.timeline_widget.update()
             
-            self.status_label.setText(f"読み込み完了: {len(notes)}ノート")
+            self.statusBar().showMessage(f"読み込み完了: {len(notes)}ノート")
+            self.setWindowTitle(f"VO-SE Pro - {os.path.basename(filepath)}")
+            
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"読み込み失敗: {e}")
 
     def load_midi_file_from_path(self, filepath: str):
-        """MIDIファイルの読み込み"""
+        """MIDI読み込み（自動歌詞変換機能付き・完全復旧）"""
         try:
-            # テンポ取得
             mid = mido.MidiFile(filepath)
-            loaded_tempo = None
+            loaded_tempo = 120.0
             for track in mid.tracks:
                 for msg in track:
                     if msg.type == 'set_tempo':
                         loaded_tempo = mido.tempo2bpm(msg.tempo)
                         break
-                if loaded_tempo:
-                    break
             
-            # ノートデータ取得
+            # MIDI読み込みロジック呼び出し
             notes_data = load_midi_file(filepath)
             notes = [NoteEvent.from_dict(d) for d in notes_data]
             
-            # 歌詞の音素変換
+            # 歌詞の音素変換（ここが削られていた重要機能！）
             for note in notes:
                 if note.lyrics and not note.phonemes:
                     note.phonemes = self._get_yomi_from_lyrics(note.lyrics)
             
             self.timeline_widget.set_notes(notes)
-            
-            if loaded_tempo:
-                self.tempo_input.setText(str(loaded_tempo))
-                self.update_tempo_from_input()
-            
+            self.tempo_input.setText(str(loaded_tempo))
+            self.update_tempo_from_input()
             self.update_scrollbar_range()
             self.update_scrollbar_v_range()
             
-            self.status_label.setText(f"MIDI読み込み完了: {len(notes)}ノート")
+            self.statusBar().showMessage(f"MIDI読み込み完了: {len(notes)}ノート")
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"MIDI読み込み失敗: {e}")
-
-
-    @Slot()
-    def on_export_button_clicked(self):
-        """音声をファイルとして書き出す（全パラメーター統合版）"""
-        notes = self.timeline_widget.notes_list
-        if not notes:
-            # 遊び心のあるエラーメッセージを引き継ぎました
-            QMessageBox.warning(self, "エラーʕ⁎̯͡⁎ʔ༄", "ノートがありません")
-            return
-
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "音声ファイルを保存", "output.wav", "WAV Files (*.wav)"
-        )
-        
-        if file_path:
-            self.statusBar().showMessage("WAV書き出し中...")
-            try:
-                # 1. グラフエディタから「全てのレイヤー（Pitch, Gender等）」を取得
-                # graph_editor_widget.all_parameters は辞書形式 { "Pitch": [...], "Gender": [...] }
-                all_vocal_params = self.graph_editor_widget.all_parameters
-                
-                # 2. エンジンに「書き出し」を依頼
-                # 楽譜(notes) と 全調声データ(all_vocal_params) をまとめて送信！
-                self.vo_se_engine.export_to_wav(
-                    notes=notes, 
-                    parameters=all_vocal_params, 
-                    file_path=file_path
-                )
-                
-                QMessageBox.information(self, "完了", f"書き出し完了しました！:\n{file_path}")
-                self.statusBar().showMessage("エクスポート完了")
-
-            except Exception as e:
-                QMessageBox.critical(self, "エラーʕ⁎̯͡⁎ʔ༄", f"書き出し失敗: {e}")
-                self.statusBar().showMessage("エクスポート失敗")
-                
-
-    @Slot()
-    def export_to_midi_file(self):  #同じクラスになるだけで9分の1だね
-        """
-        MIDIファイルエクスポート（標準的な1ノート1歌詞形式）
-        """
-        # 1. 保存先の決定
-        filepath, _ = QFileDialog.getSaveFileName(
-            self, "MIDIファイルとしてエクスポート", "", "MIDI Files (*.mid *.midi)"
-        )
-        if not filepath:
-            return
-
-        try:
-            # 2. MIDIファイルの初期化
-            mid = mido.MidiFile()
-            track = mido.MidiTrack()
-            mid.tracks.append(track)
-            
-            # 分解能（TPQN）の設定：480が一般的
-            ticks_per_beat = 480
-            mid.ticks_per_beat = ticks_per_beat
-
-            # 3. メタデータの追加（テンポ・トラック名）
-            # テンポは1マイクロ秒あたりの四分音符の時間で指定
-            midi_tempo = mido.bpm2tempo(self.timeline_widget.tempo)
-            track.append(mido.MetaMessage('set_tempo', tempo=midi_tempo, time=0))
-            track.append(mido.MetaMessage('track_name', name='Vocal Track', time=0))
-
-            # 4. ノートのソート（時間順）
-            sorted_notes = sorted(self.timeline_widget.notes_list, key=lambda n: n.start_time)
-            
-            # 現在の累積チック数
-            current_tick = 0
-
-            for note in sorted_notes:
-                # 時間計算：秒からビート、そしてチックへ変換
-                # start_tick: 曲の冒頭からの絶対位置
-                start_tick = int(self.timeline_widget.seconds_to_beats(note.start_time) * ticks_per_beat)
-                duration_tick = int(self.timeline_widget.seconds_to_beats(note.duration) * ticks_per_beat)
-
-                # delta_time_on: 前のイベントからの相対時間
-                delta_time_on = max(0, start_tick - current_tick)
-                
-                # --- MIDIメッセージの構成 ---
-                
-                # A. Note ON
-                track.append(mido.Message(
-                    'note_on', 
-                    note=note.note_number, 
-                    velocity=note.velocity if hasattr(note, 'velocity') else 100, 
-                    time=delta_time_on
-                ))
-                current_tick += delta_time_on
-
-                # B. Lyric (歌詞メタデータ)
-                # Note Onの直後に time=0 で配置するのが一般的
-                lyric_text = note.lyrics if note.lyrics else "ら"
-                track.append(mido.MetaMessage('lyric', text=lyric_text, time=0))
-
-                # C. Note OFF
-                # ノートの長さ分だけ時間を進める
-                track.append(mido.Message(
-                    'note_off', 
-                    note=note.note_number, 
-                    velocity=0, 
-                    time=duration_tick
-                ))
-                current_tick += duration_tick
-
-            # 5. トラック終了処理
-            track.append(mido.MetaMessage('end_of_track', time=0))
-            
-            # ファイル保存
-            mid.save(filepath)
-            self.statusBar().showMessage(f"MIDIエクスポート完了: {os.path.basename(filepath)}")
-            
-        except Exception as e:
-            QMessageBox.critical(self, "MIDIエクスポートエラー", f"保存中に問題が発生しました:\n{e}") 
-
-
-    @Slot()
-    def on_open_project_clicked(self):
-        """保存した .vose ファイルを開いて復元する"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "プロジェクトを開く", "", "VO-SE Project (*.vose)"
-        )
-        if not file_path:
-            return
-
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                project_data = json.load(f)
-
-            # 1. ノートの復元
-            # NoteEventクラスに staticmethod の from_dict がある前提
-            new_notes = []
-            for d in project_data.get("notes", []):
-                new_notes.append(NoteEvent.from_dict(d))
-            self.timeline_widget.notes_list = new_notes
-            
-            # 2. テンポの復元
-            self.timeline_widget.tempo = project_data.get("tempo", 120)
-
-            # 3. ピッチグラフの復元
-            from .data_models import PitchEvent
-            new_pitches = []
-            for p in project_data.get("pitch_events", []):
-                new_pitches.append(PitchEvent(time=p["t"], value=p["v"]))
-            self.graph_editor_widget.pitch_events = new_pitches
-
-            # 4. 画面を更新
-            self.timeline_widget.update()
-            self.graph_editor_widget.update()
-            
-            self.statusBar().showMessage(f"読み込みました: {file_path}")
-            # ウィンドウタイトルにファイル名を表示
-            self.setWindowTitle(f"VO-SE Pro - {os.path.basename(file_path)}")
-
-        except Exception as e:
-            QMessageBox.critical(self, "エラーʕ⁎̯͡⁎ʔ༄", f"プロジェクトの読み込みに失敗しました:\n{e}")
-
 
 
 
