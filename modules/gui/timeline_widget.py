@@ -1,15 +1,13 @@
 #timeline_widget.py
-import json, os, time, threading
+
+import json, os, time
 from PySide6.QtWidgets import QWidget, QApplication, QInputDialog, QLineEdit
-from PySide6.QtCore import Qt, QRect, Signal, Slot
-from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QMouseEvent, QPaintEvent, QKeyEvent, QWheelEvent, QClipboard
-from data_models import NoteEvent
+from PySide6.QtCore import Qt, QRect, Signal, Slot, QPoint
+from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QMouseEvent, QPaintEvent, QKeyEvent
+from .data_models import NoteEvent
 from janome.tokenizer import Tokenizer
 
 class TimelineWidget(QWidget):
-    # シグナル定義
-    zoom_changed_signal = Signal()
-    vertical_zoom_changed_signal = Signal()
     notes_changed_signal = Signal()
 
     def __init__(self, parent=None):
@@ -21,162 +19,143 @@ class TimelineWidget(QWidget):
         self.notes_list: list[NoteEvent] = []
         self.tempo = 120
         self.pixels_per_beat = 40.0
-        self.key_height_pixels = 12.0
-        self.lowest_note_display = 24  # C1付近
+        self.key_height_pixels = 20.0 # 少し大きくして操作性向上
+        self.lowest_note_display = 36 # C2
         self.scroll_x_offset = 0
         self.scroll_y_offset = 0
         self._current_playback_time = 0.0
-        self.quantize_resolution = 0.25  # 16分音符
+        self.quantize_resolution = 0.25 # 16分音符
         
         # --- 編集・ドラッグ状態 ---
-        self.edit_mode = None  # 'move', 'resize', 'select_box', 'ONSET'
+        self.edit_mode = None 
         self.target_note = None
-        self.selection_start_pos = None
-        self.selection_end_pos = None
-        self.is_additive_selection_mode = False
-        
-        # --- 外部ツール ---
+        self.drag_start_pos = None
+        self.selection_rect = QRect()
         self.tokenizer = Tokenizer()
-        # 必要に応じてエンジンを初期化（wrapperがある場合）
-        # self.engine = VoSeEngineWrapper() 
 
-    # --- ヘルパー関数 ---
-    def seconds_to_beats(self, seconds: float) -> float:
-        return seconds / (60.0 / self.tempo)
+    # --- 座標変換・ユーティリティ ---
+    def seconds_to_beats(self, s): return s / (60.0 / self.tempo)
+    def beats_to_seconds(self, b): return b * (60.0 / self.tempo)
+    def quantize(self, val): return round(val / self.quantize_resolution) * self.quantize_resolution
 
-    def beats_to_seconds(self, beats: float) -> float:
-        return beats * (60.0 / self.tempo)
-
-    def quantize_value(self, value, resolution):
-        return round(value / resolution) * resolution if resolution > 0 else value
-
-    #-----
-
-    def set_notes(self, notes_list):
-        """新しいノートリストをセットして再描画する"""
-        self.notes_list = notes_list
-        self.update() # これで画面が書き換わります
-
-    # --- 描画ロジック ---
-    def paintEvent(self, event: QPaintEvent):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.fillRect(event.rect(), QColor(30, 30, 30)) # ダーク背景
-
-        # 1. グリッド描画
-        self._draw_grid(painter)
-
-        # 2. ノートと解析線の描画
-        for note in self.notes_list:
-            # 座標計算
-            start_beat = self.seconds_to_beats(note.start_time)
-            duration_beat = self.seconds_to_beats(note.duration)
-            
-            x = int(start_beat * self.pixels_per_beat - self.scroll_x_offset)
-            y = int((self.lowest_note_display + 60 - note.note_number) * self.key_height_pixels - self.scroll_y_offset)
-            w = int(duration_beat * self.pixels_per_beat)
-            h = int(self.key_height_pixels)
-
-            # ノート本体
-            rect = QRect(x, y, w, h)
-            color = QColor(0, 150, 255)
-            if note.is_selected: color = QColor(255, 200, 0)
-            elif note.is_playing: color = QColor(255, 100, 100)
-            
-            painter.setBrush(QBrush(color))
-            painter.setPen(QPen(Qt.black, 1))
-            painter.drawRect(rect)
-            
-            if note.lyrics:
-                painter.setPen(Qt.white)
-                painter.drawText(rect, Qt.AlignCenter, note.lyrics)
-
-            # --- AI解析線（Onset）の描画 ---
-            if hasattr(note, 'has_analysis') and note.has_analysis:
-                onset_beat = self.seconds_to_beats(note.start_time + note.onset)
-                onset_x = int(onset_beat * self.pixels_per_beat - self.scroll_x_offset)
-                
-                # 赤い縦線（ドラッグ可能）
-                painter.setPen(QPen(QColor(255, 50, 50), 2))
-                painter.drawLine(onset_x, y, onset_x, y + h)
-
-        # 3. 再生カーソル
-        cursor_x = self.seconds_to_beats(self._current_playback_time) * self.pixels_per_beat - self.scroll_x_offset
-        painter.setPen(QPen(QColor(255, 50, 50), 2))
-        painter.drawLine(int(cursor_x), 0, int(cursor_x), self.height())
-
-    def _draw_grid(self, painter):
-        # 垂直線（拍・小節）
-        painter.setPen(QPen(QColor(60, 60, 60), 1))
-        for i in range(100): # 簡易的に100拍分
-            x = i * self.pixels_per_beat - self.scroll_x_offset
-            if i % 4 == 0: painter.setPen(QPen(QColor(100, 100, 100), 2))
-            else: painter.setPen(QPen(QColor(60, 60, 60), 1))
-            painter.drawLine(int(x), 0, int(x), self.height())
-
-    # --- マウスイベント (統合版) ---
-    def mousePressEvent(self, event: QMouseEvent):
-        pos = event.position()
-        self.drag_start_pos = pos
-        
-        # Onset線の判定を優先
-        for note in self.notes_list:
-            if not getattr(note, 'has_analysis', False): continue
-            onset_x = self.seconds_to_beats(note.start_time + note.onset) * self.pixels_per_beat - self.scroll_x_offset
-            if abs(pos.x() - onset_x) < 7:
-                self.target_note = note
-                self.edit_mode = "ONSET"
-                return
-
-        # 通常のノート判定
-        clicked_note = None
-        for note in self.notes_list:
-            # 矩形判定ロジック（簡略化して記述）
-            if self._get_note_rect(note).contains(pos.toPoint()):
-                clicked_note = note
-                break
-        
-        if clicked_note:
-            self.target_note = clicked_note
-            self.edit_mode = "move"
-            clicked_note.is_selected = True
-        else:
-            self.edit_mode = "select_box"
-        self.update()
-
-    def _get_note_rect(self, note):
+    def get_note_rect(self, note):
         x = int(self.seconds_to_beats(note.start_time) * self.pixels_per_beat - self.scroll_x_offset)
-        y = int((self.lowest_note_display + 60 - note.note_number) * self.key_height_pixels - self.scroll_y_offset)
+        y = int((127 - note.note_number) * self.key_height_pixels - self.scroll_y_offset)
         w = int(self.seconds_to_beats(note.duration) * self.pixels_per_beat)
         return QRect(x, y, w, int(self.key_height_pixels))
 
-    @Slot(float)
-    def set_current_time(self, time_in_seconds: float):
-        self._current_playback_time = time_in_seconds
+    # --- 描画 ---
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(35, 35, 35))
+        
+        # 1. グリッド
+        painter.setPen(QPen(QColor(60, 60, 60), 1))
+        for i in range(200):
+            x = i * self.pixels_per_beat - self.scroll_x_offset
+            if i % 4 == 0: painter.setPen(QPen(QColor(90, 90, 90), 2))
+            else: painter.setPen(QPen(QColor(55, 55, 55), 1))
+            painter.drawLine(int(x), 0, int(x), self.height())
+
+        # 2. ノート描画
+        for note in self.notes_list:
+            r = self.get_note_rect(note)
+            if not self.rect().intersects(r): continue # カリング
+            
+            color = QColor(60, 160, 255)
+            if note.is_selected: color = QColor(255, 180, 0)
+            
+            painter.setBrush(QBrush(color))
+            painter.setPen(QPen(QColor(20, 20, 20), 1))
+            painter.drawRect(r)
+            if note.lyrics:
+                painter.setPen(Qt.white)
+                painter.drawText(r.adjusted(5,0,0,0), Qt.AlignLeft | Qt.AlignVCenter, note.lyrics)
+
+        # 3. 矩形選択枠
+        if self.edit_mode == "select_box":
+            painter.setPen(QPen(Qt.white, 1, Qt.DashLine))
+            painter.setBrush(QBrush(QColor(255, 255, 255, 30)))
+            painter.drawRect(self.selection_rect)
+
+        # 4. 再生ライン
+        cx = int(self.seconds_to_beats(self._current_playback_time) * self.pixels_per_beat - self.scroll_x_offset)
+        painter.setPen(QPen(Qt.red, 2))
+        painter.drawLine(cx, 0, cx, self.height())
+
+    # --- マウス操作 ---
+    def mousePressEvent(self, event):
+        self.drag_start_pos = event.position()
+        self.target_note = None
+        
+        # クリックしたノートを探す
+        for note in reversed(self.notes_list):
+            if self.get_note_rect(note).contains(event.position().toPoint()):
+                self.target_note = note
+                if not note.is_selected:
+                    if not (event.modifiers() & Qt.ControlModifier):
+                        self.deselect_all()
+                    note.is_selected = True
+                self.edit_mode = "move"
+                self.update()
+                return
+
+        # 何もないところをクリック
+        if not (event.modifiers() & Qt.ControlModifier):
+            self.deselect_all()
+        self.edit_mode = "select_box"
+        self.selection_rect = QRect(event.position().toPoint(), QSize(0,0))
         self.update()
 
+    def mouseMoveEvent(self, event):
+        if self.edit_mode == "move" and self.target_note:
+            dx = (event.position().x() - self.drag_start_pos.x()) / self.pixels_per_beat
+            dy = (event.position().y() - self.drag_start_pos.y()) / self.key_height_pixels
+            dt = self.beats_to_seconds(dx)
+            dn = -int(round(dy))
 
+            if abs(dt) > 0.01 or dn != 0:
+                for n in self.notes_list:
+                    if n.is_selected:
+                        n.start_time += dt
+                        n.note_number = max(0, min(127, n.note_number + dn))
+                self.drag_start_pos = event.position()
+                self.update()
 
-    def mouseReleaseEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton:
-            # --- Onsetドラッグの確定 ---
-            if self.edit_mode == "ONSET" and self.target_note:
-                # 相対的なOnset値を確定
-                print(f"Onset変更確定: {self.target_note.lyrics} -> {self.target_note.onset:.3f}s")
-                
-                # エンジンへ「特定のノートが更新された」ことを通知
-                # MainWindow側でこの信号をキャッチしてエンジンを叩く設計にします
-                self.notes_changed_signal.emit() 
-
-            # --- 通常の移動・リサイズの確定 ---
-            elif self.edit_mode in ('move', 'resize') and self.target_note:
-                # 量子化（スナップ）処理
-                self.target_note.start_time = self.beats_to_seconds(
-                    self.quantize_value(self.seconds_to_beats(self.target_note.start_time), self.quantize_resolution)
-                )
-                self.notes_changed_signal.emit()
-
-            # 状態のリセット
-            self.edit_mode = None
-            self.target_note = None
+        elif self.edit_mode == "select_box":
+            self.selection_rect = QRect(self.drag_start_pos.toPoint(), event.position().toPoint()).normalized()
+            for n in self.notes_list:
+                n.is_selected = self.selection_rect.intersects(self.get_note_rect(n))
             self.update()
+
+    def mouseReleaseEvent(self, event):
+        if self.edit_mode == "move":
+            for n in self.notes_list:
+                if n.is_selected: # 量子化
+                    n.start_time = self.beats_to_seconds(self.quantize(self.seconds_to_beats(n.start_time)))
+            self.notes_changed_signal.emit()
+        self.edit_mode = None
+        self.update()
+
+    def mouseDoubleClickEvent(self, event):
+        for n in self.notes_list:
+            if self.get_note_rect(n).contains(event.position().toPoint()):
+                text, ok = QInputDialog.getText(self, "歌詞入力", "歌詞:", QLineEdit.Normal, n.lyrics)
+                if ok:
+                    n.lyrics = text
+                    self.notes_changed_signal.emit()
+                    self.update()
+                return
+
+    # --- キー操作 ---
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Delete:
+            self.notes_list = [n for n in self.notes_list if not n.is_selected]
+            self.notes_changed_signal.emit()
+            self.update()
+        elif event.key() == Qt.Key_A and event.modifiers() & Qt.ControlModifier:
+            for n in self.notes_list: n.is_selected = True
+            self.update()
+
+    def deselect_all(self):
+        for n in self.notes_list: n.is_selected = False
