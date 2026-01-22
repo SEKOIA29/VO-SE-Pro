@@ -1,9 +1,12 @@
 name: Release VO-SE PRO
 
 on:
+  workflow_dispatch: # ボタン一つで手動実行可能にする
   push:
     tags:
-      - 'v*' # v1.0.0などのタグがプッシュされた時に発動
+      - '*' # 全てのタグで発動（vなしでもOK）
+  release:
+    types: [published] # GitHubのWEB画面でReleaseを公開した時に発動
 
 jobs:
   build-and-release:
@@ -16,11 +19,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
-      # 1. C++ エンジンのコンパイル (多重パラメーター対応版)
+      # 1. C++ エンジンのビルド
       - name: Build C++ Engine
+        shell: bash
         run: |
           mkdir -p bin
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
@@ -28,7 +30,6 @@ jobs:
           else
             clang++ -shared -fPIC -o bin/vose_core.dylib src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world -undefined dynamic_lookup -O3
           fi
-        shell: bash
 
       # 2. Python 環境構築
       - name: Set up Python
@@ -36,34 +37,29 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install PySide6 numpy sounddevice soundfile mido janome pyinstaller
 
-      # 3. PyInstaller によるパッケージング
-      # --add-data の区切り文字をOSごとに切り替えて実行
+      # 3. PyInstaller によるパッケージング（パス指定を最も安全な形に変更）
       - name: Package with PyInstaller (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          pyinstaller --windowed --noconsole --onefile --add-data "bin/vose_core.dll;." --name "VO-SE_PRO_Win" main.py
+          pyinstaller --windowed --noconsole --onefile --add-data "bin/vose_core.dll;bin" --name "VO-SE_PRO_Win" main.py
 
       - name: Package with PyInstaller (MacOS)
         if: matrix.os == 'macos-latest'
         run: |
-          pyinstaller --windowed --noconsole --onefile --add-data "bin/vose_core.dylib:." --name "VO-SE_PRO_Mac" main.py
+          pyinstaller --windowed --noconsole --onefile --add-data "bin/vose_core.dylib:bin" --name "VO-SE_PRO_Mac" main.py
 
-      # 4. GitHub Release へのアップロード
-      # distディレクトリ内の実行ファイルをすべて自動収集してリリースに添付
-      - name: Create Release and Upload Assets
+      # 4. 成果物のアップロード（ここが最も重要）
+      - name: Upload Assets to Release
         uses: softprops/action-gh-release@v1
         with:
+          # distフォルダ内のファイルを確実に見つける
           files: |
             dist/VO-SE_PRO_Win.exe
             dist/VO-SE_PRO_Mac
-          name: "Release ${{ github.ref_name }}"
-          body: "VO-SE PRO の最新ビルドです。C++ネイティブエンジンを同梱しています。"
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
