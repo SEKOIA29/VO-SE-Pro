@@ -1323,6 +1323,76 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "MIDIエクスポートエラー", f"保存中に問題が発生しました:\n{e}") 
 
+
+    @Slot()
+    def on_save_project_clicked(self):
+        """作業状態（設計図）を保存する"""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "プロジェクトを保存", "", "VO-SE Project (*.vose)"
+        )
+        if not file_path: return
+
+        # 保存するデータをまとめる
+        project_data = {
+            "version": "1.0",
+            "tempo": self.timeline_widget.tempo,
+            "notes": [n.to_dict() for n in self.timeline_widget.notes_list],
+            "pitch_events": [{"t": p.time, "v": p.value} for p in self.graph_editor_widget.pitch_events]
+        }
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(project_data, f, ensure_ascii=False, indent=4)
+        
+        self.statusBar().showMessage(f"保存しました: {file_path}")
+
+
+    @Slot()
+    def on_save_project_clicked(self):
+        """作業状態（設計図）を保存する"""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "プロジェクトを保存", "", "VO-SE Project (*.vose)"
+        )
+        if not file_path: return
+
+        # 保存するデータをまとめる
+        project_data = {
+            "version": "1.0",
+            "tempo": self.timeline_widget.tempo,
+            "notes": [n.to_dict() for n in self.timeline_widget.notes_list],
+            "pitch_events": [{"t": p.time, "v": p.value} for p in self.graph_editor_widget.pitch_events]
+        }
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(project_data, f, ensure_ascii=False, indent=4)
+        
+        self.statusBar().showMessage(f"保存しました: {file_path}")
+
+    @Slot()
+    def on_export_button_clicked(self):
+        """音声をファイルとして書き出す"""
+        notes = self.timeline_widget.notes_list
+        if not notes:
+            QMessageBox.warning(self, "エラー", "ノートがありません")
+            return
+
+        # 保存先を指定（ここで好きな場所を選べます）
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "音声ファイルを保存", "output.wav", "WAV Files (*.wav)"
+        )
+        
+        if file_path:
+            try:
+                # 1. グラフエディタから最新のピッチデータを取得
+                pitch_data = self.graph_editor_widget.pitch_events
+                
+                # 2. エンジンに「書き出し」を依頼
+                # 内部で prepare_rendering_data 相当の処理を行い、WAVとして保存
+                self.vo_se_engine.export_to_wav(notes, pitch_data, file_path)
+                
+                QMessageBox.information(self, "完了", f"書き出し完了:\n{file_path}")
+            except Exception as e:
+                QMessageBox.critical(self, "エラー", f"書き出し失敗: {e}")
+
     # ==========================================================================
     # 音源管理
     # ==========================================================================
