@@ -1,0 +1,66 @@
+name: Release VO-SE PRO
+
+on:
+  push:
+    tags:
+      - 'v*' # v1.0.0 などのタグがプッシュされた時に発動
+
+jobs:
+  build-and-release:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive # WORLDエンジンをサブモジュールにしている場合も対応
+
+      # 1. C++ エンジンのビルド (DLL/Dylib生成)
+      - name: Build C++ Engine
+        run: |
+          mkdir -p bin
+          # Windows環境
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            g++ -shared -fPIC -o bin/vose_core.dll src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world -O3
+          # MacOS環境
+          else
+            clang++ -shared -fPIC -o bin/vose_core.dylib src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world -undefined dynamic_lookup -O3
+          fi
+        shell: bash
+
+      # 2. Python 環境構築
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install PySide6 numpy sounddevice soundfile mido janome pyinstaller
+
+      # 3. PyInstaller による単一ファイル化
+      # --add-data の書式が OS で異なるため注意して設定
+      - name: Bundle with PyInstaller (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          pyinstaller --windowed --noconsole --onefile --add-data "bin/vose_core.dll;bin" --name "VO-SE_PRO_Win" main.py
+
+      - name: Bundle with PyInstaller (MacOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          pyinstaller --windowed --noconsole --onefile --add-data "bin/vose_core.dylib:bin" --name "VO-SE_PRO_Mac" main.py
+
+      # 4. GitHub Release への自動アップロード
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/VO-SE_PRO_Win.exe
+            dist/VO-SE_PRO_Mac
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
