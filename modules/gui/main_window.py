@@ -1165,6 +1165,22 @@ class MainWindow(QMainWindow):
     # ==========================================================================
 
 
+    def prepare_utau_flags(self, time):
+        """
+        グラフエディタの値をUTAUのフラグ形式に変換する
+        """
+        # グラフから値を取得 (0.0 〜 1.0)
+        g_val = self.graph_editor_widget.get_param_value_at("Gender", time)
+        b_val = self.graph_editor_widget.get_param_value_at("Breath", time)
+        
+        # UTAUの一般的な範囲（gは-100〜100、Bは0〜100など）にスケーリング
+        # 例：0.5を基準に、0.0ならg-50、1.0ならg+50
+        g_flag = int((g_val - 0.5) * 100)
+        b_flag = int(b_val * 100)
+        
+        return f"g{g_flag}B{b_flag}"
+
+
     def load_ust_file(self, filepath: str):
         """UTAUの .ust ファイルを読み込んでタイムラインに配置"""
         try:
