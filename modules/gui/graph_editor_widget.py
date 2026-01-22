@@ -1,45 +1,27 @@
 #graph_editor_widget.py
 
 import numpy as np
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QWidget, QMessageBox
 from PySide6.QtCore import Qt, Signal, Slot, QRect, QPoint, QPointF
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QPaintEvent, QMouseEvent
-from PySide6.QtCore import Qt, QRect, QPoint, Signal, Slot
-from PySide6.QtGui import QPainter, QPen, QColor
 from .data_models import PitchEvent
 
 class GraphEditorWidget(QWidget):
-    pitch_data_changed = Signal(list) 
+    pitch_data_changed = Signal(dict) # 全パラメーターを辞書で送るように変更
 
     PITCH_MAX = 8191
     PITCH_MIN = -8192
 
-    self.all_parameters = {
-        "Pitch": [],      # 従来のピッチデータ
-        "Gender": [],     # 声の太さ (0.0 〜 1.0)
-        "Tension": [],    # 声の張り
-        "Breath": []      # 吐息の量
-    }
-    self.current_mode = "Pitch"  # 現在編集中のモード
-
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumHeight(120)
+        self.setMinimumHeight(150)
         self.setMouseTracking(True)
         
         self.scroll_x_offset = 0
         self.pixels_per_beat = 40.0
-        self._current_playback_time = 0.0
-        self.pitch_events: list[PitchEvent] = []
-        
-        self.editing_point_index = None
-        self.hover_point_index = None
-        self.drag_start_pos = None
         self.tempo = 120.0
-
-    self.setMinimumHeight(150)
         
-        # 1. 全パラメーターを保持する辞書
+        # 1. 全パラメーターの器（Pitch以外も PitchEvent クラスを流用可能）
         self.all_parameters = {
             "Pitch": [],
             "Gender": [],
@@ -47,72 +29,26 @@ class GraphEditorWidget(QWidget):
             "Breath": []
         }
         
-        # 2. 現在の編集モードと色の定義
         self.current_mode = "Pitch"
         self.colors = {
-            "Pitch": QColor(52, 152, 219),   # 青
-            "Gender": QColor(231, 76, 60),  # 赤
-            "Tension": QColor(46, 204, 113), # 緑
-            "Breath": QColor(241, 196, 15)   # 黄
+            "Pitch": QColor(0, 255, 127),    # 春の緑
+            "Gender": QColor(231, 76, 60),   # 赤
+            "Tension": QColor(46, 204, 113),  # 緑
+            "Breath": QColor(241, 196, 15)    # 黄
         }
+
+        self.editing_point_index = None
+        self.hover_point_index = None
 
     @Slot(str)
     def set_mode(self, mode):
-        """MainWindowのボタンから呼ばれるモード切り替え"""
+        """モードを切り替える（MainWindowから呼ばれる）"""
         if mode in self.all_parameters:
             self.current_mode = mode
-            self.update() # 描画更新（色が変わる）
+            self.editing_point_index = None # モード切替時に編集状態をリセット
+            self.update()
 
-    # --- 描画ロジック ---
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        
-        # 背景
-        painter.fillRect(self.rect(), QColor(40, 40, 40))
-        
-        # 現在のモードに応じた色のペンを設定
-        current_color = self.colors.get(self.current_mode, Qt.white)
-        painter.setPen(QPen(current_color, 2))
-        
-        # 3. 現在選択されているモードの点（イベント）を描画
-        events = self.all_parameters[self.current_mode]
-        for i in range(len(events) - 1):
-            p1 = self.val_to_pixel(events[i])
-            p2 = self.val_to_pixel(events[i+1])
-            painter.drawLine(p1, p2)
-            
-        # (オプション) 他のパラメーターを薄くガイドとして表示したい場合はここでループを回す
-
-    # --- マウス操作（現在のモードのリストを編集） ---
-    def mouseMoveEvent(self, event):
-        # 現在のモードのリストに対してデータを追加・修正
-        new_event = self.pixel_to_val(event.position())
-        self.all_parameters[self.current_mode].append(new_event)
-        # 時間順にソートするロジックなどをここに入れる
-        self.update()
-
-    # --- 1. エンジンへの接続ブリッジ用関数 ---
-    def get_value_at(self, time: float) -> float:
-        """指定時間のピッチ補正値を返す（半音単位）"""
-        if not self.pitch_events:
-            return 0.0
-
-        events = sorted(self.pitch_events, key=lambda p: p.time)
-
-        if time <= events[0].time: return events[0].value / 4096.0
-        if time >= events[-1].time: return events[-1].value / 4096.0
-
-        for i in range(len(events) - 1):
-            p1, p2 = events[i], events[i+1]
-            if p1.time <= time <= p2.time:
-                t = (time - p1.time) / (p2.time - p1.time)
-                # 線形補間
-                val = p1.value + (p2.value - p1.value) * t
-                return val / 4096.0 # 4096 = 1半音として計算
-        return 0.0
-
-    # --- 2. 座標変換 ---
+    # --- 座標変換ロジック ---
     def time_to_x(self, seconds: float) -> float:
         beats = (seconds * self.tempo) / 60.0
         return (beats * self.pixels_per_beat) - self.scroll_x_offset
@@ -122,68 +58,71 @@ class GraphEditorWidget(QWidget):
         beats = absolute_x / self.pixels_per_beat
         return (beats * 60.0) / self.tempo
 
-    def value_to_y(self, value: int) -> float:
+    def value_to_y(self, value: float) -> float:
         h = self.height()
         center_y = h / 2
-        range_y = center_y * 0.8 # 余裕を持たせる
-        return center_y - (value / self.PITCH_MAX) * range_y
+        # Pitchモードなら中央基準、それ以外は下端(0.0)〜上端(1.0)として計算
+        if self.current_mode == "Pitch":
+            range_y = center_y * 0.8
+            return center_y - (value / self.PITCH_MAX) * range_y
+        else:
+            # 0.0〜1.0 の範囲を画面の高さにマップ (値が大きいほど上=Yが小さい)
+            return h - (value * (h * 0.8) + (h * 0.1))
 
-    def y_to_value(self, y: float) -> int:
+    def y_to_value(self, y: float) -> float:
         h = self.height()
-        center_y = h / 2
-        range_y = center_y * 0.8
-        val = -((y - center_y) / range_y) * self.PITCH_MAX
-        return int(max(self.PITCH_MIN, min(self.PITCH_MAX, val)))
+        if self.current_mode == "Pitch":
+            center_y = h / 2
+            range_y = center_y * 0.8
+            val = -((y - center_y) / range_y) * self.PITCH_MAX
+            return int(max(self.PITCH_MIN, min(self.PITCH_MAX, val)))
+        else:
+            # 0.0〜1.0に変換
+            val = (h - y - (h * 0.1)) / (h * 0.8)
+            return max(0.0, min(1.0, val))
 
-    # --- 3. マウスイベント（編集機能） ---
+    # --- イベント処理 ---
     def mouseDoubleClickEvent(self, event: QMouseEvent):
-        """ダブルクリックで新しい点を追加"""
         if event.button() == Qt.LeftButton:
             time = self.x_to_time(event.position().x())
             val = self.y_to_value(event.position().y())
             new_point = PitchEvent(time=time, value=val)
-            self.pitch_events.append(new_point)
-            self.pitch_events.sort(key=lambda x: x.time)
-            self.pitch_data_changed.emit(self.pitch_events)
+            self.all_parameters[self.current_mode].append(new_point)
+            self.all_parameters[self.current_mode].sort(key=lambda x: x.time)
             self.update()
 
     def mousePressEvent(self, event: QMouseEvent):
         pos = event.position()
+        events = self.all_parameters[self.current_mode]
         if event.button() == Qt.LeftButton:
             self.editing_point_index = None
-            for i, p in enumerate(self.pitch_events):
+            for i, p in enumerate(events):
                 px, py = self.time_to_x(p.time), self.value_to_y(p.value)
                 if QRect(int(px)-8, int(py)-8, 16, 16).contains(pos.toPoint()):
                     self.editing_point_index = i
-                    self.drag_start_pos = pos
                     break
         elif event.button() == Qt.RightButton:
-            # 右クリックで点を削除
-            for i, p in enumerate(self.pitch_events):
+            for i, p in enumerate(events):
                 px, py = self.time_to_x(p.time), self.value_to_y(p.value)
                 if QRect(int(px)-8, int(py)-8, 16, 16).contains(pos.toPoint()):
-                    self.pitch_events.pop(i)
-                    self.pitch_data_changed.emit(self.pitch_events)
+                    events.pop(i)
                     break
         self.update()
 
     def mouseMoveEvent(self, event: QMouseEvent):
         pos = event.position()
-        if event.buttons() & Qt.LeftButton and self.editing_point_index is not None:
-            # ドラッグ移動（時間と値の両方を更新可能にする）
-            new_time = self.x_to_time(pos.x())
-            new_val = self.y_to_value(pos.y())
-            
-            p = self.pitch_events[self.editing_point_index]
-            p.time = max(0, new_time)
-            p.value = new_val
-            
-            # 再ソートが必要になる可能性があるが、ドラッグ中はインデックスが狂うので注意
-            self.pitch_data_changed.emit(self.pitch_events)
+        events = self.all_parameters[self.current_mode]
         
-        # ホバー状態の更新
+        # ドラッグ移動
+        if event.buttons() & Qt.LeftButton and self.editing_point_index is not None:
+            p = events[self.editing_point_index]
+            p.time = max(0, self.x_to_time(pos.x()))
+            p.value = self.y_to_value(pos.y())
+            # ソートが必要な場合は移動終了後に行うのが安全
+        
+        # ホバー判定
         self.hover_point_index = None
-        for i, p in enumerate(self.pitch_events):
+        for i, p in enumerate(events):
             px, py = self.time_to_x(p.time), self.value_to_y(p.value)
             if QRect(int(px)-8, int(py)-8, 16, 16).contains(pos.toPoint()):
                 self.hover_point_index = i
@@ -195,27 +134,29 @@ class GraphEditorWidget(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
         
         # 背景
-        w, h = self.width(), self.height()
         painter.fillRect(self.rect(), QColor(25, 25, 25))
 
-        # センターライン
-        painter.setPen(QPen(QColor(70, 70, 70), 1, Qt.DashLine))
-        painter.drawLine(0, h/2, w, h/2)
+        # モードに応じたグリッド表示
+        h = self.height()
+        if self.current_mode == "Pitch":
+            painter.setPen(QPen(QColor(70, 70, 70), 1, Qt.DashLine))
+            painter.drawLine(0, h/2, self.width(), h/2) # センターライン
 
-        # データの描画
-        if len(self.pitch_events) >= 2:
-            painter.setPen(QPen(QColor(0, 255, 127), 2))
-            points = [QPointF(self.time_to_x(p.time), self.value_to_y(p.value)) for p in self.pitch_events]
-            for i in range(len(points) - 1):
-                painter.drawLine(points[i], points[i+1])
+        # 現在のモードのデータを描画
+        events = self.all_parameters[self.current_mode]
+        color = self.colors.get(self.current_mode, QColor(255, 255, 255))
+        
+        if len(events) >= 2:
+            painter.setPen(QPen(color, 2))
+            for i in range(len(events) - 1):
+                p1 = QPointF(self.time_to_x(events[i].time), self.value_to_y(events[i].value))
+                p2 = QPointF(self.time_to_x(events[i+1].time), self.value_to_y(events[i+1].value))
+                painter.drawLine(p1, p2)
 
-        for i, p in enumerate(self.pitch_events):
+        # 点の描画
+        for i, p in enumerate(events):
             px, py = self.time_to_x(p.time), self.value_to_y(p.value)
-            color = QColor(255, 255, 255) if i == self.hover_point_index else QColor(0, 255, 127)
-            painter.setBrush(QBrush(color))
+            dot_color = QColor(255, 255, 255) if i == self.hover_point_index else color
+            painter.setBrush(QBrush(dot_color))
             painter.setPen(Qt.NoPen)
             painter.drawEllipse(QPointF(px, py), 5, 5)
-                            
-　
-
-    
