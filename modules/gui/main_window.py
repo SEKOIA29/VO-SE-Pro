@@ -1386,7 +1386,7 @@ class MainWindow(QMainWindow):
             self.setWindowTitle(f"VO-SE Pro - {os.path.basename(file_path)}")
 
         except Exception as e:
-            QMessageBox.critical(self, "エラー", f"プロジェクトの読み込みに失敗しました:\n{e}")
+            QMessageBox.critical(self, "エラーʕ⁎̯͡⁎ʔ༄", f"プロジェクトの読み込みに失敗しました:\n{e}")
 
 
     @Slot()
@@ -1394,7 +1394,7 @@ class MainWindow(QMainWindow):
         """音声をファイルとして書き出す"""
         notes = self.timeline_widget.notes_list
         if not notes:
-            QMessageBox.warning(self, "エラー", "ノートがありません")
+            QMessageBox.warning(self, "エラーʕ⁎̯͡⁎ʔ༄", "ノートがありません")
             return
 
         # 保存先を指定（ここで好きな場所を選べます）
@@ -1413,7 +1413,7 @@ class MainWindow(QMainWindow):
                 
                 QMessageBox.information(self, "完了", f"書き出し完了:\n{file_path}")
             except Exception as e:
-                QMessageBox.critical(self, "エラー", f"書き出し失敗: {e}")
+                QMessageBox.critical(self, "エラーʕ⁎̯͡⁎ʔ༄", f"書き出し失敗: {e}")
 
     # ==========================================================================
     # 音源管理
