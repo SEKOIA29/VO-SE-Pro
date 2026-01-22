@@ -12,6 +12,14 @@ class GraphEditorWidget(QWidget):
     PITCH_MAX = 8191
     PITCH_MIN = -8192
 
+    self.all_parameters = {
+        "Pitch": [],      # 従来のピッチデータ
+        "Gender": [],     # 声の太さ (0.0 〜 1.0)
+        "Tension": [],    # 声の張り
+        "Breath": []      # 吐息の量
+    }
+    self.current_mode = "Pitch"  # 現在編集中のモード
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumHeight(120)
