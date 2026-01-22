@@ -1209,6 +1209,85 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"UST読み込み失敗: {e}")
 
+
+    @Slot()
+    def on_export_button_clicked(self):
+        """
+        【完全版】全パラメーターを統合し、UTAU互換フラグを生成してWAV書き出し
+        """
+        notes = self.timeline_widget.notes_list
+        if not notes:
+            QMessageBox.warning(self, "エラーʕ⁎̯͡⁎ʔ༄", "ノートがないため書き出しできません。")
+            return
+
+        # 1. 保存先の決定
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "音声ファイルを保存", "output.wav", "WAV Files (*.wav)"
+        )
+        if not file_path:
+            return
+
+        self.statusBar().showMessage("WAV書き出し準備中...")
+
+        try:
+            # 2. 全調声パラメーター（Pitch, Gender, Tension, Breath）をグラフから取得
+            # グラフエディタ側の dict { "Pitch": [...], "Gender": [...] }
+            all_params = self.graph_editor_widget.all_parameters
+            
+            # 3. 各ノートに対して、その時間帯の「平均的なフラグ」または「時系列フラグ」を生成
+            # UTAUエンジンへ渡すためのノートリストを再構築
+            vocal_data_list = []
+            
+            for note in notes:
+                # ノートの中央付近の時間を代表点としてパラメーターを取得（または時系列で細かく計算）
+                mid_time = note.start_time + (note.duration / 2)
+                
+                # --- UTAU互換フラグの生成ロジック ---
+                # グラフの 0.0〜1.0 を UTAUのフラグ範囲に変換
+                g_raw = self.graph_editor_widget.get_param_value_at("Gender", mid_time)
+                b_raw = self.graph_editor_widget.get_param_value_at("Breath", mid_time)
+                t_raw = self.graph_editor_widget.get_param_value_at("Tension", mid_time)
+                
+                # スケーリング例:
+                # Gender: 0.5基準で g-50 〜 g+50
+                g_flag = int((g_raw - 0.5) * 100)
+                # Breath: 0〜100
+                b_flag = int(b_raw * 100)
+                # Tension: UTAUエンジンにより異なるが、ここでは例として 'Mt' フラグなどに反映
+                t_flag = int(t_raw * 100)
+                
+                # フラグ文字列の組み立て
+                flags = f"g{g_flag:+}B{b_flag}" # 例: "g+10B20"
+                
+                # ノート情報をエンジン用辞書にまとめる
+                vocal_data_list.append({
+                    "note": note.note_number,
+                    "lyric": note.lyrics,
+                    "phonemes": note.phonemes, # Janomeで変換済み
+                    "start_time": note.start_time,
+                    "duration": note.duration,
+                    "flags": flags,
+                    "pitch_bend": self.graph_editor_widget.all_parameters["Pitch"] # ピッチデータ
+                })
+
+            # 4. エンジン（VO-SE Engine）にレンダリングを依頼
+            # ここでエンジン内部の UTAU互換処理 (resampler -> wavtool) が走る
+            self.statusBar().showMessage("レンダリング実行中...")
+            
+            self.vo_se_engine.export_to_wav(
+                vocal_data=vocal_data_list,
+                tempo=self.timeline_widget.tempo,
+                file_path=file_path
+            )
+
+            QMessageBox.information(self, "完了", f"\n保存先: {file_path}")
+            self.statusBar().showMessage("エクスポート完了")
+
+        except Exception as e:
+            error_msg = f"書き出し失敗: {str(e)}"
+            QMessageBox.critical(self, "エラーʕ⁎̯͡⁎ʔ༄", error_msg)
+            self.statusBar().showMessage("エクスポートエラー")
+
     
 
     @Slot()
