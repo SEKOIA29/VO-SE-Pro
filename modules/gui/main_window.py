@@ -692,6 +692,41 @@ class MainWindow(QMainWindow):
         self.auto_lyrics_button = QPushButton("自動歌詞")
         self.auto_lyrics_button.clicked.connect(self.on_click_auto_lyrics)
         panel_layout.addWidget(self.auto_lyrics_button)
+
+        # --- ここからパラメーター切り替えボタンの追加 ---
+        panel_layout.addSpacing(20) # 少し隙間をあける
+        panel_layout.addWidget(QLabel("Edit Mode:"))
+        
+        # ボタングループで「どれか1つが選択されている状態」を作る
+        self.param_group = QButtonGroup(self)
+        self.param_buttons = {} # 後で参照しやすいように辞書に保存
+        
+        param_list = [
+            ("Pitch", "#3498db"),   # 青
+            ("Gender", "#e74c3c"),  # 赤
+            ("Tension", "#2ecc71"), # 緑
+            ("Breath", "#f1c40f")   # 黄
+        ]
+        
+        for name, color in param_list:
+            btn = QPushButton(name)
+            btn.setCheckable(True)
+            btn.setFixedWidth(60)
+            # 選択中のボタンに色を付けるスタイルシート
+            btn.setStyleSheet(f"QPushButton:checked {{ background-color: {color}; color: white; border: 1px solid white; }}")
+            
+            if name == "Pitch":
+                btn.setChecked(True) # 初期状態
+            
+            panel_layout.addWidget(btn)
+            self.param_group.addButton(btn)
+            self.param_buttons[name] = btn
+
+        # ボタンがクリックされたらグラフエディタのモードを切り替える
+        self.param_group.buttonClicked.connect(self.on_param_mode_changed)
+        # --- ライバルが多い ---
+
+        panel_layout.addStretch()
         
         panel_layout.addStretch()
         self.main_layout.addLayout(panel_layout)
