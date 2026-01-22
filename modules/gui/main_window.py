@@ -1164,6 +1164,37 @@ class MainWindow(QMainWindow):
     # ファイル操作
     # ==========================================================================
 
+
+    def load_ust_file(self, filepath: str):
+        """UTAUの .ust ファイルを読み込んでタイムラインに配置"""
+        try:
+            # UTAUファイルは Shift-JIS (cp932) が基本なので安全に読み込む
+            content = self.read_file_safely(filepath)
+            lines = content.splitlines()
+            
+            notes = []
+            current_note = {}
+            
+            for line in lines:
+                if line.startswith('[#'): # ノートの開始
+                    if current_note:
+                        notes.append(self.parse_ust_dict_to_note(current_note))
+                    current_note = {}
+                elif '=' in line:
+                    key, val = line.split('=', 1)
+                    current_note[key] = val
+            
+            # 最後のノートを追加
+            if current_note:
+                notes.append(self.parse_ust_dict_to_note(current_note))
+            
+            self.timeline_widget.set_notes(notes)
+            self.statusBar().showMessage(f"UST読み込み完了: {len(notes)}ノート")
+        except Exception as e:
+            QMessageBox.critical(self, "エラー", f"UST読み込み失敗: {e}")
+
+    
+
     @Slot()
     def save_file_dialog_and_save_midi(self):
         """プロジェクトの保存（全データ・全パラメーター）"""
