@@ -1348,47 +1348,46 @@ class MainWindow(QMainWindow):
 
 
     @Slot()
-    def on_save_project_clicked(self):
-        """作業状態（設計図）を保存する"""
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "プロジェクトを保存", "", "VO-SE Project (*.vose)"
+    def on_open_project_clicked(self):
+        """保存した .vose ファイルを開いて復元する"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "プロジェクトを開く", "", "VO-SE Project (*.vose)"
         )
-        if not file_path: return
+        if not file_path:
+            return
 
-        # 保存するデータをまとめる
-        project_data = {
-            "version": "1.0",
-            "tempo": self.timeline_widget.tempo,
-            "notes": [n.to_dict() for n in self.timeline_widget.notes_list],
-            "pitch_events": [{"t": p.time, "v": p.value} for p in self.graph_editor_widget.pitch_events]
-        }
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                project_data = json.load(f)
 
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(project_data, f, ensure_ascii=False, indent=4)
-        
-        self.statusBar().showMessage(f"保存しました: {file_path}")
+            # 1. ノートの復元
+            # NoteEventクラスに staticmethod の from_dict がある前提
+            new_notes = []
+            for d in project_data.get("notes", []):
+                new_notes.append(NoteEvent.from_dict(d))
+            self.timeline_widget.notes_list = new_notes
+            
+            # 2. テンポの復元
+            self.timeline_widget.tempo = project_data.get("tempo", 120)
 
+            # 3. ピッチグラフの復元
+            from .data_models import PitchEvent
+            new_pitches = []
+            for p in project_data.get("pitch_events", []):
+                new_pitches.append(PitchEvent(time=p["t"], value=p["v"]))
+            self.graph_editor_widget.pitch_events = new_pitches
 
-    @Slot()
-    def on_save_project_clicked(self):
-        """作業状態（設計図）を保存する"""
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "プロジェクトを保存", "", "VO-SE Project (*.vose)"
-        )
-        if not file_path: return
+            # 4. 画面を更新
+            self.timeline_widget.update()
+            self.graph_editor_widget.update()
+            
+            self.statusBar().showMessage(f"読み込みました: {file_path}")
+            # ウィンドウタイトルにファイル名を表示
+            self.setWindowTitle(f"VO-SE Pro - {os.path.basename(file_path)}")
 
-        # 保存するデータをまとめる
-        project_data = {
-            "version": "1.0",
-            "tempo": self.timeline_widget.tempo,
-            "notes": [n.to_dict() for n in self.timeline_widget.notes_list],
-            "pitch_events": [{"t": p.time, "v": p.value} for p in self.graph_editor_widget.pitch_events]
-        }
+        except Exception as e:
+            QMessageBox.critical(self, "エラー", f"プロジェクトの読み込みに失敗しました:\n{e}")
 
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(project_data, f, ensure_ascii=False, indent=4)
-        
-        self.statusBar().showMessage(f"保存しました: {file_path}")
 
     @Slot()
     def on_export_button_clicked(self):
