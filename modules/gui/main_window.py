@@ -1811,6 +1811,27 @@ class MainWindow(QMainWindow):
         # タイムラインウィジェットが独自に描画するため、ここでは何もしない
 
     def closeEvent(self, event):
+        """ウィンドウを閉じる時に未保存の確認をする"""
+        # 確認用のダイアログを表示
+        reply = QMessageBox.question(
+            self, 
+            '確認', 
+            "作業内容が失われる可能性があります。終了してもよろしいですか？",
+            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel, 
+            QMessageBox.Save
+        )
+
+        if reply == QMessageBox.Save:
+            # 保存を選んだら保存処理を実行
+            self.on_save_project_clicked()
+            event.accept() # 保存後に閉じる
+        elif reply == QMessageBox.Discard:
+            # 保存せずに終了を選んだらそのまま閉じる
+            event.accept()
+        else:
+            # キャンセルを選んだら閉じるのを止める
+            event.ignore()
+        
         """終了処理"""
         # 設定保存
         config = {
