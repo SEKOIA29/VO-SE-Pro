@@ -3,11 +3,11 @@ name: Release VO-SE PRO
 on:
   push:
     tags:
-      - '*' # どんなタグでも発動
-  workflow_dispatch: # Actionsタブから手動ボタンでも実行可能
+      - '*' # タグがプッシュされた時にビルド
+  workflow_dispatch: # 手動実行も可能
 
 permissions:
-  contents: write # リリースに書き込む権限を強制付与
+  contents: write # リリース作成に必須
 
 jobs:
   build-and-release:
@@ -15,66 +15,66 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        # WindowsとMacの両方で実行
         os: [windows-latest, macos-latest]
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 1. C++ エンジンのビルド (エンジンの心臓部を生成)
+      # 1. C++ エンジンのビルド (ファイル名を libvo_se に統一)
       - name: Build C++ Engine
         shell: bash
         run: |
           mkdir -p bin
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            g++ -shared -fPIC -o bin/vose_core.dll src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world -O3
+            g++ -shared -fPIC -o bin/libvo_se.dll src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world -O3
           else
-            clang++ -shared -fPIC -o bin/vose_core.dylib src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world -undefined dynamic_lookup -O3
+            clang++ -shared -fPIC -o bin/libvo_se.dylib src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world -undefined dynamic_lookup -O3
           fi
 
-      # 2. Python 環境の構築
+      # 2. Python 環境構築
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      # 3. 依存ライブラリのインストール
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install PySide6 numpy sounddevice soundfile mido janome pyinstaller
+          # pyopenjtalk と PySide6 を含む全ライブラリ
+          pip install PySide6 numpy sounddevice soundfile mido janome pyopenjtalk pyinstaller
 
-      # 4. PyInstaller パッケージング (容量不足を解消する全部入り設定)
+      # 3. パッケージング (assetsフォルダとアイコンの同梱)
       - name: Package with PyInstaller
         shell: bash
         run: |
-          # OSごとにデータ区切り文字を変更 (; か :)
+          # OSごとの区切り文字設定
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             SEP=";"
+            ICON="assets/icon.ico"
           else
             SEP=":"
+            ICON="assets/icon.icns"
           fi
           
-          # --collect-all で PySide6(GUI) や numpy を強制同梱 (これで100MB前後になる)
-          # --hidden-import で漏れやすいライブラリを強制指定
+          # --collect-all で PySide6/numpy/pyopenjtalk を強制同梱
+          # --add-data で bin(DLL) と assets(アイコン/画像) を同梱
           pyinstaller --windowed --noconsole --onefile \
             --collect-all PySide6 \
             --collect-all numpy \
-            --hidden-import PySide6.QtCore \
-            --hidden-import PySide6.QtWidgets \
-            --hidden-import PySide6.QtGui \
+            --collect-all pyopenjtalk \
             --add-data "bin/*${SEP}bin" \
+            --add-data "assets/*${SEP}assets" \
+            --icon "${ICON}" \
             --name "VO-SE_PRO_${{ matrix.os }}" main.py
 
-      # 5. リリースへのアップロード (ファイル名を確実に拾う)
+      # 4. リリースへのアップロード
       - name: Upload Assets to Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/VO-SE_PRO_windows-latest.exe
             dist/VO-SE_PRO_macos-latest
-          # 既存リリースへの上書き許可
           overwrite: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
