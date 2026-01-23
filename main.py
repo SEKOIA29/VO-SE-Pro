@@ -5,14 +5,23 @@ import ctypes
 import pyopenjtalk
 import numpy as np
 import json
-from PyQt6.QtWidgets import QApplication, QMessageBox
+
+# GUIライブラリをPySide6に統一しつつ、QMessageBoxなどは維持
+from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication
 
-
+# あなたのメインウィンドウクラス
 from main_window import MainWindow 
 
-# --- [1] 設定管理クラス (ConfigHandler) ---
+# --- [1] リソースパス解決関数 (PyInstaller対応) ---
+def get_resource_path(relative_path):
+    if getattr(sys, 'frozen', False):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+# --- [2] 設定管理クラス (ConfigHandler) ---
 class ConfigHandler:
     def __init__(self, config_path="temp/config.json"):
         self.config_path = config_path
@@ -40,14 +49,7 @@ class ConfigHandler:
         except Exception as e:
             print(f"Config save error: {e}")
 
-# --- [2] あなたの元のエンジン (VoSeEngine) ---
-def get_resource_path(relative_path):
-    if getattr(sys, 'frozen', False):
-        base_path = sys._MEIPASS
-    else:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
-
+# --- [3] エンジンクラス (VoSeEngine) ---
 class VoSeEngine:
     def __init__(self):
         self.os_name = platform.system()
@@ -55,20 +57,23 @@ class VoSeEngine:
         self._load_c_engine()
 
     def _load_c_engine(self):
-        if self.os_name == "Windows":
-            dll_path = get_resource_path(os.path.join("bin", "libvo_se.dll"))
-            if os.path.exists(dll_path):
-                try:
-                    self.c_engine = ctypes.CDLL(dll_path)
-                    print(f"[Success] C-Engine loaded: {dll_path}")
-                except Exception as e:
-                    print(f"[Error] Failed to load C-Engine: {e}")
-            else:
-                print(f"[Warning] C-Engine not found at {dll_path}")
+        # 以前のコードの命名規則「libvo_se.dll」を維持
+        lib_name = "libvo_se.dll" if self.os_name == "Windows" else "libvo_se.dylib"
+        dll_path = get_resource_path(os.path.join("bin", lib_name))
+        
+        if os.path.exists(dll_path):
+            try:
+                self.c_engine = ctypes.CDLL(dll_path)
+                print(f"[Success] C-Engine loaded: {dll_path}")
+            except Exception as e:
+                print(f"[Error] Failed to load C-Engine: {e}")
+        else:
+            print(f"[Warning] C-Engine not found at {dll_path}")
 
     def analyze_intonation(self, text):
         print(f"\n--- 解析実行: '{text}' ---")
         try:
+            # pyopenjtalkの解析処理（元のロジックを維持）
             labels = pyopenjtalk.extract_fullcontext(text)
             return labels
         except Exception as e:
@@ -79,34 +84,41 @@ class VoSeEngine:
         data_float = np.array(data_array, dtype=np.float32)
         ptr = data_float.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
         try:
+            # 元の関数名 process_voice を維持
             self.c_engine.process_voice(ptr, len(data_float))
             return data_float
-        except:
+        except Exception as e:
+            print(f"C-Process error: {e}")
             return data_array
 
-# --- [3] メイン実行処理 ---
+# --- [4] メイン実行処理 ---
 def main():
     app = QApplication(sys.argv)
     
-    # 環境チェック
-    dll_path = get_resource_path(os.path.join("bin", "libvo_se.dll"))
+    # 【追加】アイコン設定（ここだけ新機能として融合）
+    icon_path = get_resource_path(os.path.join("assets", "icon.png"))
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
+    
+    # 【維持】環境チェックと警告表示
+    lib_name = "libvo_se.dll" if platform.system() == "Windows" else "libvo_se.dylib"
+    dll_path = get_resource_path(os.path.join("bin", lib_name))
     if not os.path.exists(dll_path):
         QMessageBox.warning(None, "準備不足", f"DLLが見つかりません。一部機能が制限されます。\n場所: {dll_path}")
 
-    # 設定とエンジンの準備
+    # 【維持】設定とエンジンの準備
     config_handler = ConfigHandler()
     config = config_handler.load_config()
     engine = VoSeEngine()
 
-    # GUIの起動
-    # あなたのMainWindowに、読み込んだエンジンと設定を注入
+    # 【維持】GUIの起動とデータの注入
     window = MainWindow()
-    window.vo_se_engine = engine
-    window.config = config
+    window.vo_se_engine = engine # エンジンを注入
+    window.config = config       # 設定を注入
     
     window.show()
     
-    # 終了時に設定を保存する（例として音量0.8を保存）
+    # 【維持】終了時に設定を保存
     result = app.exec()
     config_handler.save_config(config)
     sys.exit(result)
