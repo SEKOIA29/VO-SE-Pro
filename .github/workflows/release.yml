@@ -3,7 +3,7 @@ name: Release VO-SE PRO
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*' # v1.1.2 のようなタグ push で起動
   workflow_dispatch:
 
 permissions:
@@ -43,11 +43,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install PySide6 numpy sounddevice soundfile mido janome pyopenjtalk pyinstaller
 
-      # 3. パッケージング (Win/Mac別最適化)
+      # 3. パッケージング (OSごとの最適化)
       - name: Package with PyInstaller
         shell: bash
         run: |
-          # 念のためファイル存在確認（エラー防止）
+          # アセットの存在確認（デバッグ用）
           ls -R assets/
 
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
@@ -61,7 +61,7 @@ jobs:
               --icon "assets/icon.ico" \
               --name "VO-SE_PRO_Win" main.py
           else
-            # Mac版: アイコンを正しく反映させるために .app 形式でビルド
+            # Mac版: --osx-bundle-identifier を使用
             pyinstaller --windowed --noconsole \
               --collect-all PySide6 \
               --collect-all numpy \
@@ -70,9 +70,9 @@ jobs:
               --add-data "assets/*:assets" \
               --icon "assets/icon.icns" \
               --name "VO-SE_PRO_Mac" \
-              --bundle-identifier "com.vosepro.app" main.py
+              --osx-bundle-identifier "com.vosepro.app" main.py
             
-            # .app フォルダを配布用に ZIP 圧縮
+            # .app フォルダを ZIP 圧縮して配布用に準備
             cd dist
             zip -r ../VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app
             cd ..
@@ -86,9 +86,9 @@ jobs:
             dist/VO-SE_PRO_Win.exe
             VO-SE_PRO_Mac.zip
           body: |
-            VO-SE PRO 最新安定版
-            - Windows: .exe (単一ファイル)
-            - macOS: .app (ZIP圧縮済、アイコン対応)
-            - UTAU音源ZIPドロップ機能搭載
+            VO-SE PRO 最新版の自動リリースです。
+            - アイコン修正 (Win: .ico / Mac: .icns)
+            - UTAU音源(ZIP)の文字化け対策済みインポート機能
+            - Windows (.exe) & macOS (.app in ZIP)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
