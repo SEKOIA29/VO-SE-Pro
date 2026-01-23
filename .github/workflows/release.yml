@@ -1,14 +1,13 @@
-name: Release VO-SE Pro
+name: Release VO-SE PRO
 
 on:
   push:
     tags:
-      - '*' # タグがプッシュされたら発動
-  workflow_dispatch: # 手動実行も可能
+      - '*' # どんなタグでも発動
+  workflow_dispatch: # Actionsタブから手動ボタンでも実行可能
 
-# ここが重要：書き込み権限を与える
 permissions:
-  contents: write
+  contents: write # リリースに書き込む権限を強制付与
 
 jobs:
   build-and-release:
@@ -16,13 +15,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        # WindowsとMacの両方で実行
         os: [windows-latest, macos-latest]
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 1. C++ エンジンのビルド
+      # 1. C++ エンジンのビルド (エンジンの心臓部を生成)
       - name: Build C++ Engine
         shell: bash
         run: |
@@ -33,41 +33,48 @@ jobs:
             clang++ -shared -fPIC -o bin/vose_core.dylib src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world -undefined dynamic_lookup -O3
           fi
 
-      # 2. Python 環境構築
+      # 2. Python 環境の構築
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
+      # 3. 依存ライブラリのインストール
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install PySide6 numpy sounddevice soundfile mido janome pyinstaller
 
-      # 3. PyInstaller によるパッケージング
-      - name: Package with PyInstaller (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          # 確実にパスを通すため、bin/vose_core.dll を指定
-          pyinstaller --windowed --noconsole --onefile --add-data "bin/vose_core.dll;bin" --name "VO-SE_PRO_Win" main.py
-
-      - name: Package with PyInstaller (MacOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          pyinstaller --windowed --noconsole --onefile --add-data "bin/vose_core.dylib:bin" --name "VO-SE_PRO_Mac" main.py
-
-      # 4. 成果物の確認（デバッグ用：パスに何があるかログに出す）
-      - name: List files in dist
-        run: ls -R dist
+      # 4. PyInstaller パッケージング (容量不足を解消する全部入り設定)
+      - name: Package with PyInstaller
         shell: bash
+        run: |
+          # OSごとにデータ区切り文字を変更 (; か :)
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            SEP=";"
+          else
+            SEP=":"
+          fi
+          
+          # --collect-all で PySide6(GUI) や numpy を強制同梱 (これで100MB前後になる)
+          # --hidden-import で漏れやすいライブラリを強制指定
+          pyinstaller --windowed --noconsole --onefile \
+            --collect-all PySide6 \
+            --collect-all numpy \
+            --hidden-import PySide6.QtCore \
+            --hidden-import PySide6.QtWidgets \
+            --hidden-import PySide6.QtGui \
+            --add-data "bin/*${SEP}bin" \
+            --name "VO-SE_PRO_${{ matrix.os }}" main.py
 
-      # 5. リリースへアップロード
+      # 5. リリースへのアップロード (ファイル名を確実に拾う)
       - name: Upload Assets to Release
-        uses: softprops/action-gh-release@v2 # 最新のv2を使用
+        uses: softprops/action-gh-release@v2
         with:
-          # ワイルドカードを使用して、名前の微差を許容する
           files: |
-            dist/*.exe
-            dist/VO-SE_PRO_Mac
+            dist/VO-SE_PRO_windows-latest.exe
+            dist/VO-SE_PRO_macos-latest
+          # 既存リリースへの上書き許可
+          overwrite: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
