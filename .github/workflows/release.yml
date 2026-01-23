@@ -15,24 +15,30 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, macos-latest]
+        # Macビルドを優先しつつ、Windowsも確実に並行処理
+        os: [macos-latest, windows-latest]
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 1. C++ エンジンビルド
+      # 1. C++ エンジンビルド (M3/Intel両対応のユニバーサル化)
       - name: Build C++ Engine
         shell: bash
         run: |
           mkdir -p bin
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            g++ -shared -fPIC -o bin/libvo_se.dll src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world -O3
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            # Apple Silicon (arm64) と Intel (x86_64) の両方で動くバイナリを作成
+            clang++ -shared -fPIC -o bin/libvo_se.dylib src/vose_core.cpp src/world/*.cpp \
+              -Iinclude -Iinclude/world -undefined dynamic_lookup -O3 \
+              -arch arm64 -arch x86_64
           else
-            clang++ -shared -fPIC -o bin/libvo_se.dylib src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world -undefined dynamic_lookup -O3
+            # Windows版 DLL ビルド
+            g++ -shared -fPIC -o bin/libvo_se.dll src/vose_core.cpp src/world/*.cpp \
+              -Iinclude -Iinclude/world -O3
           fi
 
-      # 2. Python 環境構築 (Pillowを含め全機能を維持)
+      # 2. Python 環境構築 (Pillowでアイコン変換を補力)
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -43,42 +49,38 @@ jobs:
           python -m pip install --upgrade pip
           pip install PySide6 numpy sounddevice soundfile mido janome pyopenjtalk pyinstaller Pillow
 
-      # 3. パッケージング (パスの曖昧さを許容する設計)
+      # 3. パッケージング (アイコンとアセットを絶対に見逃さない)
       - name: Package with PyInstaller
         shell: bash
         run: |
-          # サーバー内のファイル構造をログに出して、エラー時に追跡可能にする
-          echo "--- Current File Structure ---"
-          find . -maxdepth 3 -not -path '*/.*'
-          
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # Windows版: 大文字小文字どちらの assets フォルダでも対応
-            ICON=$(ls assets/icon.ico Assets/icon.ico 2>/dev/null | head -n 1)
-            DATA_DIR=$(ls -d assets Assets 2>/dev/null | head -n 1)
-            
-            pyinstaller --windowed --noconsole --onefile \
-              --collect-all PySide6 --collect-all numpy --collect-all pyopenjtalk \
-              --add-data "bin/*;bin" \
-              --add-data "${DATA_DIR}/*;assets" \
-              --icon "${ICON}" \
-              --name "VO-SE_PRO_Win" main.py
-          else
-            # Mac版: --osx-bundle-identifier と ZIP圧縮
-            ICON=$(ls assets/icon.icns Assets/icon.icns 2>/dev/null | head -n 1)
-            DATA_DIR=$(ls -d assets Assets 2>/dev/null | head -n 1)
-            
+          # どっちのOSでも使えるように、まずアセットの場所を特定する
+          # 名前が Assets でも assets でも、中身のアイコンを正しく拾う
+          ICON_ICO=$(find . -name "icon.ico" -o -name "icon.ICO" | head -n 1)
+          ICON_ICNS=$(find . -name "icon.icns" -o -name "icon.ICNS" | head -n 1)
+          ASSETS_PATH=$(find . -type d -name "assets" -o -name "Assets" | head -n 1)
+
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            # Mac版: M3 Mac対応 .app 形式 (1.2GB前後の全部入り)
             pyinstaller --windowed --noconsole \
               --collect-all PySide6 --collect-all numpy --collect-all pyopenjtalk \
               --add-data "bin/*:bin" \
-              --add-data "${DATA_DIR}/*:assets" \
-              --icon "${ICON}" \
+              --add-data "${ASSETS_PATH}/*:assets" \
+              --icon "${ICON_ICNS}" \
               --name "VO-SE_PRO_Mac" \
               --osx-bundle-identifier "com.vosepro.app" main.py
             
             cd dist && zip -r ../VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
+          else
+            # Windows版: 1つの .exe に集約 (200MB程度の圧縮形式)
+            pyinstaller --windowed --noconsole --onefile \
+              --collect-all PySide6 --collect-all numpy --collect-all pyopenjtalk \
+              --add-data "bin/*;bin" \
+              --add-data "${ASSETS_PATH}/*;assets" \
+              --icon "${ICON_ICO}" \
+              --name "VO-SE_PRO_Win" main.py
           fi
 
-      # 4. GitHub Release へのアップロード
+      # 4. GitHub Release へ自動投稿
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -87,8 +89,9 @@ jobs:
             VO-SE_PRO_Mac.zip
           body: |
             VO-SE PRO 正式リリース
-            - GarageBand自作SE内蔵
-            - UTAU音源(ZIP)ドラッグ&ドロップ対応
-            - Windows & macOS 両対応
+            - macOS版: Universal Binary (M3 / M2 / M1 / Intel) 対応
+            - Windows版: .exe 形式 10/11 対応
+            - GarageBand 自作SE (Finder風) 搭載
+            - UTAU音源 (ZIP) ドラッグ＆ドロップ機能
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
