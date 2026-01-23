@@ -6,6 +6,8 @@ import pyopenjtalk
 import numpy as np
 import json
 from PyQt6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QApplication
 
 
 from main_window import MainWindow 
