@@ -1249,6 +1249,20 @@ class MainWindow(QMainWindow):
     # ファイル操作
     # ==========================================================================
 
+    def read_file_safely(self, filepath: str) -> str:
+        """Shift-JIS(cp932)とUTF-8を自動判別して読み込む"""
+        import chardet
+        with open(filepath, 'rb') as f:
+            raw_data = f.read()
+    
+        # 文字コード判定
+        encoding = chardet.detect(raw_data)['encoding']
+        if encoding is None:
+            encoding = 'cp932' # 不明な場合は日本語Windows標準
+        
+        return raw_data.decode(encoding, errors='ignore')
+
+
 
     def prepare_utau_flags(self, time):
         """
@@ -1699,6 +1713,22 @@ class MainWindow(QMainWindow):
             notes[i].lyrics = lyric_list[i]
             
         self.timeline_widget.update()
+
+
+    def parse_ust_dict_to_note(self, d: dict):
+        """USTの1ノートセクションをNoteEventに変換"""
+        # 480分音符などの計算が必要
+        length = int(d.get('Length', 480))
+        note_num = int(d.get('NoteNum', 64))
+        lyric = d.get('Lyric', 'あ')
+        # 時間計算ロジック...
+        return NoteEvent(lyrics=lyric, note_number=note_num, duration=length/480.0)
+
+    def update_scrollbar_range(self):
+        """ノートの長さに合わせてスクロールバーの最大値を更新"""
+        max_time = self.timeline_widget.get_total_duration()
+        self.horizontal_scrollbar.setMaximum(int(max_time * 100))
+        # グラフエディタ側も同期
 
     # ==========================================================================
     # その他のスロット
