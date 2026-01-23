@@ -575,10 +575,22 @@ class MainWindow(QMainWindow):
         # パス指定
         # OSに合わせて拡張子を変える（GitHub Actionsのマルチプラットフォーム対応）
         ext = ".dll" if platform.system() == "Windows" else ".dylib"
+        dll_relative_path = os.path.join("bin", f"libvo_se{ext}")
+        self.dll_full_path = get_resource_path(dll_relative_path)
         
         # binフォルダ内のDLLを指名
         dll_relative_path = os.path.join("bin", f"libvo_se{ext}")
         self.dll_full_path = get_resource_path(dll_relative_path)
+
+        # --- 【追加】公式音源の自動ロード ---
+        # assets/voice/official/ という階層に音源を置く想定
+        official_voice_path = get_resource_path(os.path.join("assets", "voice", "official"))
+        official_oto_path = os.path.join(official_voice_path, "oto.ini")
+
+        if os.path.exists(official_oto_path):
+            print(f"✓ Official voice found: {official_voice_path}")
+            # ここでVoiceManagerやEngineにパスを渡す
+            # 例: self.on_voice_library_changed(official_voice_path, self.parse_oto_ini(official_oto_path))
 
         # 3. ロード実行
         try:
@@ -995,6 +1007,25 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             QMessageBox.warning(self, "エラー", f"インストールの失敗: {str(e)}")
+
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.accept()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        files = [u.toLocalFile() for u in event.mimeData().urls()]
+        for f in files:
+            if f.lower().endswith(".zip"):
+                self.statusBar().showMessage(f"音源を導入中: {os.path.basename(f)}")
+                # ここでVoiceManagerのインストール機能を呼ぶ
+                new_voice = self.voice_manager.install_voice_from_zip(f)
+                # 成功したらSEを鳴らす！
+                self.audio_output.play_se(get_resource_path("assets/install_success.wav"))
+                QMessageBox.information(self, "導入完了", f"音源 '{new_voice}' をインストールしました！")
+                self.scan_utau_voices() # リスト更新
 
     # ==========================================================================
     # 再生・録音制御
