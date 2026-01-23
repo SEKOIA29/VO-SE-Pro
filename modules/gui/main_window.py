@@ -904,7 +904,7 @@ class MainWindow(QMainWindow):
     
 
     # ==========================================================================
-    # ドラッグ&ドロップ処理
+    # ドラッグ&ドロップ・ZIP解凍（文字化け対策済み）
     # ==========================================================================
 
     def dragEnterEvent(self, event):
@@ -919,6 +919,7 @@ class MainWindow(QMainWindow):
         for url in event.mimeData().urls():
             file_path = url.toLocalFile()
             
+            # 拡張子によって処理を振り分け
             if file_path.lower().endswith('.zip'):
                 self.import_voice_bank(file_path)
             elif file_path.lower().endswith(('.mid', '.midi')):
@@ -927,20 +928,73 @@ class MainWindow(QMainWindow):
                 self.load_file_from_path(file_path)
 
     def import_voice_bank(self, zip_path: str):
-        """ZIP形式の音源をインストール"""
-        name = self.voice_manager.install_voice_from_zip(zip_path)
-        if name:
-            self.voice_manager.scan_utau_voices()
-            self.refresh_voice_ui_with_scan()
-            self.character_selector.setCurrentText(name)
-            self.statusBar().showMessage(f"音源 '{name}' をインストールしました！", 3000)
-            self.audio_output.play_se("install_success.wav")
-        else:
-            QMessageBox.warning(
-                self,
-                "エラー",
-                "有効なUTAU音源(oto.ini)が見つかりませんでした。"
-            )
+        """ZIP形式の音源をインストール（Shift-JIS文字化け対策版）"""
+        import zipfile
+        import shutil
+
+        # 音源保存先ディレクトリ
+        extract_base_dir = get_resource_path("voices")
+        os.makedirs(extract_base_dir, exist_ok=True)
+        
+        installed_name = None
+
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as z:
+                # 1. まず音源名を決定するために中身を走査
+                for info in z.infolist():
+                    try:
+                        # Shift-JIS(cp932)の文字化けを解消
+                        filename = info.filename.encode('cp437').decode('cp932')
+                    except:
+                        filename = info.filename
+                    
+                    if "oto.ini" in filename.lower():
+                        # oto.iniが含まれるフォルダ名を音源名とする
+                        parts = filename.replace('\\', '/').split('/')
+                        installed_name = parts[0] if parts[0] else "Unknown_Voice"
+                        break
+
+                if not installed_name:
+                    raise Exception("有効なUTAU音源(oto.ini)が見つかりませんでした。")
+
+                # 2. 全ファイルを正しく解凍
+                for info in z.infolist():
+                    try:
+                        filename = info.filename.encode('cp437').decode('cp932')
+                    except:
+                        filename = info.filename
+
+                    # 保存先フルパス
+                    target_path = os.path.join(extract_base_dir, filename)
+
+                    if info.is_dir():
+                        os.makedirs(target_path, exist_ok=True)
+                        continue
+
+                    # ファイル書き出し
+                    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                    with z.open(info) as source, open(target_path, "wb") as target:
+                        shutil.copyfileobj(source, target)
+
+            # --- インストール成功後のUI処理 ---
+            # 音源マネージャーをリロード（あなたのクラス設計に合わせて適宜微調整してください）
+            if hasattr(self, 'voice_manager'):
+                self.voice_manager.scan_utau_voices()
+                self.refresh_voice_ui_with_scan()
+            
+            # UIに反映
+            if hasattr(self, 'character_selector'):
+                self.character_selector.setCurrentText(installed_name)
+            
+            self.statusBar().showMessage(f"音源 '{installed_name}' をインストールしました！", 3000)
+            
+            # 効果音の再生
+            if hasattr(self, 'audio_output'):
+                se_path = get_resource_path(os.path.join("assets", "install_success.wav"))
+                self.audio_output.play_se(se_path)
+
+        except Exception as e:
+            QMessageBox.warning(self, "エラー", f"インストールの失敗: {str(e)}")
 
     # ==========================================================================
     # 再生・録音制御
