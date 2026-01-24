@@ -639,6 +639,48 @@ class MainWindow(QMainWindow):
             # 今回の歌詞を保存
             prev_lyric = note.lyric
 
+
+    def init_vcv_logic(self):
+        # 起動時に一度だけ。MainWindowの__init__から呼び出してください
+        self.vowel_groups = {
+            'a': 'あかさたなはまやらわがざだばぱぁゃ',
+            'i': 'いきしちにひみりぎじぢびぴぃ',
+            'u': 'うくすつぬふむゆるぐずづぶぷぅゅ',
+            'e': 'えけせてねへめれげぜでべぺぇ',
+            'o': 'おこそとのほもよろをごぞどぼぽぉょ',
+            'n': 'ん'
+        }
+
+    def get_best_wav_path(self, lyric, prev_lyric, voice_bank_path):
+        """
+        lyric: 現在の歌詞, prev_lyric: 前の歌詞
+        voice_bank_path: UTAU音源のフォルダパス
+        """
+        prev_v = None
+        if prev_lyric:
+            last_char = prev_lyric[-1]
+            for v, chars in self.vowel_groups.items():
+                if last_char in chars:
+                    prev_v = v
+                    break
+
+        # 探索候補 (連続音 -> 単独音)
+        choices = []
+        if prev_v:
+            choices.append(f"{prev_v} {lyric}") # 'a い'
+        choices.append(f"- {lyric}")           # '- い'
+        choices.append(lyric)                   # 'い'
+
+        # oto.iniをパースした self.oto_dict からパスを検索
+        for alias in choices:
+            if hasattr(self, 'oto_dict') and alias in self.oto_dict:
+                # oto_dict[alias] に wavのファイル名が入っている想定
+                filename = self.oto_dict[alias]['wav']
+                return os.path.join(voice_bank_path, filename)
+        
+        # 見つからなければデフォルト（既存の挙動）
+        return os.path.join(voice_bank_path, f"{lyric}.wav")
+
     #---------
     #エンジン接続関係
     #---------
