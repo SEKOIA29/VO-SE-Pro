@@ -760,6 +760,12 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Failed to load engine: {e}")
 
+    def open_about(self):
+        """About画面を表示"""
+        dialog = CreditsDialog(self.confirmed_partners, self)
+        dialog.exec()
+    
+
     def init_ui(self):
         """UIコンポーネントの構築"""
         self.setWindowTitle("VO-SE Pro ")
