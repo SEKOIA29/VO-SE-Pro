@@ -62,7 +62,7 @@ class CreditsDialog(QDialog):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
-        version = QLabel("Version 1.0.0 Alpha | Dynamics AI Engine Loaded")
+        version = QLabel("Version 1.0.0 Alpha | Aura AI Engine Loaded") # エンジン名
         version.setFont(QFont("Consolas", 9))
         version.setStyleSheet("color: #666;")
         version.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -74,7 +74,7 @@ class CreditsDialog(QDialog):
         layout.addWidget(line)
 
         # --- パートナーセクション ---
-        header_partner = QLabel("DYNAMICS FOUNDING VOICE PARTNERS")
+        header_partner = QLabel("AURAL FOUNDING VOICE PARTNERS") # パートナーセクション名
         header_partner.setFont(QFont("Impact", 14))
         header_partner.setStyleSheet("color: #ff007f; margin-bottom: 5px;")
         layout.addWidget(header_partner)
