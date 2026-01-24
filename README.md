@@ -1,88 +1,38 @@
-# VO-SE Pro (Voice Synthesis Engine Professional)
+VO-SE Pro (Voice Synthesis Engine Professional)
+"既存の枠組みを、1人のコードで塗り替える。"
 
-VO-SE Pro は、Python による高度な日本語言語解析と、C言語による高速な信号処理を組み合わせた、ハイブリッド型の音声合成・音声処理プラットフォームです。
+VO-SE Pro は、Python による高度な日本語言語解析と、C言語による高速な信号処理を組み合わせた、次世代ハイブリッド型音声合成プラットフォームです。
 
-現在dynamics技術チーム(1人、笑)が開発しています。
+🚀 3つのコア・テクノロジー
+1. ハイブリッド・パフォーマンス
 
-歌声合成音声ソフトで業界トップクラスのシステムの軽さダータの軽量化を目指してやっています
+ロジック制御と複雑な解析には柔軟な Python を、レイテンシが命となる音声信号処理には C言語 (C++20) を採用。 DLL/dylib 連携により、業界トップクラスの「動作の軽快さ」と「データ軽量化」を両立しました。
 
-## 🚀 特徴
+2. Aural AI & Dynamics Engine
 
-- **ハイブリッド設計**: ロジック制御と解析を Python、重い数値計算を C言語 (DLL/dylib) で分担。
-- **日本語解析**: `pyopenjtalk` を内蔵し、フルコンテキストラベル（アクセントや音素情報）の抽出に対応。
-- **クロスプラットフォーム**: Windows (.exe) および macOS (.app) の両環境に対応したビルド構成。
-- **自動ビルド (CI/CD)**: GitHub Actions により、コードを Push するだけで実行バイナリを自動生成。
+上位互換エンジン Aural AI を搭載。 フルコンテキストラベル（アクセント・音素情報）を解析し、AIによる自然なピッチダイナミクスを生成します。
 
-## 📂 プロジェクト構成(未更新）
+3. クロスプラットフォーム・デリバリー
 
-```text
-VO-SE_Pro/
-├── .github/                    # GitHub自動化設定
-│   └── workflows/
-│       └── build.yml           # GitHub Actions用ビルド定義
-├── assets/                     # デザイン・法務資産
-│   ├── icon.ico                # Windows用アイコン (256x256)
-│   ├── icon.icns               # macOS用アイコン
-│   ├── splash.png              # 起動時のスプラッシュ画像
-│   └── license.txt             # ユーザーへの利用規約
-├── bin/                        # ビルド済みバイナリ（AppInitializerがここをチェック）
-│   ├── libvo_se.dll            # Windows用エンジン (ビルド後に生成)
-│   └── libvo_se.dylib          # macOS用エンジン (ビルド後に生成)
-├
-├── modules/                    # Pythonプログラム（中身）
-│    ├── __init__.py
-│   │
-│   ├── ai/                     # 【AI解析担当】
-│   │   ├── __init__.py
-│   │   ├── ai_manager.py          # ONNXモデルのロードと推論実行
-│   │   
-│   │
-│   ├── auodio/                 # 【C言語連携担当】
-│   │   ├── __init__.py
-│   │   ├──voice_manager.py
-│   │   ├──vo_se_engine.py
-│   │   └── audio_output.py
-│   │
-│   ├── talk/                   # 【喋り（Open JTalk）担当】
-│   │   ├── __init__.py
-│   │   └── talk_manager.py     # subprocessによるOpen JTalk制御
-│   │
-│   ├── gui/                    # 【UI/画面表示担当】
-│   │   ├── __init__.py
-│   │   ├── main_window.py      # メイン画面とメニューバー
-│   │   ├── app_main.py 
-│   │   ├──timeline_widget.py      
-│   │   ├──widgets.py
-│   │   ├── graph_editor_widgetl.py     
-│   │   └── keyboard_sidebar_widget.py         
-│   │
-│   ├── data/                    # 【UI/画面表示担当】
-│   │   ├── __init__.py
-│   │   ├── data_models.py     #
-│   │   ├── midi_manager.py     # midi
-│   │   ├── talk_panel.py       # 
-│   │   └── text_analyzer.py         # 
-│
-│   │
-│   └── utils/                  # 【共通ツール担当】
-│       ├── __init__.py
-│       ├── initializer.py      # 起動時のファイル存在チェック
-│       ├── config_handler.py   # 設定(json)の保存・読み込み
-│       └── zip_handler.py      # ZIPインポートの解凍処理
-│   
-├── src/                        # C言語エンジン（中身）
-│   ├── vo_se_engine.c          # エンジンメインソース
-│   └── vo_se_engine.h          # 構造体定義ヘッダー
-├── voice_banks/                # 歌声ライブラリ
-│   └── default_voice/          # サンプル音源フォルダ
-│       ├── oto.ini             # 原音設定ファイル
-│       └── a.wav               # 各種音声データ
-├── output/                     # 合成された音声の保存先（自動生成）
-├── temp/                       # 作業用一時フォルダ（自動生成）
-├── .gitignore                  # Git管理から除外するリスト
-├── main.py                     # アプリ起動エントリポイント
-├── Makefile                    # ローカルビルド用コマンド集（未実装）
-├── README.md                   # 開発者・ユーザー向け説明書
-├── requirements.txt            # Pythonライブラリ依存リスト
-└── vose_pro.spec               # PyInstallerパッケージング定義
+GitHub Actions による CI/CD パイプラインを構築。 Windows (.exe) だけでなく、macOS (.app) 環境にも対応。アドホック署名を自動適用し、最新の Apple Silicon Mac でも動作可能なバイナリを提供します。
 
+🛠️ v1.2.0 アップデート内容
+Aural AI Priority: 最上位モデル aural_dynamics.onnx の優先ロード機能。
+
+Smart Importer: Mac特有の隠しファイル（__MACOSX）の自動排除と、深い階層の oto.ini 再帰スキャン。
+
+Ad-hoc Signing: Mac環境での実行権限問題をクリアする自動署名プロセス。
+
+📢 開発の実情とパートナー募集
+現在、VO-SE Pro は 「dynamics技術チーム（開発者1名）」 によって、放課後や休日を利用して猛烈なスピードで開発されています。
+
+【Macユーザーの方へ】 開発者が中学生のため、Apple Developer登録料（年間99ドル）の捻出が難しく、現在は「未認証（アドホック署名）」での配布となっています。初回起動時に警告が出ますが、これは僕が技術力で解決していくべき「壁」の証です。
+
+この進化を共創する「10人のパートナー（テスター）」を募集しています。 バグを見つけ、仕様を議論し、新しい歌声を形にする。その過程を共に楽しみませんか？
+
+📦 インストール
+[疑わしいリンクは削除されました] から、OSに合ったファイルをダウンロード。
+
+Windows: .exe を実行。
+
+Mac: .zip を解凍し、アプリを 右クリック > 開く で実行。
