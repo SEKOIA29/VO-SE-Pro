@@ -1223,6 +1223,27 @@ class MainWindow(QMainWindow):
                 se_path = get_resource_path(os.path.join("assets", "install_success.wav"))
                 self.audio_output.play_se(se_path)
 
+        # 1. 解凍された音源のフルパスを特定
+        voice_dir = os.path.join(extract_base_dir, installed_name)
+
+        # 2. 【ここが接続！】
+        # もし音源の中にAIモデル(.onnx)が含まれていたら、エンジンにセットする
+        onnx_path = os.path.join(voice_dir, "model.onnx")
+
+        if os.path.exists(onnx_path):
+            # すでにモデルがあるなら、DynamicsAIEngineを新しく作り直して接続
+            self.dynamics_ai = DynamicsAIEngine(model_path=onnx_path)
+            print(f"Aural AI: '{installed_name}' のAIモデルを接続しました。")
+　　　　　else:
+            # モデルがない場合（純粋なUTAU音源の場合）
+            # ここで「WAVからAI学習」へ飛ばすか、デフォルトのAIを適用する
+            print(f"Aural AI: AIモデルが見つかりません。デフォルトの揺れを適用します。")
+            self.dynamics_ai = DynamicsAIEngine() # デフォルト起動
+
+
+
+        
+
         except Exception as e:
             QMessageBox.warning(self, "エラー", f"インストールの失敗: {str(e)}")
 
