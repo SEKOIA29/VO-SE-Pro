@@ -32,7 +32,7 @@ jobs:
             clang++ -shared -fPIC -o bin/libvo_se.dylib src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world -undefined dynamic_lookup -O3
           fi
 
-      # 2. Python 環境構築 (Pillowを含め全機能を維持)
+      # 2. Python 環境構築
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -43,16 +43,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install PySide6 numpy sounddevice soundfile mido janome pyopenjtalk pyinstaller Pillow
 
-      # 3. パッケージング (パスの曖昧さを許容する設計)
-      - name: Package with PyInstaller
+      # 3. パッケージング
+      - name: Package App
         shell: bash
         run: |
-          # サーバー内のファイル構造をログに出して、エラー時に追跡可能にする
           echo "--- Current File Structure ---"
           find . -maxdepth 3 -not -path '*/.*'
           
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # Windows版: 大文字小文字どちらの assets フォルダでも対応
+            # Windows版
             ICON=$(ls assets/icon.ico Assets/icon.ico 2>/dev/null | head -n 1)
             DATA_DIR=$(ls -d assets Assets 2>/dev/null | head -n 1)
             
@@ -63,7 +62,7 @@ jobs:
               --icon "${ICON}" \
               --name "VO-SE_PRO_Win" main.py
           else
-            # Mac版: --osx-bundle-identifier と ZIP圧縮
+            # Mac版
             ICON=$(ls assets/icon.icns Assets/icon.icns 2>/dev/null | head -n 1)
             DATA_DIR=$(ls -d assets Assets 2>/dev/null | head -n 1)
             
@@ -75,20 +74,39 @@ jobs:
               --name "VO-SE_PRO_Mac" \
               --osx-bundle-identifier "com.vosepro.app" main.py
             
+            # --- アドホック署名の実行 ---
+            echo "--- Ad-hoc Signing VO-SE_PRO_Mac.app ---"
+            codesign --force --deep --sign - dist/VO-SE_PRO_Mac.app
+            
             cd dist && zip -r ../VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
-      # 4. GitHub Release へのアップロード
+      # 4. ハッシュ値（SHA-256）の生成
+      - name: Generate Checksums
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            sha256sum dist/VO-SE_PRO_Win.exe > checksum.txt
+          else
+            sha256sum VO-SE_PRO_Mac.zip > checksum.txt
+          fi
+
+      # 5. GitHub Release へのアップロード
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/VO-SE_PRO_Win.exe
             VO-SE_PRO_Mac.zip
+            checksum.txt
           body: |
             VO-SE PRO 正式リリース
+            
             - GarageBand自作SE内蔵
             - UTAU音源(ZIP)ドラッグ&ドロップ対応
-            - Windows & macOS 両対応
+            - AIピッチダイナミクス搭載
+            - Windows & macOS (Ad-hoc Signed) 対応
+            
+            ※Mac版で「開発元を検証できない」と出る場合は、Finderで右クリックして「開く」を選択してください。
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
