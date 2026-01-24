@@ -727,13 +727,13 @@ class MainWindow(QMainWindow):
         # ここではテスト用にダミーのリストを返します
         return []
 
- # ==========================================================================
-    # 連続音対応エンジン接続ロジック (v1.3.0 完全版)
+    # ==========================================================================
+    # VO-SE Pro v1.3.0: 連続音（VCV）解決 ＆ レンダリング準備
     # ==========================================================================
 
     def resolve_target_wav(self, lyric, prev_lyric):
         """前の歌詞から母音を判定し、最適なWAVパスを特定する"""
-        # 1. 母音グループの定義 (起動時ロードが理想だが安全のためここで定義)
+        # 1. 母音グループの定義
         vowel_groups = {
             'a': 'あかさたなはまやらわがざだばぱぁゃ',
             'i': 'いきしちにひみりぎじぢびぴぃ',
@@ -752,24 +752,25 @@ class MainWindow(QMainWindow):
                     prev_v = v
                     break
 
-        # 3. エイリアスの検索候補を作成 (連続音 -> 単独音1 -> 単独音2)
+        # 3. 検索候補の作成 (連続音 -> 単独音1 -> 単独音2)
         candidates = []
         if prev_v:
             candidates.append(f"{prev_v} {lyric}") # 例: 'a い'
         candidates.append(f"- {lyric}")           # 例: '- い'
         candidates.append(lyric)                   # 例: 'い'
 
-        # 4. エンジンが持っている音源フォルダとoto_mapを参照
+        # 4. エンジンから現在の音源フォルダとoto_mapを取得
         voice_path = getattr(self.vo_se_engine, 'voice_path', "")
+        # エンジン側が保持しているoto.iniの解析データ
         oto_map = getattr(self.vo_se_engine, 'oto_data', {})
 
         for alias in candidates:
             if alias in oto_map:
-                # oto_map内の'wav'キーからファイル名を取得
+                # oto_map内の'wav'キーから実際のファイル名を取得
                 filename = oto_map[alias].get('wav', f"{lyric}.wav")
                 return os.path.join(voice_path, filename)
 
-        # 5. 何も見つからなければデフォルトのファイル名を返す
+        # 5. 何も見つからなければデフォルト
         return os.path.join(voice_path, f"{lyric}.wav")
 
     def prepare_rendering_data(self):
@@ -778,54 +779,52 @@ class MainWindow(QMainWindow):
         
         gui_notes = self.timeline_widget.get_all_notes()
         song_data = []
-        prev_lyric = None # 直前の歌詞を保持する変数
+        prev_lyric = None # 前の歌詞を記憶
 
         for note in gui_notes:
-            # --- ここで「完全版」連続音解決ロジックを呼び出し ---
+            # --- 連続音解決ロジックを実行 ---
             target_wav_path = self.resolve_target_wav(note.lyrics, prev_lyric)
 
             # 1. MIDIノート番号を基本周波数(Hz)に変換
             base_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
 
-            # 2. 5msごとのフレーム数を計算
+            # 2. 5msごとのフレーム数を計算 (WORLDエンジンの仕様)
             num_frames = int(max(1, (note.duration * 1000) / 5))
         
-            # 3. ピッチ配列の作成 (numpyを使用)
+            # 3. ピッチ配列の作成
             pitch_list = np.ones(num_frames, dtype=np.float32) * base_hz
 
-            # 4. エンジンに渡すデータをパッキング
+            # 4. エンジン用辞書にパッキング
             song_data.append({
                 'lyric': note.lyrics,
-                'wav_path': target_wav_path, # 解決したフルパスを格納
+                'wav_path': target_wav_path, # ここで決定したフルパスを渡す
                 'pitch_list': pitch_list
             })
 
-            # 次のノートのために現在の歌詞を保存
+            # 今回の歌詞を保存
             prev_lyric = note.lyrics
     
         return song_data
 
     def start_playback(self):
-        """再生ボタン押下時：合成して再生"""
-        # 最新のデータ(VCV解決済み)を作成
+        """再生ボタンが押された時のメインエントリ"""
+        # VCV解析済みのデータを生成
         notes_data = self.prepare_rendering_data()
         
         if not notes_data:
             self.statusBar().showMessage("再生するノートがありません。")
             return
 
-        self.statusBar().showMessage("連続音を解析し、音声を合成中...")
+        self.statusBar().showMessage("VCV解析完了。合成を開始します...")
         
-        # vo_se_engine.synthesize が引数として notes_data を受け取れるように調整
-        # (内部で notes[i]['wav_path'] を C++ 側に渡す処理が必要です)
+        # エンジン側のsynthesizeメソッドにデータを渡す
         audio_data = self.vo_se_engine.synthesize(notes_data)
 
         if audio_data is not None and len(audio_data) > 0:
             self.vo_se_engine.play(audio_data)
-            self.statusBar().showMessage("連続音モードで再生中")
+            self.statusBar().showMessage("再生中 (v1.3.0 VCV Engine)")
         else:
-            self.statusBar().showMessage("合成に失敗しました。")
-
+            self.statusBar().showMessage("合成エラー。ログを確認してください。")
     
     # ==========================================================================
     # 初期化メソッド
