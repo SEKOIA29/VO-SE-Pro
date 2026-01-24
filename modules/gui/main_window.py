@@ -514,8 +514,7 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
 
 
-        # 1. 起動時に母音マップを読み込んでおく
-        self.vowel_groups = {
+       self.vowel_groups = {
             'a': 'あかさたなはまやらわがざだばぱぁゃ',
             'i': 'いきしちにひみりぎじぢびぴぃ',
             'u': 'うくすつぬふむゆるぐずづぶぷぅゅ',
@@ -523,35 +522,8 @@ class MainWindow(QMainWindow):
             'o': 'おこそとのほもよろをごぞどぼぽぉょ',
             'n': 'ん'
         }
-
-    # 2. 解決用メソッドをクラス内に追加
-    def resolve_alias(self, lyric, prev_lyric):
-        prev_v = None
-        if prev_lyric:
-            last_char = prev_lyric[-1]
-            for v, chars in self.vowel_groups.items():
-                if last_char in chars:
-                    prev_v = v
-                    break
-
-        # 連続音 -> 単独音の順でチェック
-        if prev_v:
-            alias = f"{prev_v} {lyric}"
-            # ここで実際に oto.ini に存在するか確認するロジックを入れる
-            return alias 
-        return lyric
-
-    # 3. 実行ボタンの関数内で呼び出す
-    def on_generate_clicked(self):
-        prev_lyric = None
-        for note in self.notes:
-            # ここで「魔法」をかける！
-            target_alias = self.resolve_alias(note.lyric, prev_lyric)
-            
-            # この target_alias を使ってC++を叩く
-            self.run_cpp_engine(target_alias)
-            
-            prev_lyric = note.lyric
+        # oto.iniのデータを格納する辞書（空で初期化）
+        self.oto_dict = {}
 
         # ==============================================================================
         # --- ここで辞書を定義 ---
@@ -623,6 +595,49 @@ class MainWindow(QMainWindow):
         self.scan_utau_voices()
         # ウィンドウタイトル
         self.setWindowTitle("VO-SE Pro")
+
+    # --- [2] 連続音（VCV）解決メソッド ---
+    def resolve_vcv_alias(self, lyric, prev_lyric):
+        """
+        lyric: 今回の歌詞, prev_lyric: 前回の歌詞
+        戻り値: (確定したエイリアス, そのパラメータ)
+        """
+        # 1. 前の文字から母音を判定
+        prev_v = None
+        if prev_lyric:
+            last_char = prev_lyric[-1]
+            for v, chars in self.vowel_groups.items():
+                if last_char in chars:
+                    prev_v = v
+                    break
+
+        # 2. 検索候補の作成（優先順位: 連続音 -> 単独音1 -> 単独音2）
+        candidates = []
+        if prev_v:
+            candidates.append(f"{prev_v} {lyric}") # 例: 'a い'
+        candidates.append(f"- {lyric}")           # 例: '- い'
+        candidates.append(lyric)                   # 例: 'い'
+
+        # 3. self.oto_dict を検索して最初に見つかったものを返す
+        for alias in candidates:
+            if alias in self.oto_dict:
+                return alias, self.oto_dict[alias]
+        
+        # 4. 見つからない場合は入力文字をそのまま（パラメータなし）
+        return lyric, None
+
+    # --- [3] 音声生成のメインループ（使い方のイメージ） ---
+    def on_synthesize(self, notes):
+        prev_lyric = None
+        for note in notes:
+            # ここで解決ロジックを実行！
+            alias, params = self.resolve_vcv_alias(note.lyric, prev_lyric)
+            
+            # C++エンジンへの橋渡し（paramsには先行発声などが入っている）
+            self.run_engine(alias, params)
+            
+            # 今回の歌詞を保存
+            prev_lyric = note.lyric
 
     #---------
     #エンジン接続関係
