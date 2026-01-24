@@ -13,6 +13,7 @@ import librosa
 import soundfile as sf
 import sounddevice as sd
 import librosa
+import wave
 import pyworld as pw
 from typing import List
 from typing import List, Optional, Dict, Any
@@ -36,6 +37,53 @@ import numpy as np
 from .timeline_widget import TimelineWidget
 from audio.vo_se_engine import VO_SE_Engine
 from audio.voice_manager import VoiceManager
+
+
+
+
+class AutoOtoEngine:
+    def __init__(self, sample_rate=44100):
+        self.sample_rate = sample_rate
+
+    def analyze_wav(self, file_path):
+        """WAVファイルを解析して、UTAU形式のパラメータを返す"""
+        with wave.open(file_path, 'rb') as f:
+            n_frames = f.getnframes()
+            frames = f.readframes(n_frames)
+            samples = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
+
+        # 1. 振幅のエンベロープ（外形）を計算
+        # 窓幅 10ms 程度で移動平均をとる
+        win_size = int(self.sample_rate * 0.01) 
+        envelope = np.convolve(np.abs(samples), np.ones(win_size)/win_size, mode='same')
+        max_amp = np.max(envelope)
+
+        # 2. オフセット (Offset): 音が始まる地点 (最大振幅の 5%)
+        start_idx = np.where(envelope > max_amp * 0.05)[0][0]
+        offset_ms = (start_idx / self.sample_rate) * 1000
+
+        # 3. 先行発声 (Pre-utterance): 子音から母音へ（音量が急増し終わる地点）
+        # 音量の増加率が最大になる付近を特定
+        diff = np.diff(envelope[start_idx : start_idx + int(self.sample_rate * 0.5)])
+        accel_idx = np.argmax(diff) + start_idx
+        preutter_ms = ((accel_idx - start_idx) / self.sample_rate) * 1000
+
+        # 4. オーバーラップ (Overlap): 前の音との重なり (先行発声の 1/2)
+        overlap_ms = preutter_ms / 2
+
+        return {
+            "offset": int(offset_ms),
+            "preutter": int(preutter_ms),
+            "overlap": int(overlap_ms),
+            "constant": int(preutter_ms * 2), # 子音固定範囲
+            "blank": -10 # 右ブランク（とりあえず末尾10msカット）
+        }
+
+    def generate_oto_text(self, wav_name, params):
+        """1行分のoto.iniテキストを生成"""
+        alias = os.path.splitext(wav_name)[0]
+        return f"{wav_name}={alias},{params['offset']},{params['constant']},{params['blank']},{params['preutter']},{params['overlap']}"
+
 
 
     
@@ -918,6 +966,48 @@ class MainWindow(QMainWindow):
     # ==========================================================================
     # ドラッグ&ドロップ・ZIP解凍（文字化け対策済み）
     # ==========================================================================
+
+
+    def generate_and_save_oto(self, target_voice_dir):
+        """
+        指定されたフォルダ内の全WAVを解析し、oto.iniを生成して保存する。
+        """
+        import os
+        
+        # 解析エンジンのインスタンス化
+        analyzer = AutoOtoEngine(sample_rate=44100)
+        oto_lines = []
+        
+        # フォルダ内のファイルをスキャン
+        files = [f for f in os.listdir(target_voice_dir) if f.lower().endswith('.wav')]
+        
+        if not files:
+            print("解析対象のWAVファイルが見つかりませんでした。")
+            return
+
+        print(f"Starting AI analysis for {len(files)} files...")
+
+        for filename in files:
+            file_path = os.path.join(target_voice_dir, filename)
+            try:
+                # 1. 各ファイルをAI解析
+                params = analyzer.analyze_wav(file_path)
+                
+                # 2. UTAU互換のテキスト行を生成
+                line = analyzer.generate_oto_text(filename, params)
+                oto_lines.append(line)
+            except Exception as e:
+                print(f"Error analyzing {filename}: {e}")
+
+        # 3. oto.iniとして書き出し (Shift-JIS / cp932)
+        oto_path = os.path.join(target_voice_dir, "oto.ini")
+        try:
+            with open(oto_path, "w", encoding="cp932", errors="ignore") as f:
+                f.write("\n".join(oto_lines))
+            print(f"Successfully generated: {oto_path}")
+        except Exception as e:
+            print(f"Failed to write oto.ini: {e}")
+            
 
     def dragEnterEvent(self, event):
         """ファイルドラッグ時の処理"""
