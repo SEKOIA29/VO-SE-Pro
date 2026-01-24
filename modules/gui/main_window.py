@@ -513,6 +513,46 @@ class MainWindow(QMainWindow):
     def __init__(self, parent=None, engine=None, ai=None, config=None):
         super().__init__(parent)
 
+
+        # 1. 起動時に母音マップを読み込んでおく
+        self.vowel_groups = {
+            'a': 'あかさたなはまやらわがざだばぱぁゃ',
+            'i': 'いきしちにひみりぎじぢびぴぃ',
+            'u': 'うくすつぬふむゆるぐずづぶぷぅゅ',
+            'e': 'えけせてねへめれげぜでべぺぇ',
+            'o': 'おこそとのほもよろをごぞどぼぽぉょ',
+            'n': 'ん'
+        }
+
+    # 2. 解決用メソッドをクラス内に追加
+    def resolve_alias(self, lyric, prev_lyric):
+        prev_v = None
+        if prev_lyric:
+            last_char = prev_lyric[-1]
+            for v, chars in self.vowel_groups.items():
+                if last_char in chars:
+                    prev_v = v
+                    break
+
+        # 連続音 -> 単独音の順でチェック
+        if prev_v:
+            alias = f"{prev_v} {lyric}"
+            # ここで実際に oto.ini に存在するか確認するロジックを入れる
+            return alias 
+        return lyric
+
+    # 3. 実行ボタンの関数内で呼び出す
+    def on_generate_clicked(self):
+        prev_lyric = None
+        for note in self.notes:
+            # ここで「魔法」をかける！
+            target_alias = self.resolve_alias(note.lyric, prev_lyric)
+            
+            # この target_alias を使ってC++を叩く
+            self.run_cpp_engine(target_alias)
+            
+            prev_lyric = note.lyric
+
         # ==============================================================================
         # --- ここで辞書を定義 ---
         self.confirmed_partners = {
