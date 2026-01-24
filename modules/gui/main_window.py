@@ -39,6 +39,117 @@ from audio.vo_se_engine import VO_SE_Engine
 from audio.voice_manager import VoiceManager
 
 
+# ==========================================================
+# 1. CreditsDialog クラス about画面
+# ==========================================================
+class CreditsDialog(QDialog):
+    def __init__(self, partner_names=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("VO-SE Pro - About & Credits")
+        self.setFixedSize(550, 650)
+        self.setStyleSheet("background-color: #0d0d0d; color: #e0e0e0;")
+
+        # 名前リストを受け取る（ID: 名前 の辞書形式）
+        self.partner_names = partner_names if partner_names else {}
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(30, 30, 30, 30)
+
+        # --- ヘッダーエリア ---
+        title = QLabel("VO-SE Pro")
+        title.setFont(QFont("Segoe UI", 32, QFont.Weight.Bold))
+        title.setStyleSheet("color: #00ffcc; letter-spacing: 2px;")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+
+        version = QLabel("Version 1.0.0 Alpha | Dynamics AI Engine Loaded")
+        version.setFont(QFont("Consolas", 9))
+        version.setStyleSheet("color: #666;")
+        version.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(version)
+
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setStyleSheet("color: #333; margin: 15px 0;")
+        layout.addWidget(line)
+
+        # --- パートナーセクション ---
+        header_partner = QLabel("DYNAMICS FOUNDING VOICE PARTNERS")
+        header_partner.setFont(QFont("Impact", 14))
+        header_partner.setStyleSheet("color: #ff007f; margin-bottom: 5px;")
+        layout.addWidget(header_partner)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("border: none; background: transparent;")
+        
+        container = QWidget()
+        self.partners_layout = QVBoxLayout(container)
+        self.partners_layout.setSpacing(8)
+
+        # 10枠を生成
+        for i in range(1, 11):
+            slot = self.create_partner_row(i)
+            self.partners_layout.addWidget(slot)
+
+        scroll.setWidget(container)
+        layout.addWidget(scroll)
+
+        # --- フッターエリア ---
+        footer_line = QFrame()
+        footer_line.setFrameShape(QFrame.Shape.HLine)
+        footer_line.setStyleSheet("color: #333;")
+        layout.addWidget(footer_line)
+
+        dev_info = QLabel("Engineered by [Your Name]\n© 2026 VO-SE Project") # 2026年に更新
+        dev_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        dev_info.setStyleSheet("color: #444; font-size: 10px; margin-top: 10px;")
+        layout.addWidget(dev_info)
+
+    def create_partner_row(self, index):
+        frame = QFrame()
+        frame.setStyleSheet("""
+            QFrame {
+                background-color: #1a1a1a;
+                border: 1px solid #2d2d2d;
+                border-radius: 5px;
+            }
+            QFrame:hover {
+                border: 1px solid #00ffcc;
+            }
+        """)
+        row = QHBoxLayout(frame)
+        
+        id_lbl = QLabel(f"ID-{index:02}")
+        id_lbl.setStyleSheet("color: #00ffcc; font-family: 'Consolas'; font-weight: bold;")
+        
+        # 動的な名前判定
+        name = self.partner_names.get(index, "UNDER RECRUITMENT")
+        is_recruiting = (name == "UNDER RECRUITMENT")
+        
+        name_lbl = QLabel(name)
+        if is_recruiting:
+            name_lbl.setStyleSheet("color: #444; font-style: italic; font-weight: bold;")
+        else:
+            name_lbl.setStyleSheet("color: #ffffff; font-weight: bold;") # 決まったら白く光らせる
+        
+        badge = QLabel("DYNAMICS READY")
+        badge.setStyleSheet("""
+            background-color: #000;
+            color: #00ffcc;
+            border: 1px solid #00ffcc;
+            border-radius: 3px;
+            font-size: 8px;
+            padding: 2px 5px;
+        """)
+
+        row.addWidget(id_lbl)
+        row.addWidget(name_lbl, 1)
+        row.addWidget(badge)
+        
+        return frame
+
+
 
 
 class AutoOtoEngine:
@@ -402,15 +513,17 @@ class MainWindow(QMainWindow):
     def __init__(self, parent=None, engine=None, ai=None, config=None):
         super().__init__(parent)
 
+
+        self.confirmed_partners = {
+            # 1: "夢路　奏瀬", # 例
+        }
+
         self.render_timer = QTimer()
         self.render_timer.setSingleShot(True)
         self.render_timer.timeout.connect(self.execute_async_render)
         self.vo_se_engine = VO_SE_Engine()
-
-                
+         
         self.init_ui()
-
-
         self.init_engine()
         
         # --- 1. 基盤の初期化 ---
