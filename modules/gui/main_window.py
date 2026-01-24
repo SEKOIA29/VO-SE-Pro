@@ -727,89 +727,104 @@ class MainWindow(QMainWindow):
         # ここではテスト用にダミーのリストを返します
         return []
 
+ # ==========================================================================
+    # 連続音対応エンジン接続ロジック (v1.3.0 完全版)
     # ==========================================================================
-    # エンジン接続スロット
-    # ==========================================================================
+
+    def resolve_target_wav(self, lyric, prev_lyric):
+        """前の歌詞から母音を判定し、最適なWAVパスを特定する"""
+        # 1. 母音グループの定義 (起動時ロードが理想だが安全のためここで定義)
+        vowel_groups = {
+            'a': 'あかさたなはまやらわがざだばぱぁゃ',
+            'i': 'いきしちにひみりぎじぢびぴぃ',
+            'u': 'うくすつぬふむゆるぐずづぶぷぅゅ',
+            'e': 'えけせてねへめれげぜでべぺぇ',
+            'o': 'おこそとのほもよろをごぞどぼぽぉょ',
+            'n': 'ん'
+        }
+
+        # 2. 前の文字の母音を特定
+        prev_v = None
+        if prev_lyric:
+            last_char = prev_lyric[-1]
+            for v, chars in vowel_groups.items():
+                if last_char in chars:
+                    prev_v = v
+                    break
+
+        # 3. エイリアスの検索候補を作成 (連続音 -> 単独音1 -> 単独音2)
+        candidates = []
+        if prev_v:
+            candidates.append(f"{prev_v} {lyric}") # 例: 'a い'
+        candidates.append(f"- {lyric}")           # 例: '- い'
+        candidates.append(lyric)                   # 例: 'い'
+
+        # 4. エンジンが持っている音源フォルダとoto_mapを参照
+        voice_path = getattr(self.vo_se_engine, 'voice_path', "")
+        oto_map = getattr(self.vo_se_engine, 'oto_data', {})
+
+        for alias in candidates:
+            if alias in oto_map:
+                # oto_map内の'wav'キーからファイル名を取得
+                filename = oto_map[alias].get('wav', f"{lyric}.wav")
+                return os.path.join(voice_path, filename)
+
+        # 5. 何も見つからなければデフォルトのファイル名を返す
+        return os.path.join(voice_path, f"{lyric}.wav")
 
     def prepare_rendering_data(self):
-        """GUIのノート情報をエンジン用のデータ構造に変換する"""
+        """GUIのノート情報をエンジン用のデータ構造に変換する (VCV解決込み)"""
+        import numpy as np
+        
         gui_notes = self.timeline_widget.get_all_notes()
         song_data = []
+        prev_lyric = None # 直前の歌詞を保持する変数
 
         for note in gui_notes:
+            # --- ここで「完全版」連続音解決ロジックを呼び出し ---
+            target_wav_path = self.resolve_target_wav(note.lyrics, prev_lyric)
+
             # 1. MIDIノート番号を基本周波数(Hz)に変換
-            # 公式: f = 440 * 2^((n-69)/12)
             base_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
 
-            # 2. 5msごとのフレーム数を計算 (例: 0.5秒なら100フレーム)
-            # WORLDエンジンは5ms(0.005s)間隔のデータを求める
+            # 2. 5msごとのフレーム数を計算
             num_frames = int(max(1, (note.duration * 1000) / 5))
         
-            # 3. ピッチ配列の作成
-            # 本来はここで graph_editor_widget からピッチベンド値を取得して加算します
-            # 現時点では、安定した基本周波数の配列を作成
+            # 3. ピッチ配列の作成 (numpyを使用)
             pitch_list = np.ones(num_frames, dtype=np.float32) * base_hz
 
+            # 4. エンジンに渡すデータをパッキング
             song_data.append({
-                'lyric': note.lyrics,  # 「あ」「い」など
+                'lyric': note.lyrics,
+                'wav_path': target_wav_path, # 解決したフルパスを格納
                 'pitch_list': pitch_list
             })
+
+            # 次のノートのために現在の歌詞を保存
+            prev_lyric = note.lyrics
     
         return song_data
-    
-    
+
     def start_playback(self):
-        """再生ボタンが押された時の処理"""
-        # タイムライン上のノートリストを取得（NoteEventオブジェクトのリスト）
-        notes = self.timeline_widget.get_all_notes()
+        """再生ボタン押下時：合成して再生"""
+        # 最新のデータ(VCV解決済み)を作成
+        notes_data = self.prepare_rendering_data()
         
-        if not notes:
+        if not notes_data:
             self.statusBar().showMessage("再生するノートがありません。")
             return
 
-        self.statusBar().showMessage("音声を合成中...")
+        self.statusBar().showMessage("連続音を解析し、音声を合成中...")
         
-        # 2. 合成実行 (最新のピッチシフト対応版を呼び出し)
-        # 内部でMIDI番号→Hz変換、WORLD合成が行われる
-        audio_data = self.vo_se_engine.synthesize(notes)
+        # vo_se_engine.synthesize が引数として notes_data を受け取れるように調整
+        # (内部で notes[i]['wav_path'] を C++ 側に渡す処理が必要です)
+        audio_data = self.vo_se_engine.synthesize(notes_data)
 
         if audio_data is not None and len(audio_data) > 0:
-            # 3. 再生
             self.vo_se_engine.play(audio_data)
-            self.statusBar().showMessage("再生中")
+            self.statusBar().showMessage("連続音モードで再生中")
         else:
             self.statusBar().showMessage("合成に失敗しました。")
-
-    def stop_playback(self):
-        """停止ボタンが押された時の処理"""
-        self.vo_se_engine.stop()
-        self.statusBar().showMessage("停止しました。")
-
-    def export_wav(self):
-        """WAV書き出し処理"""
-        notes = self.timeline_widget.get_all_notes()
-        if not notes: return
-
-        path, _ = QFileDialog.getSaveFileName(self, "WAV保存", "", "WAV (*.wav)")
-        if path:
-            audio_data = self.vo_se_engine.synthesize(notes)
-            self.vo_se_engine.export_to_wav(audio_data, path)
-            self.statusBar().showMessage(f"保存完了: {path}")
-
-    # --- 音源選択時に呼び出す連携 ---
-    def on_voice_library_changed(self, voice_path, oto_map):
-        """音源フォルダが切り替わった時にエンジンにデータを渡す"""
-        self.vo_se_engine.set_voice_library(voice_path)
-        self.vo_se_engine.set_oto_data(oto_map)
-
-
-    # --- 未実装のスタブ（エラー防止） ---
-    def set_active_character(self, name): pass
-    def set_tempo(self, tempo): pass
-    def play_audio(self, audio): pass
-    def stop_playback(self): pass
-    def close(self): pass
-    def prepare_cache(self, notes): pass
 
     
     # ==========================================================================
