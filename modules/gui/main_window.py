@@ -1151,101 +1151,88 @@ class MainWindow(QMainWindow):
             
             # 拡張子によって処理を振り分け
             if file_path.lower().endswith('.zip'):
-                self.import_voice_bank(file_path)
+                self.import_voice_bank(file_path)  
             elif file_path.lower().endswith(('.mid', '.midi')):
                 self.load_file_from_path(file_path)
             elif file_path.lower().endswith('.json'):
                 self.load_file_from_path(file_path)
 
     def import_voice_bank(self, zip_path: str):
-        """ZIP形式の音源をインストール（ゴミ排除・再帰スキャン・AI接続 完全版）"""
+        """ZIP音源インストール（ゴミ排除・再帰スキャン・Aural AI優先接続）"""
         import zipfile
         import shutil
         import os
 
-        # 音源保存先ディレクトリ
+        # 保存先ディレクトリの準備
         extract_base_dir = get_resource_path("voices")
         os.makedirs(extract_base_dir, exist_ok=True)
         
         installed_name = None
-        valid_files = [] # 解凍対象をストック
+        valid_files = [] 
 
         try:
             with zipfile.ZipFile(zip_path, 'r') as z:
-                # --- 1. ZIPの中身を精査（ゴミを無視し、oto.iniを深掘りスキャン） ---
+                # 1. ZIP解析（文字化け対策 + Macゴミ排除 + oto.ini探索）
                 for info in z.infolist():
                     try:
-                        # Shift-JIS(cp932)文字化け対策
                         filename = info.filename.encode('cp437').decode('cp932')
                     except:
                         filename = info.filename
                     
-                    # Mac固有のゴミファイルやシステムファイルは完全にスキップ
                     if "__MACOSX" in filename or ".DS_Store" in filename:
                         continue
                     
-                    # 有効なファイルリストに追加
                     valid_files.append((info, filename))
                     
-                    # oto.ini を発見したら、その階層のフォルダ名を音源名とする
                     if "oto.ini" in filename.lower() and not installed_name:
-                        # パスを正規化して分割
                         parts = filename.replace('\\', '/').strip('/').split('/')
                         if len(parts) > 1:
-                            # フォルダの中にある場合（例: MyVoice/oto.ini -> MyVoice）
-                            installed_name = parts[-2]
+                            installed_name = parts[-2] # 深い階層のフォルダ名
                         else:
-                            # ルート直下にある場合（例: oto.ini -> ZIPファイル名から推測）
+                            # ルートにある場合はZIP名を採用
                             installed_name = os.path.splitext(os.path.basename(zip_path))[0]
 
                 if not installed_name:
                     raise Exception("有効なUTAU音源(oto.ini)が見つかりませんでした。")
 
-                # --- 2. クリーンなファイルのみを解凍 ---
+                # 2. クリーンな解凍
                 for info, filename in valid_files:
                     target_path = os.path.join(extract_base_dir, filename)
-
                     if info.is_dir():
                         os.makedirs(target_path, exist_ok=True)
                         continue
-
-                    # ファイル書き出し
                     os.makedirs(os.path.dirname(target_path), exist_ok=True)
                     with z.open(info) as source, open(target_path, "wb") as target:
                         shutil.copyfileobj(source, target)
 
-            # --- 3. AIエンジンへの接続（ここでZIPとAIが繋がる） ---
-            
-            # インストールされたフォルダの特定
-            # 深い階層の場合を考慮し、実際に存在するパスを再確認
+            # 3. AIエンジンへの接続（Aural AI 優先ロジック）
             voice_dir = os.path.join(extract_base_dir, installed_name)
-            
-            # ONNXモデルの存在確認
-            onnx_path = os.path.join(voice_dir, "model.onnx")
+            aural_model = os.path.join(voice_dir, "aural_dynamics.onnx")
+            std_model = os.path.join(voice_dir, "model.onnx")
 
-            if os.path.exists(onnx_path):
-                # キャラ専用モデルがある場合
-                self.dynamics_ai = DynamicsAIEngine(model_path=onnx_path)
-                print(f"VO-SE AI: '{installed_name}' のAIモデルを接続しました。")
+            if os.path.exists(aural_model):
+                # 上位互換エンジン Aural AI
+                self.dynamics_ai = AuralAIEngine(model_path=aural_model)
+                engine_msg = "[Aural AI] 上位モデル接続"
+            elif os.path.exists(std_model):
+                # 標準 Dynamics AI
+                self.dynamics_ai = DynamicsAIEngine(model_path=std_model)
+                engine_msg = "[Dynamics AI] 標準モデル接続"
             else:
-                # 通常のUTAU音源の場合（デフォルトAI）
-                print(f"VO-SE AI: デフォルトのダイナミクスを適用します。")
-                self.dynamics_ai = DynamicsAIEngine()
+                # 汎用 Aural AI
+                self.dynamics_ai = AuralAIEngine()
+                engine_msg = "汎用Auralエンジン起動"
 
-            # --- 4. UI処理（ユーザーへの反映） ---
-            
-            # 音源マネージャーのリロード
+            # 4. UI反映
             if hasattr(self, 'voice_manager'):
                 self.voice_manager.scan_utau_voices()
                 self.refresh_voice_ui_with_scan()
             
-            # セレクターを新音源に切り替え
             if hasattr(self, 'character_selector'):
                 self.character_selector.setCurrentText(installed_name)
             
-            self.statusBar().showMessage(f"音源 '{installed_name}' をインストールしました！", 3000)
+            self.statusBar().showMessage(f"'{installed_name}' インストール完了！ ({engine_msg})", 5000)
             
-            # インストール成功SEの再生
             if hasattr(self, 'audio_output'):
                 se_path = get_resource_path(os.path.join("assets", "install_success.wav"))
                 if os.path.exists(se_path):
@@ -1254,7 +1241,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(self, "エラー", f"インストールの失敗:\n{str(e)}")
-
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
