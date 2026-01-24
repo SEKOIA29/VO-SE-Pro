@@ -513,10 +513,16 @@ class MainWindow(QMainWindow):
     def __init__(self, parent=None, engine=None, ai=None, config=None):
         super().__init__(parent)
 
-
+        # ==============================================================================
+        # --- ここで辞書を定義 ---
         self.confirmed_partners = {
-            # 1: "夢路　奏瀬", # 例
+            1: "UNDER RECRUITMENT",       # ID-01に反映
+            2: "UNDER RECRUITMENT",       # ID-02に反映
+            3: "UNDER RECRUITMENT",       # ID-03に反映
+            # 未決定のIDは書かなくてOK（自動的に UNDER RECRUITMENT にならけど一応書いとく）
         }
+        # ==============================================================================
+
 
         self.render_timer = QTimer()
         self.render_timer.setSingleShot(True)
