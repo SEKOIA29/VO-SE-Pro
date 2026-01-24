@@ -1173,13 +1173,11 @@ class MainWindow(QMainWindow):
                 # 1. まず音源名を決定するために中身を走査
                 for info in z.infolist():
                     try:
-                        # Shift-JIS(cp932)の文字化けを解消
                         filename = info.filename.encode('cp437').decode('cp932')
                     except:
                         filename = info.filename
                     
                     if "oto.ini" in filename.lower():
-                        # oto.iniが含まれるフォルダ名を音源名とする
                         parts = filename.replace('\\', '/').split('/')
                         installed_name = parts[0] if parts[0] else "Unknown_Voice"
                         break
@@ -1194,55 +1192,43 @@ class MainWindow(QMainWindow):
                     except:
                         filename = info.filename
 
-                    # 保存先フルパス
                     target_path = os.path.join(extract_base_dir, filename)
-
                     if info.is_dir():
                         os.makedirs(target_path, exist_ok=True)
                         continue
 
-                    # ファイル書き出し
                     os.makedirs(os.path.dirname(target_path), exist_ok=True)
                     with z.open(info) as source, open(target_path, "wb") as target:
                         shutil.copyfileobj(source, target)
 
-            # --- インストール成功後のUI処理 ---
-            # 音源マネージャーをリロード（あなたのクラス設計に合わせて適宜微調整してください）
+            # --- ここから接続処理（tryの中に入れます） ---
+            
+            # 1. 解凍された音源のフルパスを特定
+            voice_dir = os.path.join(extract_base_dir, installed_name)
+
+            # 2. AIモデルの接続
+            onnx_path = os.path.join(voice_dir, "model.onnx")
+
+            if os.path.exists(onnx_path):
+                self.dynamics_ai = DynamicsAIEngine(model_path=onnx_path)
+                print(f"Aural AI: '{installed_name}' のAIモデルを接続しました。")
+            else:
+                print(f"Aural AI: AIモデルが見つかりません。デフォルトの揺れを適用します。")
+                self.dynamics_ai = DynamicsAIEngine()
+
+            # --- UI処理 ---
             if hasattr(self, 'voice_manager'):
                 self.voice_manager.scan_utau_voices()
                 self.refresh_voice_ui_with_scan()
             
-            # UIに反映
             if hasattr(self, 'character_selector'):
                 self.character_selector.setCurrentText(installed_name)
             
             self.statusBar().showMessage(f"音源 '{installed_name}' をインストールしました！", 3000)
             
-            # 効果音の再生
             if hasattr(self, 'audio_output'):
                 se_path = get_resource_path(os.path.join("assets", "install_success.wav"))
                 self.audio_output.play_se(se_path)
-
-        # 1. 解凍された音源のフルパスを特定
-        voice_dir = os.path.join(extract_base_dir, installed_name)
-
-        # 2. 【ここが接続！】
-        # もし音源の中にAIモデル(.onnx)が含まれていたら、エンジンにセットする
-        onnx_path = os.path.join(voice_dir, "model.onnx")
-
-        if os.path.exists(onnx_path):
-            # すでにモデルがあるなら、DynamicsAIEngineを新しく作り直して接続
-            self.dynamics_ai = DynamicsAIEngine(model_path=onnx_path)
-            print(f"Aural AI: '{installed_name}' のAIモデルを接続しました。")
-　　　　　else:
-            # モデルがない場合（純粋なUTAU音源の場合）
-            # ここで「WAVからAI学習」へ飛ばすか、デフォルトのAIを適用する
-            print(f"Aural AI: AIモデルが見つかりません。デフォルトの揺れを適用します。")
-            self.dynamics_ai = DynamicsAIEngine() # デフォルト起動
-
-
-
-        
 
         except Exception as e:
             QMessageBox.warning(self, "エラー", f"インストールの失敗: {str(e)}")
