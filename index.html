@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="VO-SE Pro: 合成音声ソフト、M3/M4 Macから旧型PCまで対応。メモリ200MBで動作する次世代音声合成エンジン 'aural' 搭載。永年無料で公開中。">
-    <meta name="keywords" content="VO-SE, aural, 音声合成, UTAU, 歌声合成, 軽い, NPU, DTM, フリーソフト, 無料">
+    <meta name="description" content="VO-SE Pro: 次世代音声合成エンジン 'aural' 搭載。M4 Macから旧型PCまで自動最適化。永年無料で公開中。">
+    <meta name="keywords" content="VO-SE, aural engine, 音声合成, UTAU, 歌声合成, 軽い, NPU, DTM, フリーソフト">
     
     <meta property="og:title" content="VO-SE Pro | 声、爆速。顔、色々な。心、自由。">
     <meta property="og:description" content="次世代音声合成エンジン 'aural' 搭載。旧型PCも救済する圧倒的パフォーマンス。">
@@ -18,7 +18,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
     
     <style>
-        html { scroll-behavior: smooth; } /* スムーズに移動する設定 */
+        html { scroll-behavior: smooth; }
         body { background-color: #000; color: #fff; font-family: 'Inter', 'Noto Sans JP', sans-serif; overflow-x: hidden; }
         .hero-gradient { background: radial-gradient(circle at center, #1a1a1a 0%, #000 100%); }
         .accent-gradient { background: linear-gradient(135deg, #fff 0%, #888 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
@@ -32,18 +32,16 @@
 <body class="antialiased">
 
     <section class="h-screen flex flex-col justify-center items-center text-center px-6 hero-gradient relative">
-        <div class="absolute inset-0 bg-cover bg-center opacity-20 pointer-events-none" 
-             style="background-image: url('images/hero-bg.jpg');"></div>
+        <div class="absolute inset-0 bg-cover bg-center opacity-20 pointer-events-none" style="background-image: url('images/hero-bg.jpg');"></div>
+        <div class="absolute top-10 text-sm tracking-widest text-gray-500 font-bold uppercase">v1.3.0 VCV Edition</div>
         
-        <div class="absolute top-10 text-sm tracking-widest text-gray-500 font-bold uppercase z-10">v1.3.0 VCV Edition</div>
-        
-        <h1 class="text-6xl md:text-9xl font-black mb-8 accent-gradient tracking-tighter z-10 leading-tight">
+        <h1 class="text-6xl md:text-9xl font-black mb-8 accent-gradient tracking-tighter leading-tight">
             声、爆速。<br>顔、色々な。<br>心、自由。
         </h1>
         
         <div class="flex flex-col md:flex-row gap-6 z-10">
             <a href="#download" class="bg-white text-black px-12 py-5 rounded-full font-bold text-xl hover:scale-105 transition-transform shadow-[0_0_30px_rgba(255,255,255,0.3)]">VO-SE Proを無料で入手</a>
-            <a href="https://github.com/sekoia29/VO-SE-Pro" class="border border-zinc-700 px-12 py-5 rounded-full font-bold text-xl hover:bg-zinc-900 transition-colors">GitHub Repo</a>
+            <a href="https://github.com/sekoia29/VO-SE-Pro" target="_blank" class="border border-zinc-700 px-12 py-5 rounded-full font-bold text-xl hover:bg-zinc-900 transition-colors">GitHub Repo</a>
         </div>
     </section>
 
@@ -60,7 +58,7 @@
                 </div>
             </div>
 
-            <div class="card rounded-3xl overflow-hidden flex flex-col">
+            <div class="card rounded-3xl overflow-hidden flex flex-col border-white/20 bg-gradient-to-b from-transparent to-zinc-900">
                 <div class="image-container h-48 bg-zinc-800">
                     <img src="images/monolith.jpg" class="w-full h-full object-cover opacity-80" alt="aural engine">
                 </div>
@@ -71,7 +69,7 @@
                 </div>
             </div>
 
-            <div class="card rounded-3xl p-10 flex flex-col justify-end border-white/20 bg-gradient-to-b from-transparent to-zinc-900">
+            <div class="card rounded-3xl p-10 flex flex-col justify-end">
                 <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-2">Pro Quality</h3>
                 <h2 class="text-3xl font-bold mb-4">1.2GBの、誇り。</h2>
                 <p class="text-gray-400">一切の圧縮を排除した高品位データと連続音ロジックを凝縮。妥協のない「本物の声」を。</p>
@@ -87,7 +85,7 @@
                 <p class="text-gray-400 text-sm leading-relaxed">声を乗り換える必要はありません。UTAU音源への最適化により、使い慣れたライブラリが蘇ります。</p>
             </div>
 
-            <div class="card p-10 rounded-3xl">
+            <div class="card p-10 rounded-3xl border-white/20">
                 <h2 class="text-3xl font-bold mb-4 leading-tight">投げる、即、歌う。</h2>
                 <p class="text-gray-400 text-sm leading-relaxed">Zipを投げ込む、その瞬間にキャラクターの声が響く。これが2026年の「楽器」です。</p>
             </div>
@@ -97,33 +95,51 @@
     <section id="download" class="py-32 px-6 bg-zinc-900/30 border-t border-white/10">
         <div class="max-w-4xl mx-auto text-center">
             <h2 class="text-5xl font-black mb-8 accent-gradient">今すぐ、その手に。</h2>
-            <p class="text-gray-400 mb-12 text-lg">aural engineの真価を体験してください。<br>インストーラー、音源ライブラリ、すべてがここに。</p>
+            <p class="text-gray-400 mb-12 text-lg">
+                aural engine™ は実行環境を自動で検出し、<br>
+                最新のNPUから旧世代のIntel CPUまで、最適な演算処理を選択します。
+            </p>
 
-            <div class="grid md:grid-cols-2 gap-8 text-left">
-                <div class="card p-8 rounded-3xl bg-white/5 border-white/20">
-                    <h3 class="text-2xl font-bold mb-2 text-white">VO-SE Pro v1.3.0</h3>
-                    <p class="text-gray-500 text-sm mb-6">Windows / macOS (Universal)</p>
-                    <ul class="text-gray-400 text-sm space-y-2 mb-8">
-                        <li>・aural engine™ Core 搭載</li>
-                        <li>・標準音源 1.2GB 同梱</li>
-                        <li>・UTAUライブラリ 変換ツール付属</li>
-                    </ul>
-                    <a href="#" class="block text-center bg-white text-black py-4 rounded-full font-bold hover:bg-gray-200 transition-colors">Download (.zip)</a>
+            <div class="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto text-left">
+                <div class="card p-10 rounded-[2.5rem] bg-white/5 border-white/40 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center gap-3 mb-6">
+                            <svg class="w-8 h-8 fill-white" viewBox="0 0 448 512"><path d="M0 93.7l183.6-25.3v177.4H0V93.7zm0 324.6l183.6 25.3V268.3H0v150zm203.8 28.1L448 480V268.3H203.8v178.1zm0-380.6v180.3H448V32L203.8 65.8z"/></svg>
+                            <h3 class="text-2xl font-bold">Windows</h3>
+                        </div>
+                        <p class="text-gray-500 text-sm mb-6 font-mono">EXE Installer / x64 Native</p>
+                        <p class="text-gray-400 text-sm mb-8 leading-relaxed">
+                            Windows 10/11 最適化。実行時にシステムを自動スキャンし、最適なコンポーネントを配置します。
+                        </p>
+                    </div>
+                    <a href="https://www.dropbox.com/scl/fi/fae6bem165wjpq0vdko28/VO-SE_PRO_Win.exe?rlkey=ld8kbvtgo1t599ezismt9b0vb&st=xq1k3kcp&dl=1" 
+                       class="block text-center bg-white text-black py-4 rounded-full font-bold hover:scale-105 transition-transform shadow-[0_0_30px_rgba(255,255,255,0.2)]">
+                        Download for Win
+                    </a>
                 </div>
 
-                <div class="card p-8 rounded-3xl bg-transparent border-white/10">
-                    <h3 class="text-2xl font-bold mb-2 text-gray-400">Legacy Patch</h3>
-                    <p class="text-gray-500 text-sm mb-6">Intel Mac / Old Windows</p>
-                    <p class="text-gray-400 text-sm mb-8">旧世代機で動作を安定させ、CPU負荷を極限まで抑えるための最適化パッチです。</p>
-                    <a href="#" class="block text-center border border-zinc-700 text-white py-4 rounded-full font-bold hover:bg-zinc-800 transition-colors">Patch Download</a>
+                <div class="card p-10 rounded-[2.5rem] bg-white/5 border-white/20 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center gap-3 mb-6">
+                            <svg class="w-8 h-8 fill-white" viewBox="0 0 384 512"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>
+                            <h3 class="text-2xl font-bold">macOS</h3>
+                        </div>
+                        <p class="text-gray-500 text-sm mb-6 font-mono">1.22 GB / Universal Zip</p>
+                        <p class="text-gray-400 text-sm mb-8 leading-relaxed">
+                            フルセット・パッケージ。Apple Silicon / Intel対応。高品位ライブラリを完全収録。
+                        </p>
+                    </div>
+                    <a href="https://www.dropbox.com/scl/fi/yhg77dcmq2hi5rnil8kbb/VO-SE_PRO_Mac.zip?rlkey=oqhhk74rplj5g5wdug6av4aw8&st=absrnmip&dl=1" 
+                       class="block text-center border border-zinc-700 text-white py-4 rounded-full font-bold hover:bg-zinc-900 transition-colors">
+                        Download for Mac
+                    </a>
                 </div>
             </div>
         </div>
     </section>
 
     <footer class="py-40 text-center px-6 relative overflow-hidden">
-        <div class="absolute inset-0 bg-cover bg-center opacity-10 pointer-events-none" 
-             style="background-image: url('images/hero-bg.jpg');"></div>
+        <div class="absolute inset-0 bg-cover bg-center opacity-10 pointer-events-none" style="background-image: url('images/hero-bg.jpg');"></div>
         <div class="relative z-10">
             <blockquote class="text-3xl md:text-5xl font-black italic mb-16 leading-snug max-w-5xl mx-auto">
                 「プロの喉を、すべての人へ。<br>あなたの情熱だけが、ライセンス。」
