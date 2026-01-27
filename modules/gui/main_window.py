@@ -839,6 +839,35 @@ class MainWindow(QMainWindow):
         # ここではテスト用にダミーのリストを返します
         return []
 
+
+    # ==========================================================================
+    #  Pro audio modeling の起動、呼び出し　　　　　　　　　　　
+    # ==========================================================================
+
+    def setup_shortcuts(self):
+        """SpaceキーでPro Monitoringを起動"""
+        self.root.bind("<space>", self.toggle_audio_monitoring)
+
+    def toggle_audio_monitoring(self, event=None):
+        """Spaceキー一発で『音』と『UI』を同時に動かす"""
+        if not self.pro_monitoring.is_playing:
+            print(" Pro Audio Monitoring: ON")
+            
+            # 1. 再生位置をリセット
+            self.pro_monitoring.current_time = 0.0
+            
+            # 2. UIループを起動
+            self.pro_monitoring.is_playing = True
+            self.pro_monitoring.update_frame()
+            
+            # 3. エンジンで音を鳴らす（wavをセットして再生）
+            # self.engine.load_wav("output.wav")
+            # self.engine.start_play()
+        else:
+            print(" Pro Audio Monitoring: OFF")
+            self.pro_monitoring.is_playing = False
+            # self.engine.stop_play()
+
     # ==========================================================================
     # VO-SE Pro v1.3.0: 連続音（VCV）解決 ＆ レンダリング準備
     # ==========================================================================
