@@ -139,14 +139,35 @@ class VO_SE_Engine:
 
     def _get_sampled_curve(self, events, note, res, is_pitch=False):
         """
-        特定のノートの時間範囲におけるグラフの値をres個サンプリングする。
+        特定のノートの時間範囲(start 〜 start+duration)をres分割して
+        グラフの値をサンプリングし、float32のnumpy配列で返す。
         """
-        # ここで、以前作成した「線形補間ロジック」を使用して
-        # ノートの開始〜終了までの値を配列化する
+        import numpy as np
         curve = np.zeros(res, dtype=np.float32)
-        # ※ 実際の実装ではここで note.start_time から note.duration 分を補間取得
-        return curve
+        
+        # 1. グラフに点がない場合のデフォルト値
+        default_val = 60.0 if is_pitch else 0.5
+        if not events:
+            return curve + default_val
 
+        # 2. 時間軸の作成
+        times = np.linspace(note.start_time, note.start_time + note.duration, res)
+        
+        # 3. 各サンプル点での値を線形補間で計算
+        event_times = [p.time for p in events]
+        event_values = [p.value for p in events]
+        
+        # numpyのinterpを使って一気に補間（爆速です）
+        curve = np.interp(times, event_times, event_values).astype(np.float32)
+        
+        # 4. ピッチの場合のみ、ノートの基本音高を加算（相対値から絶対値へ）
+        if is_pitch:
+            # グラフが「0」ならノートそのものの音高、＋12なら1オクターブ上
+            curve += float(note.note_number)
+            # 周波数(Hz)に変換してC++に渡す
+            curve = 440.0 * (2.0 ** ((curve - 69.0) / 12.0))
+            
+        return curve
     # --- 再生制御 ---
     def play(self, filepath):
         if filepath and os.path.exists(filepath):
