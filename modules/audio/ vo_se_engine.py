@@ -43,6 +43,18 @@ class VO_SE_Engine:
         self.oto_map = {}
         self.refresh_voice_library()
 
+    def get_audio_devices(self):
+        """接続されているオーディオ入出力デバイスのリストを返す"""
+        devices = sd.query_devices()
+        output_devices = [d['name'] for d in devices if d['max_output_channels'] > 0]
+        return output_devices
+
+    def set_output_device(self, device_name):
+        """指定されたデバイスを出力先に設定する"""
+        sd.default.device = [None, device_name] # [入力, 出力]
+        print(f"🔈 Output set to: {device_name}")
+        
+
     def _load_core_library(self):
         """OS判別ロード（Win/Mac両対応）"""
         system = platform.system()
