@@ -2298,6 +2298,19 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage(f"{len(new_notes)}個の音素を配置しました")
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"歌詞解析エラー: {e}")
+        self.pro_monitoring.sync_notes(self.timeline_widget.notes_list)
+
+    def update_timeline_style(self):
+        """タイムライン全体の見た目を Apple Pro 仕様のダークモードに固定"""
+        self.timeline_widget.setStyleSheet("background-color: #121212; border: none;")
+        
+        # Appleオレンジ (#FF9F0A) をメインに
+        self.timeline_widget.note_color = "#FF9F0A"
+        # 枠線は少し明るいオレンジにすると、ノートが立体的に見えます
+        self.timeline_widget.note_border_color = "#FFD60A" 
+        self.timeline_widget.text_color = "#FFFFFF"
+
+    
 
     def apply_lyrics_to_notes(self, text: str):
         """歌詞を既存ノートに割り当て"""
@@ -2328,6 +2341,7 @@ class MainWindow(QMainWindow):
             notes[i].lyrics = lyric_list[i]
             
         self.timeline_widget.update()
+        self.pro_monitoring.sync_notes(self.timeline_widget.notes_list)
 
 
     def parse_ust_dict_to_note(self, d: dict, current_time_sec: float, tempo: float = 120.0):
