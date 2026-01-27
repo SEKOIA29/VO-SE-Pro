@@ -166,14 +166,46 @@ class TimelineWidget(QWidget):
                 n.is_selected = self.selection_rect.intersects(self.get_note_rect(n))
             self.update()
 
+    # --- マウスを離した時の処理に「自動補正」を追加 ---
     def mouseReleaseEvent(self, event):
-        if self.edit_mode == "move":
+        if self.edit_mode == "draw_emotion":
+            # 描き終わった瞬間にプロの曲線へ補正
+            self.smooth_emotion_points()
+            
+        elif self.edit_mode == "move":
             for n in self.notes_list:
                 if n.is_selected:
-                    n.start_time = self.beats_to_seconds(self.quantize(self.seconds_to_beats(n.start_time)))
+                    # クオンタイズ（グリッド吸着）
+                    n.start_time = self.beats_to_seconds(
+                        self.quantize(self.seconds_to_beats(n.start_time))
+                    )
             self.notes_changed_signal.emit()
+            
         self.edit_mode = None
         self.update()
+
+    # --- プロ級の曲線を作る平滑化ロジック ---
+    def smooth_emotion_points(self):
+        """ガタガタの線をApple Pro仕様の滑らかな曲線に変換"""
+        if len(self.emotion_points) < 5: return
+        
+        sorted_times = sorted(self.emotion_points.keys())
+        new_points = {}
+        
+        # 5点移動平均法（中央の値を前後の平均で補正）
+        for i in range(len(sorted_times)):
+            t = sorted_times[i]
+            # 範囲を計算（端っこでもエラーにならないように）
+            start_idx = max(0, i - 2)
+            end_idx = min(len(sorted_times), i + 3)
+            
+            subset = [self.emotion_points[sorted_times[j]] for j in range(start_idx, end_idx)]
+            # 平均をとることで、マウスの震えを除去
+            new_points[t] = sum(subset) / len(subset)
+            
+        self.emotion_points = new_points
+        print("✨ Emotion curve smoothed.")
+        
 
     def add_emotion_point(self, pos):
         """マウス位置から感情ポイントを追加"""
