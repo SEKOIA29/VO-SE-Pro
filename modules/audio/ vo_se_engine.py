@@ -53,6 +53,19 @@ class VO_SE_Engine:
         """指定されたデバイスを出力先に設定する"""
         sd.default.device = [None, device_name] # [入力, 出力]
         print(f"🔈 Output set to: {device_name}")
+
+    def setup_audio_output(self, device_name=None):
+        """
+        オーディオデバイスを設定する。
+        device_nameがNoneならMacのデフォルト出力を使用。
+        """
+        try:
+            if device_name:
+                sd.default.device[1] = device_name # 出力デバイスを指定
+            print(f"✔︎ Audio device set: {sd.query_devices(sd.default.device[1])['name']}")
+        except Exception as e:
+            print(f"ʕ⁎̯͡⁎ʔ༄ Device error: {e}")
+
         
 
     def _load_core_library(self):
