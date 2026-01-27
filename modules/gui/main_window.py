@@ -581,6 +581,15 @@ class MainWindow(QMainWindow):
         self.audio_player = AudioPlayer(volume=self.volume)
         self.audio_output = AudioOutput()
         self.midi_manager: Optional[MidiInputManager] = None
+        # AIマネージャーの準備
+        self.ai_manager = AIManager()
+        
+        # 信号を繋ぐ（これがクラッシュ防止の鍵！）
+        self.ai_manager.finished.connect(self.on_analysis_finished)
+        self.ai_manager.error.connect(self.on_analysis_error)
+        
+        # モデルをバックグラウンドで初期化しておく
+        self.ai_manager.init_model()
         
         # --- 5. 仕上げ設定 ---
         self.setAcceptDrops(True)
@@ -638,6 +647,10 @@ class MainWindow(QMainWindow):
             
             # 今回の歌詞を保存
             prev_lyric = note.lyric
+
+    def start_vocal_analysis(self, audio_data):
+        """解析ボタンが押された時などに呼ぶ"""
+        self.ai_manager.analyze_async(audio_data)
 
 
     def init_vcv_logic(self):
@@ -1588,6 +1601,49 @@ class MainWindow(QMainWindow):
         new_f0 = self.dynamics_ai.generate_emotional_pitch(f0)
         self.timeline_widget.set_pitch_data(new_f0)
         self.statusBar().showMessage("AIピッチ補正を適用しました")
+
+
+    def start_vocal_analysis(self, audio_data):
+        """解析開始"""
+        self.statusBar().showMessage("解析中...")
+        self.ai_manager.analyze_async(audio_data)
+
+    def on_analysis_finished(self, results):
+        """
+        AIがスキャンした全音符のデータをループで処理
+        results: [{"onset": 1.2, ...}, {"onset": 1.5, ...}, ...]
+        """
+        if not results:
+            self.statusBar().showMessage("音符が見つかりませんでした")
+            return
+
+        # 既存のノードをクリアするならここで実行
+        # self.timeline.clear_notes()
+
+        for note_data in results:
+            # --- 描画位置の計算 ---
+            # 1秒 = 100ピクセル(px)の場合
+            x_pos = note_data["onset"] * 100 
+            
+            # --- ノードの生成（呼び出し） ---
+            # 代表のVO-SEエンジンのNoteクラスに合わせて呼び出す
+            self.create_new_note(
+                x=x_pos, 
+                lyric="あ", # 初期値
+                overlap=note_data["overlap"],
+                pre_utterance=note_data["pre_utterance"]
+            )
+
+        self.statusBar().showMessage(f"{len(results)} 個の音符を配置しました")
+        self.update() # 画面全体を更新
+
+    def create_new_note(self, x, lyric, overlap, pre_utterance):
+        """実際にノードをリストに追加し、描画を指示する関数（仮）"""
+        # ここに代表のVO-SE Proのノード追加ロジックを書く
+        print(f"Node at {x}px added.")
+
+    def on_analysis_error(self, message):
+        QMessageBox.critical(self, "AI解析エラー", message)
 
     # ==========================================================================
     # ファイル操作
