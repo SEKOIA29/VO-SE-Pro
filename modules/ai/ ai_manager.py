@@ -20,7 +20,7 @@ class AIManager(QObject):
         self.model_path = self._get_model_path()
 
     def _get_model_path(self):
-        """PyInstaller環境でも動作するパス解決（代表のオリジナルを維持）"""
+        """PyInstaller環境でも動作するパス解決"""
         if getattr(sys, 'frozen', False):
             base = sys._MEIPASS
         else:
@@ -28,7 +28,7 @@ class AIManager(QObject):
         return os.path.join(base, "assets", "models", "onset_detector.onnx")
 
     def init_model(self):
-        """ハードウェアを自動検知してモデルを初期化（削りなしフルスペック）"""
+        """ハードウェアを自動検知してモデルを初期化"""
         try:
             if not os.path.exists(self.model_path):
                 self.error.emit(f"Model not found: {self.model_path}")
