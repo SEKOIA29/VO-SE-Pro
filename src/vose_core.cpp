@@ -5,7 +5,9 @@
 #include <cmath>
 #include <cstring>
 #include "vose_core.h"
-#include "voice_data_a.h" // Pythonが作ったファイル
+#include "voice_data.h" // AとかBとかバラバラにしない
+
+
 
 
 
@@ -24,9 +26,10 @@ static std::map<std::string, EmbeddedVoice> g_voice_db;
 
 extern "C" {
 
-void init_official_voice() {
-    // ファイルを読み込まず、直接メモリ配列から登録
-    load_embedded_resource("あ", OFFICIAL_VOICE_A, OFFICIAL_VOICE_A_LEN);
+
+void init_official_engine() {
+    // Pythonが自動生成した変数名で登録
+    load_embedded_resource("あ", OFFICIAL_VOICE_あ, OFFICIAL_VOICE_あ_LEN);
 }
 
 /**
