@@ -16,6 +16,7 @@ class TimelineWidget(QWidget):
         super().__init__(parent)
         self.setMinimumSize(400, 200)
         self.setFocusPolicy(Qt.StrongFocus)
+        self.init_voice_engine()
         
         # --- 基本データ ---
         self.notes_list: list[NoteEvent] = []
@@ -59,6 +60,26 @@ class TimelineWidget(QWidget):
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         print(f"✅ Exported to {file_path}")
+
+    def init_voice_engine(self):
+        """音源をメモリにパッキングしてC++エンジンを初期化"""
+        import wave
+        import numpy as np
+        
+        # 例：assets内のWAVをすべて読み込んでC側に送る
+        voice_db_path = "assets/voice_db/"
+        for file in os.listdir(voice_db_path):
+            if file.endswith(".wav"):
+                phoneme = file.replace(".wav", "")
+                with wave.open(voice_db_path + file, 'rb') as wr:
+                    data = np.frombuffer(wr.readframes(wr.getnframes()), dtype=np.int16)
+                    # C++のメモリ空間へ直接転送
+                    self.vose_core.load_embedded_resource(
+                        phoneme.encode('utf-8'), 
+                        data.ctypes.data_as(ctypes.POINTER(ctypes.c_int16)), 
+                        len(data)
+                    )
+        print("内蔵音源のパッキングが完了しました。")
 
     @Slot(float)
     def update_audio_level(self, level):
