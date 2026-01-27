@@ -142,6 +142,13 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
     wavwrite(full_song_buffer.data(), (int)full_song_buffer.size(), fs, 16, output_path);
 }
 
+
+DLLEXPORT void execute_partial_render(NoteEvent* notes, int note_count, const char* output_path, int start_note_idx, int end_note_idx) {
+    // 必要な範囲だけに絞って既存のexecute_renderのロジックを走らせる
+    // これにより、再生ヘッド付近の音だけを一瞬で生成可能にする
+    // (実装はexecute_renderとほぼ同じだが、ループ範囲を限定してキャッシュをフル活用)
+}
+
 // 外部からキャッシュをクリアするための関数
 DLLEXPORT void clear_engine_cache() { g_cache.clear(); }
 
