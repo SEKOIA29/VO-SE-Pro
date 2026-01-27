@@ -1,30 +1,34 @@
 import wave
 import numpy as np
+import glob
 import os
 
-def pack_wav_to_header(wav_path, phoneme_name, output_header):
-    # 1. WAVを開いてバイナリを読み込む
-    with wave.open(wav_path, 'rb') as f:
-        params = f.getparams()
-        # 16bit PCMを前提に読み込み
-        frames = f.readframes(f.getnframes())
-        data = np.frombuffer(frames, dtype=np.int16)
-
-    # 2. C++の配列形式に変換
-    with open(output_header, 'w', encoding='utf-8') as h:
-        h.write(f"// VO-SE Official Voice Data: {phoneme_name}\n")
-        h.write(f"const int16_t OFFICIAL_VOICE_{phoneme_name.upper()}[] = {{\n    ")
+def pack_all_voices():
+    # 出力先
+    output_path = "src/voice_data.h"
+    # WAVがある場所
+    wav_files = glob.glob("assets/official_voices/*.wav")
+    
+    with open(output_path, 'w', encoding='utf-8') as h:
+        h.write("#pragma once\n#include <stdint.h>\n\n")
         
-        # 10個ごとに改行して見やすく出力
-        for i, val in enumerate(data):
-            h.write(f"{val}, ")
-            if (i + 1) % 10 == 0:
-                h.write("\n    ")
-        
-        h.write("\n};\n\n")
-        h.write(f"const int OFFICIAL_VOICE_{phoneme_name.upper()}_LEN = {len(data)};\n")
+        for wav_path in wav_files:
+            name = os.path.splitext(os.path.basename(wav_path))[0]
+            # 日本語ファイル名対策（"あ" -> "A" などに内部で置換するか、ID管理する）
+            # ここではシンプルにそのまま upper 変換
+            var_name = f"OFFICIAL_VOICE_{name.upper()}"
+            
+            with wave.open(wav_path, 'rb') as f:
+                data = np.frombuffer(f.readframes(f.getnframes()), dtype=np.int16)
+                
+                h.write(f"const int16_t {var_name}[] = {{\n    ")
+                for i, val in enumerate(data):
+                    h.write(f"{val},")
+                    if (i + 1) % 15 == 0: h.write("\n    ")
+                h.write(f"\n}};\n")
+                h.write(f"const int {var_name}_LEN = {len(data)};\n\n")
+    
+    print(f"✅ {len(wav_files)}個の音源を {output_path} にまとめました！")
 
-    print(f"✅ {wav_path} を {output_header} にパッキングしました！")
-
-# 実行例
-# pack_wav_to_header("assets/vose_official_a.wav", "A", "src/voice_data_a.h")
+if __name__ == "__main__":
+    pack_all_voices()
