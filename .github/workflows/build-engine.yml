@@ -1,6 +1,6 @@
-name: Build and Test VO-SE Engine
+name: "🎙️ VO-SE Pro: Official Engine Builder"
 
-on: 
+on:
   push:
     branches: [ main, master ]
   pull_request:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Build on ${{ matrix.os }}
+    name: "🛠️ Build on ${{ matrix.os }}"
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -16,45 +16,63 @@ jobs:
         os: [windows-latest, macos-latest]
 
     steps:
-      - name: Checkout Code
+      - name: "📂 [Step 1] Checkout Repository"
         uses: actions/checkout@v4
 
-      # --- [ディレクトリ作成] OSごとの挙動の差異を完全に吸収 ---
-      - name: Create bin directory (Windows)
+      # --- 環境準備 ---
+      - name: "📁 [Step 2] Prepare Binary Directory (Windows)"
         if: matrix.os == 'windows-latest'
         run: |
-          if (-not (Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" }
+          $cyan = "Cyan"; $green = "Green"; $yellow = "Yellow"
+          Write-Host "🚀 Checking for bin directory..." -ForegroundColor $cyan
+          if (-not (Test-Path "bin")) { 
+            New-Item -ItemType Directory -Path "bin" | Out-Null
+            Write-Host "✅ Created bin directory." -ForegroundColor $green
+          } else {
+            Write-Host "ℹ️ Bin directory already exists. Skipping." -ForegroundColor $yellow
+          }
 
-      - name: Create bin directory (MacOS)
+      - name: "📁 [Step 2] Prepare Binary Directory (MacOS)"
         if: matrix.os == 'macos-latest'
-        run: mkdir -p bin
-
-      # --- [Windowsビルド] C++17 + 最適化 + スタティックリンク ---
-      - if: matrix.os == 'windows-latest'
-        name: Build for Windows
         run: |
-          g++ -std=c++17 -O3 -Wall -shared -fPIC -o bin/vose_core.dll `
+          echo "🚀 Creating bin directory..."
+          mkdir -p bin
+          echo "✅ Done."
+
+      # --- 公式エンジン・コンパイル工程 ---
+      - name: "🏗️ [Step 3] Compile VO-SE Official Engine (Windows)"
+        if: matrix.os == 'windows-latest'
+        run: |
+          Write-Host "🔨 Compiling vose_core.dll with Official Logic..." -ForegroundColor Cyan
+          # -DVOSE_OFFICIAL_RELEASE フラグで公式音源モードを有効化
+          g++ -std=c++17 -O3 -Wall -shared -fPIC -DVOSE_OFFICIAL_RELEASE -o bin/vose_core.dll `
             src/vose_core.cpp `
             src/world/*.cpp `
             -Iinclude `
             -Iinclude/world `
             -static-libgcc -static-libstdc++
+          Write-Host "🎉 VO-SE Official Engine is Ready!" -ForegroundColor Green
 
-      # --- [MacOSビルド] C++17 + 最適化 + ダイナミックルックアップ ---
-      - if: matrix.os == 'macos-latest'
-        name: Build for MacOS
+      - name: "🏗️ [Step 3] Compile VO-SE Official Engine (MacOS)"
+        if: matrix.os == 'macos-latest'
         run: |
-          clang++ -std=c++17 -O3 -Wall -shared -fPIC -o bin/vose_core.dylib \
+          echo "🔨 Compiling vose_core.dylib with Official Logic..."
+          clang++ -std=c++17 -O3 -Wall -shared -fPIC -DVOSE_OFFICIAL_RELEASE -o bin/vose_core.dylib \
             src/vose_core.cpp \
             src/world/*.cpp \
             -Iinclude \
             -Iinclude/world \
             -undefined dynamic_lookup
+          echo "🎉 VO-SE Official Engine is Ready!"
 
-      # --- [成果物の保存] 7日間保持 ---
-      - name: Upload Artifacts
+      # --- 成果物のパッキング ---
+      - name: "📦 [Step 4] Archive and Upload Artifacts"
         uses: actions/upload-artifact@v4
         with:
-          name: vose-engine-${{ matrix.os }}
+          # 公式音源を含むバイナリであることを明示
+          name: vose-official-engine-${{ matrix.os }}
           path: bin/
           retention-days: 7
+
+      - name: "✅ [Step 5] Workflow Summary"
+        run: echo "VO-SE Pro Official Build Pipeline Completed!"
