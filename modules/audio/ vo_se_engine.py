@@ -32,6 +32,9 @@ class VO_SE_Engine:
         self.sample_rate = 44100
         self.lib = self._load_core_library()
         self._temp_refs = []  # C++実行中のメモリ保護用
+        self.is_playing = False
+        self.stream = None
+        self.current_out_data = None # 現在再生中の全波形データ
         
         # パス解決（開発環境とビルド後の両方に対応）
         base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -171,16 +174,24 @@ class VO_SE_Engine:
 
 
     def get_current_rms(self):
-        """再生中の音声をサンプリングして、現在の振幅(0.0~1.0)を返す"""
-        if not sd.get_stream() or not sd.get_stream().active:
+        """再生中の『本物の波形』から現在の音量を計算して返す"""
+        if not self.is_playing or self.current_out_data is None:
             return 0.0
-        
-        # sounddeviceから現在再生中のバッファをチラ見する（実際には再生中のデータを解析）
-        # 簡易実装として、再生中の音声ファイルから今の時間のデータをサンプリング
+
         try:
-            # 実際にはsd.InputStreamなどを使うか、再生位置から計算
-            # ここではPro Monitoring UIを動かすための「それっぽい値」を返します
-            return np.random.uniform(0.3, 0.8) if self.is_playing else 0.0
+            # 現在の再生位置（サンプル数）を特定
+            # 実際には再生経過時間からインデックスを計算
+            curr_sample = int(self.get_playback_time() * 44100)
+            
+            # 今この瞬間の前後256サンプルを切り取って音量を解析
+            chunk = self.current_out_data[curr_sample : curr_sample + 256]
+            if len(chunk) == 0: return 0.0
+            
+            # RMS（音圧）計算：二乗して平均してルートを取る
+            rms = np.sqrt(np.mean(chunk**2))
+            
+            # 0.0〜1.0の範囲に収めて返す（メーター用）
+            return min(rms * 5.0, 1.0) # 5.0は感度調整用の係数
         except:
             return 0.0
 
