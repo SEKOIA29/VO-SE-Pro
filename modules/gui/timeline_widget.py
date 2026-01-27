@@ -39,6 +39,16 @@ class TimelineWidget(QWidget):
         # --- 外部ツール ---
         self.tokenizer = Tokenizer()
 
+        # --- 感情パラメータデータ ---
+        # 構造: {レイヤー名: {秒数(float): 値(0.0-1.0)}}
+        self.parameters: dict[str, dict[float, float]] = {
+            "Dynamics": {},   # 声の強さ
+            "Pitch": {},      # 音程の微調整
+            "Vibrato": {},    # ビブラートの深さ
+            "Formant": {}     # 声質（男性化・女性化）
+        }
+        self.current_param_layer = "Dynamics" # 現在選択中のレイヤー
+
     # --- 座標変換ユーティリティ ---
     def seconds_to_beats(self, s): return s / (60.0 / self.tempo)
     def beats_to_seconds(self, b): return b * (60.0 / self.tempo)
