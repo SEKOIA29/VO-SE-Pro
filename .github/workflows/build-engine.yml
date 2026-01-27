@@ -1,55 +1,56 @@
-name: Build C++ Engine (Full Optimization)
+name: Build and Test VO-SE Engine
 
-on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+on: [push, pull_request]
 
 jobs:
-  build:
-    name: Build on ${{ matrix.os }}
+  build-and-test:
+    name: Build and CI Test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false # 片方がコケてももう片方のログを確認できるようにする
+      fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          submodules: recursive # WORLDをサブモジュール化している場合にも対応
+          python-version: '3.10'
+
+      - name: Install Python Dependencies
+        run: pip install numpy # テストデータの生成に必要
 
       - name: Create bin directory
         run: mkdir -p bin
 
-      # --- Windows (MinGW/GCC) ---
+      # --- [1] ビルド工程（最適化・スタティックリンク全部入り） ---
       - if: matrix.os == 'windows-latest'
         name: Build for Windows
         run: |
           g++ -std=c++17 -O3 -Wall -shared -fPIC -o bin/vose_core.dll `
-            src/vose_core.cpp `
-            src/world/*.cpp `
-            -Iinclude `
-            -Iinclude/world `
-            -static-libgcc -static-libstdc++ 
-            # ↑ 他のPCで「ランタイムがない」と言われるのを防ぐための省略不可設定
+            src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world `
+            -static-libgcc -static-libstdc++
 
-      # --- MacOS (Clang) ---
       - if: matrix.os == 'macos-latest'
         name: Build for MacOS
         run: |
           clang++ -std=c++17 -O3 -Wall -shared -fPIC -o bin/vose_core.dylib \
-            src/vose_core.cpp \
-            src/world/*.cpp \
-            -Iinclude \
-            -Iinclude/world \
+            src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world \
             -undefined dynamic_lookup
 
-      - name: Upload Artifacts
+      # --- [2] 自動演奏テスト工程（ここが「後者」の核心） ---
+      - name: Run CI Smoke Test
+        run: |
+          python tests/ci_test_render.py
+        env:
+          ENGINE_PATH: ${{ matrix.os == 'windows-latest' && 'bin/vose_core.dll' || 'bin/vose_core.dylib' }}
+
+      # --- [3] 成果物の保存 ---
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: vose-engine-${{ matrix.os }}
           path: bin/
-          retention-days: 7 # 省略せず、管理コストも考慮
