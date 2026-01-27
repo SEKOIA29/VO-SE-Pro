@@ -213,31 +213,37 @@ class ProMonitoringUI:
             fill="#007AFF", width=1, tags="waveform"
         ) # Apple純正のブルー (#007AFF) を採用
 
-    # --- 3. GUIループ機構 ---
+    # --- 3. GUIループ機構 ---def update_frame(self):
     def update_frame(self):
-        """1秒間に60回呼ばれるUI更新ループ"""
+        """1秒間に60回呼ばれるUI更新ループ（波形描画・デバイス連携対応）"""
         if not self.is_playing:
             return
 
         # 1. 再生ヘッド（赤い棒）を右に動かす
-        # current_time に 1/60秒（約0.016秒）ずつ足していく
         self.current_time += 1/60 
         x_pos = self.time_to_x(self.current_time)
         self.canvas.coords(self.playhead_line, x_pos, 0, x_pos, 1000)
 
         # 2. 画面外に出そうになったら自動スクロール
         if x_pos > self.canvas.winfo_width() * 0.8:
-            # 1ピクセルずつスクロール
             self.canvas.xview_scroll(1, 'units')
 
-        # 3. レベルメーター（音量バー）の更新
-        # エンジンから現在の振幅(RMS)を取得
+        # 3. レベルメーターの更新 & 波形描画（どっちも！）
         rms = self.engine.get_current_rms() 
         self.draw_level_meter(rms)
+        
+        # --- ここに波形の軌跡（描画）を配属 ---
+        self.draw_waveform_line(x_pos, rms)
 
         # 次のフレームを予約
         self.canvas.after(16, self.update_frame)
 
+    def draw_waveform_line(self, x, rms):
+        """再生ヘッドが通った場所にAppleブルーの波形を描き込む"""
+        h = rms * 60 # 振幅の高さ
+        center_y = 400 # タイムラインの中央高さ（適宜調整）
+        self.canvas.create_line(x, center_y - h, x, center_y + h, fill="#007AFF", width=1, tags="wf_trace")
+    
     def time_to_x(self, t):
         """秒数をX座標に変換（1秒=100pxなど、MainWindowの設定に合わせる）"""
         return t * 100
