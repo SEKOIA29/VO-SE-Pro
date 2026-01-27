@@ -100,35 +100,75 @@ class TimelineWidget(QWidget):
         painter.setPen(QPen(QColor(255, 45, 85), 2))
         painter.drawLine(cx, 0, cx, self.height())
 
+
     def draw_parameter_layer(self, painter):
-        """現在選択されている種類のパラメータを線で描画"""
+        """全レイヤーを表示。非選択は薄く、選択中は濃く描画。"""
+        
+        # カラー定義（Apple/SVを意識した高彩度パレット）
+        colors = {
+            "Dynamics": QColor(255, 45, 85),  # 赤（Dynamics）
+            "Pitch": QColor(0, 255, 255),     # 水色（Pitch）
+            "Vibrato": QColor(255, 165, 0),   # オレンジ（Vibrato）
+            "Formant": QColor(200, 100, 255)  # 紫（Formant）
+        }
+
+        # 1. まず「非選択」のレイヤーをゴースト描画（alpha=40）
+        for name, data in self.parameters.items():
+            if name == self.current_param_layer:
+                continue
+            self._draw_single_curve(painter, data, colors[name], alpha=40, line_width=1)
+
+        # 2. 最後に「選択中」のレイヤーを最前面に濃く描画（alpha=220）
         current_data = self.parameters.get(self.current_param_layer, {})
-        if not current_data:
+        self._draw_single_curve(painter, current_data, colors[self.current_param_layer], alpha=220, line_width=2)
+
+    def _draw_single_curve(self, painter, data, color, alpha, line_width):
+        """1本の曲線を引くための内部ヘルパー"""
+        if not data:
             return
             
-        # レイヤーごとのテーマカラー設定
-        colors = {
-            "Dynamics": QColor(255, 45, 85, 200),  # 赤
-            "Pitch": QColor(0, 255, 255, 200),     # 水色
-            "Vibrato": QColor(255, 165, 0, 200),   # オレンジ
-            "Formant": QColor(200, 100, 255, 200)  # 紫
-        }
+        c = QColor(color)
+        c.setAlpha(alpha)
+        painter.setPen(QPen(c, line_width, Qt.SolidLine))
         
-        painter.setPen(QPen(colors.get(self.current_param_layer, Qt.white), 2, Qt.SolidLine))
-        
-        sorted_times = sorted(current_data.keys())
+        sorted_times = sorted(data.keys())
         prev_pt = None
         
         for t in sorted_times:
-            val = current_data[t]
+            val = data[t]
             x = int(self.seconds_to_beats(t) * self.pixels_per_beat - self.scroll_x_offset)
-            # 画面下部30%の範囲に描画
             y = int(self.height() - (val * self.height() * 0.3) - 10)
             
             curr_pt = QPoint(x, y)
             if prev_pt:
                 painter.drawLine(prev_pt, curr_pt)
             prev_pt = curr_pt
+
+    # --- キー操作の強化版（keyPressEvent を差し替え） ---
+    def keyPressEvent(self, event):
+        ctrl = event.modifiers() & Qt.ControlModifier
+        
+        # 【新機能】1〜4キーでレイヤーを爆速切り替え（SV超えの操作性）
+        if event.key() == Qt.Key_1: self.change_layer("Dynamics")
+        elif event.key() == Qt.Key_2: self.change_layer("Pitch")
+        elif event.key() == Qt.Key_3: self.change_layer("Vibrato")
+        elif event.key() == Qt.Key_4: self.change_layer("Formant")
+        
+        # 既存の編集ショートカット（Ctrl+C, V, D, A / Delete）
+        elif ctrl and event.key() == Qt.Key_C: self.copy_notes()
+        elif ctrl and event.key() == Qt.Key_V: self.paste_notes()
+        elif ctrl and event.key() == Qt.Key_D: self.duplicate_notes()
+        elif ctrl and event.key() == Qt.Key_A: self.select_all()
+        elif event.key() in (Qt.Key_Delete, Qt.Key_BackSpace): self.delete_selected()
+
+
+
+    def change_layer(self, layer_name):
+        if layer_name in self.parameters:
+            self.current_param_layer = layer_name
+            self.update()
+            # どのレイヤーを操作中かコンソールに出して開発を楽にする
+            print(f"🛠️ Layer Switched: {layer_name}")
 
     # --- マウス操作 ---
     def mousePressEvent(self, event):
@@ -255,12 +295,21 @@ class TimelineWidget(QWidget):
 
     def keyPressEvent(self, event):
         ctrl = event.modifiers() & Qt.ControlModifier
-        if ctrl and event.key() == Qt.Key_C: self.copy_notes()
+        
+        # 1. 数字キー (1-4) でレイヤーを爆速切り替え
+        if event.key() == Qt.Key_1: self.change_layer("Dynamics")
+        elif event.key() == Qt.Key_2: self.change_layer("Pitch")
+        elif event.key() == Qt.Key_3: self.change_layer("Vibrato")
+        elif event.key() == Qt.Key_4: self.change_layer("Formant")
+        
+        # 2. 既存の編集機能（コピペ・複製・全選択・削除）
+        elif ctrl and event.key() == Qt.Key_C: self.copy_notes()
         elif ctrl and event.key() == Qt.Key_V: self.paste_notes()
         elif ctrl and event.key() == Qt.Key_D: self.duplicate_notes()
         elif ctrl and event.key() == Qt.Key_A: self.select_all()
         elif event.key() in (Qt.Key_Delete, Qt.Key_BackSpace): self.delete_selected()
 
+    
     def copy_notes(self):
         sel = [n for n in self.notes_list if n.is_selected]
         if not sel: return
