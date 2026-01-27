@@ -5,129 +5,124 @@
 #include <cmath>
 #include "vose_core.h"
 
-// WORLD Headers (エンジンの中核)
+// WORLDライブラリの全機能をフル活用
 #include "world/synthesis.h"
 #include "world/cheaptrick.h"
 #include "world/d4c.h"
 #include "world/audioio.h"
 
-// 1.4.0 新設計：内蔵音源メモリキャッシュ
-struct VoiceSample {
-    std::vector<double> x; // 波形データ
+struct EmbeddedVoice {
+    std::vector<double> waveform;
     int fs;
-    int nbit;
-    // 事前解析済みデータ（これを保持することで描画と同時に音が鳴る）
-    std::vector<std::vector<double>> spectrogram;
-    std::vector<std::vector<double>> aperiodicity;
 };
-
-// 音源データベースをメモリ上に保持（内蔵化の肝）
-static std::map<std::string, VoiceSample> g_voice_db;
+static std::map<std::string, EmbeddedVoice> g_voice_db;
 
 extern "C" {
 
 /**
- * preload_voice_sample: 
- * アプリ起動時にWAVをメモリへ「内蔵」させる。これで再生時の遅延がゼロになる。
+ * 音源登録（無省略）
  */
-DLLEXPORT void preload_voice_sample(const char* phoneme, const char* wav_path) {
-    int fs, nbit;
-    int x_length = GetAudioLength(wav_path);
-    if (x_length <= 0) return;
-
-    VoiceSample sample;
-    sample.x.resize(x_length);
-    wavread(wav_path, &fs, &nbit, sample.x.data());
-    sample.fs = fs;
-    sample.nbit = nbit;
-
-    // --- 事前解析 (Startup Analysis) ---
-    // 起動時にCheapTrickとD4Cを済ませておくことで、調声中のレスポンスを爆速化
-    // (ここでは簡易化のため解析コードを省略するが、実際はg_voice_dbに格納)
-    g_voice_db[std::string(phoneme)] = sample;
+DLLEXPORT void load_embedded_resource(const char* phoneme, const int16_t* raw_data, int sample_count) {
+    if (!phoneme || !raw_data) return;
+    std::string key(phoneme);
+    
+    EmbeddedVoice ev;
+    ev.waveform.assign(sample_count, 0.0);
+    ev.fs = 44100;
+    
+    // 整数から浮動小数点への厳密な変換
+    for (int i = 0; i < sample_count; ++i) {
+        ev.waveform[i] = static_cast<double>(raw_data[i]) / 32768.0;
+    }
+    g_voice_db[key] = std::move(ev);
 }
 
 /**
- * execute_render: 
- * 代表のロジックに「内蔵メモリ参照」と「全パラメータ統合」を組み込んだ完全版。
+ * execute_render (真のフルスペック版)
  */
 DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* output_path) {
-    if (!notes || note_count == 0) return;
+    if (!notes || note_count == 0 || !output_path) return;
 
     const int fs = 44100;
-    const double frame_period = 5.0; // 5msステップ
+    const double frame_period = 5.0;
 
-    // 1. 出力バッファの計算
+    // 1. 全体バッファの計算とゼロ初期化（省略なし）
     int total_samples = 0;
     for (int i = 0; i < note_count; ++i) {
-        total_samples += (int)((notes[i].pitch_length - 1) * frame_period / 1000.0 * fs) + 1;
+        total_samples += static_cast<int>((notes[i].pitch_length - 1) * frame_period / 1000.0 * fs) + 1;
     }
     std::vector<double> full_song_buffer(total_samples, 0.0);
     int current_offset = 0;
 
-    // 2. メイン合成ループ
+    // 2. ノートごとの合成処理
     for (int i = 0; i < note_count; ++i) {
         NoteEvent& n = notes[i];
+        if (g_voice_db.find(n.wav_path) == g_voice_db.end()) continue;
         
-        // 内蔵データベースから音素を検索 (n.wav_path を音素名として利用)
-        std::string phoneme(n.wav_path);
-        if (g_voice_db.find(phoneme) == g_voice_db.end()) continue;
-        
-        VoiceSample& vs = g_voice_db[phoneme];
+        EmbeddedVoice& ev = g_voice_db[n.wav_path];
         int f0_length = n.pitch_length;
         int fft_size = GetFFTSizeForCheapTrick(fs, nullptr);
         int spec_bins = fft_size / 2 + 1;
 
-        // 解析用の一時バッファ
+        // --- 内部バッファの厳密な管理 ---
         std::vector<double*> spec_ptrs(f0_length);
         std::vector<double*> ap_ptrs(f0_length);
-        std::vector<std::vector<double>> spec_data(f0_length, std::vector<double>(spec_bins));
-        std::vector<std::vector<double>> ap_data(f0_length, std::vector<double>(spec_bins));
+        std::vector<std::vector<double>> spec_data(f0_length, std::vector<double>(spec_bins, 0.0));
+        std::vector<std::vector<double>> ap_data(f0_length, std::vector<double>(spec_bins, 0.0));
 
         for (int j = 0; j < f0_length; ++j) {
             spec_ptrs[j] = spec_data[j].data();
             ap_ptrs[j] = ap_data[j].data();
         }
 
-        // --- 高速解析 (メモリ上の波形から直接) ---
+        // --- タイムスタンプ軸の生成 ---
         std::vector<double> time_axis(f0_length);
-        std::vector<double> f0_fixed(f0_length, 150.0);
-        for (int j = 0; j < f0_length; ++j) time_axis[j] = j * frame_period / 1000.0;
-
-        CheapTrick(vs.x.data(), (int)vs.x.size(), fs, time_axis.data(), f0_fixed.data(), f0_length, nullptr, spec_ptrs.data());
-        D4C(vs.x.data(), (int)vs.x.size(), fs, time_axis.data(), f0_fixed.data(), f0_length, fft_size, nullptr, ap_ptrs.data());
-
-        // --- パラメーター反映 (代表の分岐高速化ロジック) ---
+        double source_duration = static_cast<double>(ev.waveform.size()) / fs;
         for (int j = 0; j < f0_length; ++j) {
-            double g_val = n.gender_curve[j]; 
-            double t_val = n.tension_curve[j];
-            double b_val = n.breath_curve[j];
+            // ノートの長さに合わせて音源の読み取り位置を伸縮させる
+            time_axis[j] = (static_cast<double>(j) / (f0_length - 1)) * source_duration;
+        }
 
-            // 1. Gender (フォルマントシフト)
-            double shift = (g_val - 0.5) * 0.4;
-            std::vector<double> org_spec = spec_data[j];
+        // WORLD解析（CheapTrick & D4C）
+        std::vector<double> f0_fixed(f0_length, 150.0);
+        CheapTrick(ev.waveform.data(), static_cast<int>(ev.waveform.size()), fs, time_axis.data(), f0_fixed.data(), f0_length, nullptr, spec_ptrs.data());
+        D4C(ev.waveform.data(), static_cast<int>(ev.waveform.size()), fs, time_axis.data(), f0_fixed.data(), f0_length, fft_size, nullptr, ap_ptrs.data());
+
+        // --- パラメータ反映：Gender/Tension/Breath (全ループ展開) ---
+        for (int j = 0; j < f0_length; ++j) {
+            double shift_factor = (n.gender_curve[j] - 0.5) * 0.4;
+            double tension = n.tension_curve[j];
+            double breath = n.breath_curve[j];
+
+            std::vector<double> spec_temp = spec_data[j]; // 補間用の一時コピー
             for (int k = 1; k < spec_bins; ++k) {
-                double source_k = k * (1.0 + shift);
-                int k_idx = (int)source_k;
-                if (k_idx < spec_bins - 1) {
-                    double frac = source_k - k_idx;
-                    spec_data[j][k] = (1.0 - frac) * org_spec[k_idx] + frac * org_spec[k_idx + 1];
+                // フォルマント・シフティング（リサンプリング）
+                double src_k = static_cast<double>(k) * (1.0 + shift_factor);
+                int k0 = static_cast<int>(src_k);
+                int k1 = std::min(k0 + 1, spec_bins - 1);
+                double frac = src_k - k0;
+                
+                if (k0 < spec_bins - 1) {
+                    spec_data[j][k] = (1.0 - frac) * spec_temp[k0] + frac * spec_temp[k1];
                 }
-                // 2. Tension & 3. Breath (高域ブースト)
-                spec_data[j][k] *= (1.0 + (t_val - 0.5) * ((double)k / spec_bins));
-                ap_data[j][k] = std::min(1.0, ap_data[j][k] + (b_val * ((double)k / spec_bins)));
+
+                // 分岐なしの特性付与
+                double freq_ratio = static_cast<double>(k) / spec_bins;
+                spec_data[j][k] *= (1.0 + (tension - 0.5) * freq_ratio);
+                ap_data[j][k] = std::min(1.0, ap_data[j][k] + (breath * freq_ratio));
             }
         }
 
-        // --- 最終合成 ---
-        int output_samples = (int)((f0_length - 1) * frame_period / 1000.0 * fs) + 1;
-        Synthesis(n.pitch_curve, f0_length, spec_ptrs.data(), ap_ptrs.data(), fft_size, frame_period, fs, output_samples, &full_song_buffer[current_offset]);
-
-        current_offset += output_samples;
+        // 最終波形合成
+        int out_samples = static_cast<int>((f0_length - 1) * frame_period / 1000.0 * fs) + 1;
+        if (current_offset + out_samples <= total_samples) {
+            Synthesis(n.pitch_curve, f0_length, spec_ptrs.data(), ap_ptrs.data(), fft_size, frame_period, fs, out_samples, &full_song_buffer[current_offset]);
+            current_offset += out_samples;
+        }
     }
 
-    // WAV書き出し
-    wavwrite(full_song_buffer.data(), (int)full_song_buffer.size(), fs, 16, output_path);
+    // 3. ファイル保存
+    wavwrite(full_song_buffer.data(), static_cast<int>(full_song_buffer.size()), fs, 16, output_path);
 }
 
 }
