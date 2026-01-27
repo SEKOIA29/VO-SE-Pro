@@ -2401,6 +2401,17 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "エラー", str(e))
             self.tempo_input.setText(str(self.timeline_widget.tempo))
 
+    # --- レイヤー切り替え用公開メソッド ---
+    @Slot(str)
+    def set_current_parameter_layer(self, layer_name: str):
+        if layer_name in self.parameters:
+            self.current_param_layer = layer_name
+            self.update()
+            print(f"Parameter layer switched to: {layer_name}")
+        else:
+            print(f"Error: Parameter layer '{layer_name}' not found.")
+
+
     @Slot()
     def on_timeline_updated(self):
         """タイムライン更新時の処理"""
