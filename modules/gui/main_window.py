@@ -151,6 +151,40 @@ class CreditsDialog(QDialog):
 
 
 
+# ==========================================================
+#  Pro audio modeling レンダリングボタンを押さなくても、スペースキーで「今あるデータ」を合成して即座に鳴らす機能。
+# ==========================================================
+class ProMonitoringUI:
+    def __init__(self, canvas, engine):
+        self.canvas = canvas
+        self.engine = engine
+        self.is_playing = False
+        self.playhead_line = None # タイムライン上の赤い線
+
+    def update_frame(self):
+        """1秒間に60回呼ばれるUI更新ループ"""
+        if not self.is_playing:
+            return
+
+        # 1. 再生ヘッド（赤い棒）を右に動かす
+        self.current_time += 1/60 
+        x_pos = self.time_to_x(self.current_time)
+        self.canvas.coords(self.playhead_line, x_pos, 0, x_pos, 800)
+
+        # 2. 画面外に出そうになったら自動スクロール
+        if x_pos > self.canvas.winfo_width() * 0.8:
+            self.canvas.xview_scroll(1, 'units')
+
+        # 3. レベルメーター（音量バー）の更新
+        # エンジンから現在の振幅(RMS)を取得して描画
+        rms = self.engine.get_current_rms() 
+        self.draw_level_meter(rms)
+
+        # 次のフレームを予約
+        self.canvas.after(16, self.update_frame)
+
+
+
 
 class AutoOtoEngine:
     def __init__(self, sample_rate=44100):
