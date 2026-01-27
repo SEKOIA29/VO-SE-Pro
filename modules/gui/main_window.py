@@ -161,59 +161,76 @@ class ProMonitoringUI:
         self.is_playing = False
         self.playhead_line = None  # タイムライン上の赤い線
         self.current_time = 0.0
+        
+        # --- メーター用の図形を保持する変数 ---
+        self.meter_l = None
+        self.meter_r = None
+        
+        # 初期セットアップを実行
+        self.setup_playhead()
+        self.setup_meters()
 
     # --- 1. 視覚の配属：再生ヘッドの描画 ---
     def setup_playhead(self):
         """タイムライン上に赤い縦線を作成"""
-        self.playhead_line = self.canvas.create_line(0, 0, 0, 1000, fill="red", width=2)
+        # Apple風の鮮やかな赤 (#FF2D55) を採用
+        self.playhead_line = self.canvas.create_line(0, 0, 0, 1000, fill="#FF2D55", width=2)
 
-    def update_frame(self):
-        """1/60秒ごとに呼ばれる同期の核心"""
-        if not self.is_playing: return
-        
-        # エンジンから今の再生位置（秒）をもらってくる
-        self.current_time = self.engine.get_playback_seconds()
-        
-        # 赤い線の位置を更新
-        x = self.time_to_x(self.current_time)
-        self.canvas.coords(self.playhead_line, x, 0, x, 1000)
-        
-        # 画面を自動で追いかける（オートスクロール）
-        self.auto_scroll(x)
-        
-        # 次の描画予約
-        self.canvas.after(16, self.update_frame)
+    def setup_meters(self):
+        """GUI右上にレベルメーターの枠と中身を作成"""
+        # 枠
+        self.canvas.create_rectangle(10, 10, 20, 110, outline="white")
+        self.canvas.create_rectangle(25, 10, 35, 110, outline="white")
+        # 中身（動くバー）
+        self.meter_l = self.canvas.create_rectangle(11, 110, 19, 110, fill="#34C759", outline="")
+        self.meter_r = self.canvas.create_rectangle(26, 110, 34, 110, fill="#34C759", outline="")
 
     # --- 2. 聴覚の配属：レベルメーター（音量バー） ---
-    def draw_level_meter(self):
+    def draw_level_meter(self, rms):
         """再生中の音量をリアルタイムで取得してメーターを動かす"""
-        peak_l, peak_r = self.engine.get_peak_levels()
-        # ここでGUI上のメーターの「高さ」を更新する
-        # （例：緑色から赤色に変わるバーなど）
+        # rmsは 0.0 〜 1.0 の想定
+        max_h = 100
+        h = rms * max_h
+        
+        # メーターの高さを更新
+        self.canvas.coords(self.meter_l, 11, 110 - h, 19, 110)
+        self.canvas.coords(self.meter_r, 26, 110 - h, 34, 110)
+        
+        # 音量に応じた色変更（Apple風：緑→黄→赤）
+        color = "#34C759"
+        if rms > 0.7: color = "#FFCC00"
+        if rms > 0.9: color = "#FF3B30"
+        self.canvas.itemconfig(self.meter_l, fill=color)
+        self.canvas.itemconfig(self.meter_r, fill=color)
 
-    
-　　　 # --- 3.GUIループ機構 ---
+    # --- 3. GUIループ機構 ---
     def update_frame(self):
         """1秒間に60回呼ばれるUI更新ループ"""
         if not self.is_playing:
             return
 
         # 1. 再生ヘッド（赤い棒）を右に動かす
+        # current_time に 1/60秒（約0.016秒）ずつ足していく
         self.current_time += 1/60 
         x_pos = self.time_to_x(self.current_time)
-        self.canvas.coords(self.playhead_line, x_pos, 0, x_pos, 800)
+        self.canvas.coords(self.playhead_line, x_pos, 0, x_pos, 1000)
 
         # 2. 画面外に出そうになったら自動スクロール
         if x_pos > self.canvas.winfo_width() * 0.8:
+            # 1ピクセルずつスクロール
             self.canvas.xview_scroll(1, 'units')
 
         # 3. レベルメーター（音量バー）の更新
-        # エンジンから現在の振幅(RMS)を取得して描画
+        # エンジンから現在の振幅(RMS)を取得
         rms = self.engine.get_current_rms() 
         self.draw_level_meter(rms)
 
         # 次のフレームを予約
         self.canvas.after(16, self.update_frame)
+
+    def time_to_x(self, t):
+        """秒数をX座標に変換（1秒=100pxなど、MainWindowの設定に合わせる）"""
+        return t * 100
 
 
 
