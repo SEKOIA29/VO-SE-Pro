@@ -159,8 +159,40 @@ class ProMonitoringUI:
         self.canvas = canvas
         self.engine = engine
         self.is_playing = False
-        self.playhead_line = None # タイムライン上の赤い線
+        self.playhead_line = None  # タイムライン上の赤い線
+        self.current_time = 0.0
 
+    # --- 1. 視覚の配属：再生ヘッドの描画 ---
+    def setup_playhead(self):
+        """タイムライン上に赤い縦線を作成"""
+        self.playhead_line = self.canvas.create_line(0, 0, 0, 1000, fill="red", width=2)
+
+    def update_frame(self):
+        """1/60秒ごとに呼ばれる同期の核心"""
+        if not self.is_playing: return
+        
+        # エンジンから今の再生位置（秒）をもらってくる
+        self.current_time = self.engine.get_playback_seconds()
+        
+        # 赤い線の位置を更新
+        x = self.time_to_x(self.current_time)
+        self.canvas.coords(self.playhead_line, x, 0, x, 1000)
+        
+        # 画面を自動で追いかける（オートスクロール）
+        self.auto_scroll(x)
+        
+        # 次の描画予約
+        self.canvas.after(16, self.update_frame)
+
+    # --- 2. 聴覚の配属：レベルメーター（音量バー） ---
+    def draw_level_meter(self):
+        """再生中の音量をリアルタイムで取得してメーターを動かす"""
+        peak_l, peak_r = self.engine.get_peak_levels()
+        # ここでGUI上のメーターの「高さ」を更新する
+        # （例：緑色から赤色に変わるバーなど）
+
+    
+　　　 # --- 3.GUIループ機構 ---
     def update_frame(self):
         """1秒間に60回呼ばれるUI更新ループ"""
         if not self.is_playing:
