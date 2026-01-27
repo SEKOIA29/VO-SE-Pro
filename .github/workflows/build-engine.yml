@@ -1,4 +1,4 @@
-name: "🎙️ VO-SE Pro: Official Engine Builder (Final-v2)"
+name: "🎙️ VO-SE Pro: Official Engine Builder (Safe-v3)"
 
 on: [push, pull_request]
 
@@ -7,7 +7,7 @@ jobs:
     name: "🛠️ Build & Pack on ${{ matrix.os }}"
     runs-on: ${{ matrix.os }}
     env:
-      PYTHONIOENCODING: "utf-8"  # Windowsのエンコードエラー対策
+      PYTHONIOENCODING: "utf-8"
     strategy:
       fail-fast: false
       matrix:
@@ -25,10 +25,16 @@ jobs:
       - name: "📦 [Step 3] Install Python Dependencies"
         run: pip install numpy
 
-      - name: "📁 [Step 4] Prepare Directory"
+      # --- 修正したStep 4 ---
+      - name: "📁 [Step 4] Prepare Directory (Windows)"
+        if: matrix.os == 'windows-latest'
         run: |
-          mkdir -p bin
-          mkdir -p src
+          if (-not (Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" }
+          if (-not (Test-Path "src")) { New-Item -ItemType Directory -Path "src" }
+
+      - name: "📁 [Step 4] Prepare Directory (MacOS)"
+        if: matrix.os == 'macos-latest'
+        run: mkdir -p bin src
 
       - name: "🎙️ [Step 5] Pack Official Voice Data"
         run: python modules/tools/pack_voice.py 
