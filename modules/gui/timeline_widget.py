@@ -26,28 +26,24 @@ class TimelineWidget(QWidget):
         self._current_playback_time = 0.0
         self.quantize_resolution = 0.25 # 16分音符
         
-        # --- 感情パラメータデータ ---
-        # 構造: {秒数(float): 値(0.0-1.0)}
-        self.emotion_points: dict[float, float] = {}
+        # --- 多レイヤー・パラメータデータ ---
+        # SVを超えるための多角的表現軸
+        self.parameters: dict[str, dict[float, float]] = {
+            "Dynamics": {},   # 声の強さ (Red)
+            "Pitch": {},      # ピッチ微調整 (Cyan)
+            "Vibrato": {},    # ビブラート (Orange)
+            "Formant": {}     # 声質キャラクター (Purple)
+        }
+        self.current_param_layer = "Dynamics"
         
         # --- 編集状態 ---
-        self.edit_mode = None # 'move', 'select_box', 'draw_emotion'
+        self.edit_mode = None # 'move', 'select_box', 'draw_parameter'
         self.target_note = None
         self.drag_start_pos = None
         self.selection_rect = QRect()
         
         # --- 外部ツール ---
         self.tokenizer = Tokenizer()
-
-        # --- 感情パラメータデータ ---
-        # 構造: {レイヤー名: {秒数(float): 値(0.0-1.0)}}
-        self.parameters: dict[str, dict[float, float]] = {
-            "Dynamics": {},   # 声の強さ
-            "Pitch": {},      # 音程の微調整
-            "Vibrato": {},    # ビブラートの深さ
-            "Formant": {}     # 声質（男性化・女性化）
-        }
-        self.current_param_layer = "Dynamics" # 現在選択中のレイヤー
 
     # --- 座標変換ユーティリティ ---
     def seconds_to_beats(self, s): return s / (60.0 / self.tempo)
@@ -74,8 +70,8 @@ class TimelineWidget(QWidget):
             painter.setPen(QPen(QColor(58, 58, 60) if i % 4 == 0 else QColor(36, 36, 36), 1))
             painter.drawLine(int(x), 0, int(x), self.height())
 
-        # 3. 感情パラメータの描画 (Appleネオンレッド)
-        self.draw_emotion_layer(painter)
+        # 3. 現在選択中のパラメータレイヤーの描画
+        self.draw_parameter_layer(painter)
 
         # 4. ノートの描画
         for note in self.notes_list:
@@ -99,25 +95,34 @@ class TimelineWidget(QWidget):
             painter.setBrush(QBrush(QColor(255, 255, 255, 30)))
             painter.drawRect(self.selection_rect)
 
-        # 6. 再生カーソル
+        # 6. 再生カーソル (ネオンレッド)
         cx = int(self.seconds_to_beats(self._current_playback_time) * self.pixels_per_beat - self.scroll_x_offset)
         painter.setPen(QPen(QColor(255, 45, 85), 2))
         painter.drawLine(cx, 0, cx, self.height())
 
-    def draw_emotion_layer(self, painter):
-        """感情パラメータを折れ線で描画"""
-        if not self.emotion_points:
+    def draw_parameter_layer(self, painter):
+        """現在選択されている種類のパラメータを線で描画"""
+        current_data = self.parameters.get(self.current_param_layer, {})
+        if not current_data:
             return
             
-        painter.setPen(QPen(QColor(255, 45, 85, 180), 2, Qt.SolidLine))
+        # レイヤーごとのテーマカラー設定
+        colors = {
+            "Dynamics": QColor(255, 45, 85, 200),  # 赤
+            "Pitch": QColor(0, 255, 255, 200),     # 水色
+            "Vibrato": QColor(255, 165, 0, 200),   # オレンジ
+            "Formant": QColor(200, 100, 255, 200)  # 紫
+        }
         
-        sorted_times = sorted(self.emotion_points.keys())
+        painter.setPen(QPen(colors.get(self.current_param_layer, Qt.white), 2, Qt.SolidLine))
+        
+        sorted_times = sorted(current_data.keys())
         prev_pt = None
         
         for t in sorted_times:
-            val = self.emotion_points[t]
+            val = current_data[t]
             x = int(self.seconds_to_beats(t) * self.pixels_per_beat - self.scroll_x_offset)
-            # 画面の下30%の領域に描画
+            # 画面下部30%の範囲に描画
             y = int(self.height() - (val * self.height() * 0.3) - 10)
             
             curr_pt = QPoint(x, y)
@@ -129,13 +134,13 @@ class TimelineWidget(QWidget):
     def mousePressEvent(self, event):
         self.drag_start_pos = event.position()
         
-        # Altキーが押されている場合は感情描画モード
+        # Altキー：パラメータ描き込みモード
         if event.modifiers() & Qt.AltModifier:
-            self.edit_mode = "draw_emotion"
-            self.add_emotion_point(event.position())
+            self.edit_mode = "draw_parameter"
+            self.add_parameter_point(event.position())
             return
 
-        # ノートクリック判定
+        # ノート判定
         for note in reversed(self.notes_list):
             if self.get_note_rect(note).contains(event.position().toPoint()):
                 if not note.is_selected:
@@ -145,15 +150,15 @@ class TimelineWidget(QWidget):
                 self.update()
                 return
 
-        # 何もない場所
+        # 範囲選択モード
         if not (event.modifiers() & Qt.ControlModifier): self.deselect_all()
         self.edit_mode = "select_box"
         self.selection_rect = QRect(event.position().toPoint(), QSize(0, 0))
         self.update()
 
     def mouseMoveEvent(self, event):
-        if self.edit_mode == "draw_emotion":
-            self.add_emotion_point(event.position())
+        if self.edit_mode == "draw_parameter":
+            self.add_parameter_point(event.position())
             self.update()
             return
 
@@ -176,74 +181,60 @@ class TimelineWidget(QWidget):
                 n.is_selected = self.selection_rect.intersects(self.get_note_rect(n))
             self.update()
 
-    # --- マウスを離した時の処理に「自動補正」を追加 ---
     def mouseReleaseEvent(self, event):
-        if self.edit_mode == "draw_emotion":
-            # 描き終わった瞬間にプロの曲線へ補正
-            self.smooth_emotion_points()
+        if self.edit_mode == "draw_parameter":
+            self.smooth_current_parameter()
             
         elif self.edit_mode == "move":
             for n in self.notes_list:
                 if n.is_selected:
-                    # クオンタイズ（グリッド吸着）
-                    n.start_time = self.beats_to_seconds(
-                        self.quantize(self.seconds_to_beats(n.start_time))
-                    )
+                    n.start_time = self.beats_to_seconds(self.quantize(self.seconds_to_beats(n.start_time)))
             self.notes_changed_signal.emit()
             
         self.edit_mode = None
         self.update()
 
-    # --- プロ級の曲線を作る平滑化ロジック ---
-    def smooth_emotion_points(self):
-        """ガタガタの線をApple Pro仕様の滑らかな曲線に変換"""
-        if len(self.emotion_points) < 5: return
+    def add_parameter_point(self, pos):
+        """現在のレイヤーにパラメータ値を追加"""
+        t = self.beats_to_seconds((pos.x() + self.scroll_x_offset) / self.pixels_per_beat)
+        val = max(0.0, min(1.0, (self.height() - 10 - pos.y()) / (self.height() * 0.3)))
+        self.parameters[self.current_param_layer][t] = val
+
+    def smooth_current_parameter(self):
+        """現在のレイヤーの曲線を滑らかにする"""
+        data = self.parameters[self.current_param_layer]
+        if len(data) < 5: return
         
-        sorted_times = sorted(self.emotion_points.keys())
+        sorted_times = sorted(data.keys())
         new_points = {}
-        
-        # 5点移動平均法（中央の値を前後の平均で補正）
         for i in range(len(sorted_times)):
             t = sorted_times[i]
-            # 範囲を計算（端っこでもエラーにならないように）
-            start_idx = max(0, i - 2)
-            end_idx = min(len(sorted_times), i + 3)
-            
-            subset = [self.emotion_points[sorted_times[j]] for j in range(start_idx, end_idx)]
-            # 平均をとることで、マウスの震えを除去
+            subset = [data[sorted_times[j]] for j in range(max(0, i-2), min(len(sorted_times), i+3))]
             new_points[t] = sum(subset) / len(subset)
             
-        self.emotion_points = new_points
-        print("✨ Emotion curve smoothed.")
-        
+        self.parameters[self.current_param_layer] = new_points
+        print(f"✨ {self.current_param_layer} smoothed.")
 
-    def add_emotion_point(self, pos):
-        """マウス位置から感情ポイントを追加"""
-        t = self.beats_to_seconds((pos.x() + self.scroll_x_offset) / self.pixels_per_beat)
-        # 画面下部30%を 0.0-1.0 に変換
-        val = max(0.0, min(1.0, (self.height() - 10 - pos.y()) / (self.height() * 0.3)))
-        self.emotion_points[t] = val
+    # --- 外部からのレイヤー切り替え用 ---
+    @Slot(str)
+    def change_layer(self, layer_name):
+        if layer_name in self.parameters:
+            self.current_param_layer = layer_name
+            self.update()
 
-    # --- 複製ロジック (Ctrl+D) ---
+    # --- 既存の便利機能（コピペ・複製・分割） ---
     def duplicate_notes(self):
         sel = [n for n in self.notes_list if n.is_selected]
         if not sel: return
-        start_t = min(n.start_time for n in sel)
-        end_t = max(n.start_time + n.duration for n in sel)
+        start_t = min(n.start_time for n in sel); end_t = max(n.start_time + n.duration for n in sel)
         offset = end_t - start_t
-        
-        new_clones = []
         self.deselect_all()
+        new_clones = []
         for n in sel:
             clone = NoteEvent(n.start_time + offset, n.duration, n.note_number, n.lyrics)
-            clone.is_selected = True
-            new_clones.append(clone)
-        
-        self.notes_list.extend(new_clones)
-        self.notes_changed_signal.emit()
-        self.update()
+            clone.is_selected = True; new_clones.append(clone)
+        self.notes_list.extend(new_clones); self.notes_changed_signal.emit(); self.update()
 
-    # --- 歌詞入力 ---
     def mouseDoubleClickEvent(self, event):
         for n in self.notes_list:
             if self.get_note_rect(n).contains(event.position().toPoint()):
@@ -254,18 +245,14 @@ class TimelineWidget(QWidget):
                     for c in chars: char_list.extend(list(c))
                     if len(char_list) > 1: self.split_note(n, char_list)
                     else: n.lyrics = text
-                    self.notes_changed_signal.emit()
-                    self.update()
+                    self.notes_changed_signal.emit(); self.update()
                 return
 
     def split_note(self, note, char_list):
-        new_dur = note.duration / len(char_list)
-        start, num = note.start_time, note.note_number
+        new_dur = note.duration / len(char_list); start, num = note.start_time, note.note_number
         if note in self.notes_list: self.notes_list.remove(note)
-        for i, c in enumerate(char_list):
-            self.notes_list.append(NoteEvent(start + (i * new_dur), new_dur, num, c))
+        for i, c in enumerate(char_list): self.notes_list.append(NoteEvent(start + (i * new_dur), new_dur, num, c))
 
-    # --- キー操作 ---
     def keyPressEvent(self, event):
         ctrl = event.modifiers() & Qt.ControlModifier
         if ctrl and event.key() == Qt.Key_C: self.copy_notes()
@@ -274,7 +261,6 @@ class TimelineWidget(QWidget):
         elif ctrl and event.key() == Qt.Key_A: self.select_all()
         elif event.key() in (Qt.Key_Delete, Qt.Key_BackSpace): self.delete_selected()
 
-    # --- クリップボード操作 ---
     def copy_notes(self):
         sel = [n for n in self.notes_list if n.is_selected]
         if not sel: return
@@ -288,8 +274,7 @@ class TimelineWidget(QWidget):
             self.deselect_all()
             for d in data:
                 new_n = NoteEvent(self._current_playback_time + d["o"], d["d"], d["n"], d["l"])
-                new_n.is_selected = True
-                self.notes_list.append(new_n)
+                new_n.is_selected = True; self.notes_list.append(new_n)
             self.notes_changed_signal.emit(); self.update()
         except: pass
 
@@ -305,7 +290,6 @@ class TimelineWidget(QWidget):
         for n in self.notes_list: n.is_selected = False
         self.update()
 
-    # --- スロット ---
     @Slot(int)
     def set_vertical_offset(self, val): self.scroll_y_offset = val; self.update()
     @Slot(int)
