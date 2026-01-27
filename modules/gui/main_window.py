@@ -666,6 +666,12 @@ class MainWindow(QMainWindow):
         self.midi_manager: Optional[MidiInputManager] = None
         # AIマネージャーの準備
         self.ai_manager = AIManager()
+
+        # Pro Monitoring UI のインスタンス化
+        self.pro_monitoring = ProMonitoringUI(self.canvas, self.engine)
+
+        # Spaceキーを「再生/停止」に割り当て
+        self.root.bind("<space>", self.toggle_playback)
         
         # 信号を繋ぐ（これがクラッシュ防止の鍵！）
         self.ai_manager.finished.connect(self.on_analysis_finished)
@@ -682,7 +688,8 @@ class MainWindow(QMainWindow):
         
         self.vo_se_engine.set_active_character(self.current_voice)
         self.setup_connections()
-        
+
+
         # 音源スキャン
         self.scan_utau_voices()
         # ウィンドウタイトル
@@ -1295,6 +1302,28 @@ class MainWindow(QMainWindow):
         # グラフエディタにモード変更を通知（色やデータの入れ替え）
         self.graph_editor_widget.set_mode(mode)
         self.statusBar().showMessage(f"編集モード: {mode}")
+
+
+    def toggle_playback(self, event=None):
+        """Spaceキーが押された時の動作"""
+        if not self.pro_monitoring.is_playing:
+            # --- 再生開始 ---
+            print("ʕ•̫͡• Pro Audio Monitoring: START")
+            # 1. 念のため最新の状態をレンダリング（部分レンダリング）
+            # self.engine.export_to_wav(self.notes, self.params, "preview.wav")
+            
+            # 2. UIを再生モードにする
+            self.pro_monitoring.current_time = 0.0 # 0秒から開始
+            self.pro_monitoring.is_playing = True
+            self.pro_monitoring.update_frame() # ループ開始
+            
+            # 3. 音を鳴らす
+            # self.engine.play("preview.wav")
+        else:
+            # --- 再生停止 ---
+            print("(-_-) Pro Audio Monitoring: STOP")
+            self.pro_monitoring.is_playing = False
+            self.engine.stop()
 
     
 
