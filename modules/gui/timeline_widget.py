@@ -26,8 +26,12 @@ class TimelineWidget(QWidget):
         self._current_playback_time = 0.0
         self.quantize_resolution = 0.25 # 16分音符
         
+        # --- 感情パラメータデータ ---
+        # 構造: {秒数(float): 値(0.0-1.0)}
+        self.emotion_points: dict[float, float] = {}
+        
         # --- 編集状態 ---
-        self.edit_mode = None # 'move', 'select_box'
+        self.edit_mode = None # 'move', 'select_box', 'draw_emotion'
         self.target_note = None
         self.drag_start_pos = None
         self.selection_rect = QRect()
@@ -57,19 +61,20 @@ class TimelineWidget(QWidget):
         # 2. グリッド線
         for i in range(200):
             x = i * self.pixels_per_beat - self.scroll_x_offset
-            # 1小節(4拍)ごとに線の色を濃くする
             painter.setPen(QPen(QColor(58, 58, 60) if i % 4 == 0 else QColor(36, 36, 36), 1))
             painter.drawLine(int(x), 0, int(x), self.height())
 
-        # 3. ノートの描画
+        # 3. 感情パラメータの描画 (Appleネオンレッド)
+        self.draw_emotion_layer(painter)
+
+        # 4. ノートの描画
         for note in self.notes_list:
             r = self.get_note_rect(note)
-            # 選択中はAppleオレンジ、通常はAppleブルー
             base_color = QColor(255, 159, 10) if note.is_selected else QColor(10, 132, 255)
             
             painter.setBrush(QBrush(base_color))
-            painter.setPen(QPen(base_color.lighter(120), 1)) # 枠線を少し明るく
-            painter.drawRoundedRect(r, 2, 2) # 少し角を丸く
+            painter.setPen(QPen(base_color.lighter(120), 1))
+            painter.drawRoundedRect(r, 2, 2)
             
             if note.lyrics:
                 painter.setPen(Qt.white)
@@ -78,21 +83,49 @@ class TimelineWidget(QWidget):
                 painter.setFont(font)
                 painter.drawText(r.adjusted(5, 0, 0, 0), Qt.AlignLeft | Qt.AlignVCenter, note.lyrics)
 
-        # 4. 選択枠
+        # 5. 選択枠
         if self.edit_mode == "select_box":
             painter.setPen(QPen(Qt.white, 1, Qt.DashLine))
             painter.setBrush(QBrush(QColor(255, 255, 255, 30)))
             painter.drawRect(self.selection_rect)
 
-        # 5. 再生カーソル (ネオンレッド)
+        # 6. 再生カーソル
         cx = int(self.seconds_to_beats(self._current_playback_time) * self.pixels_per_beat - self.scroll_x_offset)
         painter.setPen(QPen(QColor(255, 45, 85), 2))
         painter.drawLine(cx, 0, cx, self.height())
+
+    def draw_emotion_layer(self, painter):
+        """感情パラメータを折れ線で描画"""
+        if not self.emotion_points:
+            return
+            
+        painter.setPen(QPen(QColor(255, 45, 85, 180), 2, Qt.SolidLine))
+        
+        sorted_times = sorted(self.emotion_points.keys())
+        prev_pt = None
+        
+        for t in sorted_times:
+            val = self.emotion_points[t]
+            x = int(self.seconds_to_beats(t) * self.pixels_per_beat - self.scroll_x_offset)
+            # 画面の下30%の領域に描画
+            y = int(self.height() - (val * self.height() * 0.3) - 10)
+            
+            curr_pt = QPoint(x, y)
+            if prev_pt:
+                painter.drawLine(prev_pt, curr_pt)
+            prev_pt = curr_pt
 
     # --- マウス操作 ---
     def mousePressEvent(self, event):
         self.drag_start_pos = event.position()
         
+        # Altキーが押されている場合は感情描画モード
+        if event.modifiers() & Qt.AltModifier:
+            self.edit_mode = "draw_emotion"
+            self.add_emotion_point(event.position())
+            return
+
+        # ノートクリック判定
         for note in reversed(self.notes_list):
             if self.get_note_rect(note).contains(event.position().toPoint()):
                 if not note.is_selected:
@@ -102,12 +135,18 @@ class TimelineWidget(QWidget):
                 self.update()
                 return
 
+        # 何もない場所
         if not (event.modifiers() & Qt.ControlModifier): self.deselect_all()
         self.edit_mode = "select_box"
         self.selection_rect = QRect(event.position().toPoint(), QSize(0, 0))
         self.update()
 
     def mouseMoveEvent(self, event):
+        if self.edit_mode == "draw_emotion":
+            self.add_emotion_point(event.position())
+            self.update()
+            return
+
         if self.edit_mode == "move":
             dx = (event.position().x() - self.drag_start_pos.x()) / self.pixels_per_beat
             dy = (event.position().y() - self.drag_start_pos.y()) / self.key_height_pixels
@@ -131,18 +170,22 @@ class TimelineWidget(QWidget):
         if self.edit_mode == "move":
             for n in self.notes_list:
                 if n.is_selected:
-                    # クオンタイズ（グリッド吸着）を適用
                     n.start_time = self.beats_to_seconds(self.quantize(self.seconds_to_beats(n.start_time)))
             self.notes_changed_signal.emit()
         self.edit_mode = None
         self.update()
 
+    def add_emotion_point(self, pos):
+        """マウス位置から感情ポイントを追加"""
+        t = self.beats_to_seconds((pos.x() + self.scroll_x_offset) / self.pixels_per_beat)
+        # 画面下部30%を 0.0-1.0 に変換
+        val = max(0.0, min(1.0, (self.height() - 10 - pos.y()) / (self.height() * 0.3)))
+        self.emotion_points[t] = val
+
     # --- 複製ロジック (Ctrl+D) ---
     def duplicate_notes(self):
         sel = [n for n in self.notes_list if n.is_selected]
         if not sel: return
-        
-        # 選択範囲の幅を計算して、その直後に配置
         start_t = min(n.start_time for n in sel)
         end_t = max(n.start_time + n.duration for n in sel)
         offset = end_t - start_t
@@ -158,6 +201,7 @@ class TimelineWidget(QWidget):
         self.notes_changed_signal.emit()
         self.update()
 
+    # --- 歌詞入力 ---
     def mouseDoubleClickEvent(self, event):
         for n in self.notes_list:
             if self.get_note_rect(n).contains(event.position().toPoint()):
@@ -179,6 +223,7 @@ class TimelineWidget(QWidget):
         for i, c in enumerate(char_list):
             self.notes_list.append(NoteEvent(start + (i * new_dur), new_dur, num, c))
 
+    # --- キー操作 ---
     def keyPressEvent(self, event):
         ctrl = event.modifiers() & Qt.ControlModifier
         if ctrl and event.key() == Qt.Key_C: self.copy_notes()
@@ -187,6 +232,7 @@ class TimelineWidget(QWidget):
         elif ctrl and event.key() == Qt.Key_A: self.select_all()
         elif event.key() in (Qt.Key_Delete, Qt.Key_BackSpace): self.delete_selected()
 
+    # --- クリップボード操作 ---
     def copy_notes(self):
         sel = [n for n in self.notes_list if n.is_selected]
         if not sel: return
@@ -217,6 +263,7 @@ class TimelineWidget(QWidget):
         for n in self.notes_list: n.is_selected = False
         self.update()
 
+    # --- スロット ---
     @Slot(int)
     def set_vertical_offset(self, val): self.scroll_y_offset = val; self.update()
     @Slot(int)
