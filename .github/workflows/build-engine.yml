@@ -1,48 +1,55 @@
-name: Build C++ Engine
+name: Build C++ Engine (Full Optimization)
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
 
 jobs:
   build:
+    name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false # 片方がコケてももう片方のログを確認できるようにする
       matrix:
         os: [windows-latest, macos-latest]
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive # WORLDをサブモジュール化している場合にも対応
 
-      # Windows用のディレクトリ作成（PowerShell）
-      - if: matrix.os == 'windows-latest'
-        name: Create bin directory (Windows)
-        run: if (!(Test-Path bin)) { New-Item -ItemType Directory -Path bin }
-
-      # MacOS用のディレクトリ作成（Bash）
-      - if: matrix.os == 'macos-latest'
-        name: Create bin directory (MacOS)
+      - name: Create bin directory
         run: mkdir -p bin
 
+      # --- Windows (MinGW/GCC) ---
       - if: matrix.os == 'windows-latest'
         name: Build for Windows
         run: |
-          g++ -shared -fPIC -o bin/vose_core.dll `
-              src/vose_core.cpp `
-              src/world/*.cpp `
-              -Iinclude `
-              -Iinclude/world
+          g++ -std=c++17 -O3 -Wall -shared -fPIC -o bin/vose_core.dll `
+            src/vose_core.cpp `
+            src/world/*.cpp `
+            -Iinclude `
+            -Iinclude/world `
+            -static-libgcc -static-libstdc++ 
+            # ↑ 他のPCで「ランタイムがない」と言われるのを防ぐための省略不可設定
 
+      # --- MacOS (Clang) ---
       - if: matrix.os == 'macos-latest'
         name: Build for MacOS
         run: |
-          clang++ -shared -fPIC -o bin/vose_core.dylib \
-              src/vose_core.cpp \
-              src/world/*.cpp \
-              -Iinclude \
-              -Iinclude/world \
-              -undefined dynamic_lookup
-      
+          clang++ -std=c++17 -O3 -Wall -shared -fPIC -o bin/vose_core.dylib \
+            src/vose_core.cpp \
+            src/world/*.cpp \
+            -Iinclude \
+            -Iinclude/world \
+            -undefined dynamic_lookup
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: vose-engine-${{ matrix.os }}
           path: bin/
+          retention-days: 7 # 省略せず、管理コストも考慮
