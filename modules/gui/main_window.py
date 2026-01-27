@@ -2115,21 +2115,42 @@ class MainWindow(QMainWindow):
         self.timeline_widget.update()
 
 
-    def parse_ust_dict_to_note(self, d: dict):
-        """USTの1ノートセクションをNoteEventに変換"""
-        # 480分音符などの計算が必要
-        length = int(d.get('Length', 480))
+    def parse_ust_dict_to_note(self, d: dict, current_time_sec: float, tempo: float = 120.0):
+        """
+        USTのLength(480分音符単位)を秒数に正確に変換
+        秒数 = (Length / 480) * (60 / Tempo)
+        """
+        length_ticks = int(d.get('Length', 480))
         note_num = int(d.get('NoteNum', 64))
         lyric = d.get('Lyric', 'あ')
-        # 時間計算ロジック...
-        return NoteEvent(lyrics=lyric, note_number=note_num, duration=length/480.0)
+        
+        # --- 時間計算ロジック ---
+        # 480 ticks = 1拍 (4分音符)
+        duration_sec = (length_ticks / 480.0) * (60.0 / tempo)
+        
+        note = NoteEvent(
+            lyrics=lyric, 
+            note_number=note_num, 
+            start_time=current_time_sec, # 累積時間を使用
+            duration=duration_sec
+        )
+        
+        # 次のノートのために、このノートの長さを足した時間を返す
+        return note, current_time_sec + duration_sec
 
     def update_scrollbar_range(self):
         """ノートの長さに合わせてスクロールバーの最大値を更新"""
         max_time = self.timeline_widget.get_total_duration()
-        self.horizontal_scrollbar.setMaximum(int(max_time * 100))
-        # グラフエディタ側も同期
-
+        
+        # 1秒=100pxなどのスケールに合わせて最大値を設定
+        scale = 100 
+        self.horizontal_scrollbar.setMaximum(int(max_time * scale))
+        
+        # ページステップ（スクロールバー自体の長さ）も可視範囲に合わせる
+        view_width = self.timeline_widget.width()
+        self.horizontal_scrollbar.setPageStep(view_width)
+        
+        print(f"Scroll range updated: {max_time}s")
     # ==========================================================================
     # その他のスロット
     # ==========================================================================
