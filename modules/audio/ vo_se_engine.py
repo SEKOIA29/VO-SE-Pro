@@ -67,7 +67,7 @@ class VO_SE_Engine:
                     print(f"ʕ⁎̯͡⁎ʔ༄ Load Error: {e}")
         return None
 
-    # --- 削られていた重要機能：高度な音源スキャン ---
+    # --- 高度な音源スキャン ---
     def refresh_voice_library(self):
         """voicesフォルダを再帰的にスキャン。UTAU音源の階層構造に対応"""
         if not os.path.exists(self.voice_lib_path):
@@ -173,6 +173,18 @@ class VO_SE_Engine:
         if filepath and os.path.exists(filepath):
             data, fs = sf.read(filepath)
             sd.play(data, fs)
+
+    def start_pro_monitoring(self, current_time, viewport_notes):
+        """
+        再生ヘッドの位置から、画面内のノートだけを高速合成してストリーミング再生する
+        """
+        # 1. 画面内のノートだけを抽出して一時WAVを作成
+        temp_preview_path = "temp_monitor.wav"
+        self.export_to_wav(viewport_notes, self.active_parameters, temp_preview_path)
+        
+        # 2. シームレスに再生開始
+        self.play(temp_preview_path)
+        print("Pro Audio Monitoring Active")
 
     def stop(self):
         sd.stop()
