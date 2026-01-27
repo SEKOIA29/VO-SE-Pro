@@ -1,4 +1,4 @@
-name: "🎙️ VO-SE Pro: Official Engine Builder"
+name: "🎙️ VO-SE Pro: Official Integrated Builder"
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: "🛠️ Build on ${{ matrix.os }}"
+    name: "🛠️ Build & Pack on ${{ matrix.os }}"
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -19,60 +19,61 @@ jobs:
       - name: "📂 [Step 1] Checkout Repository"
         uses: actions/checkout@v4
 
-      # --- 環境準備 ---
-      - name: "📁 [Step 2] Prepare Binary Directory (Windows)"
+      - name: "🐍 [Step 2] Setup Python Environment"
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: "📦 [Step 3] Install Python Dependencies"
+        run: pip install numpy
+
+      # --- 環境準備 (OSごとのディレクトリ作成) ---
+      - name: "📁 [Step 4] Prepare Binary Directory (Windows)"
         if: matrix.os == 'windows-latest'
         run: |
-          $cyan = "Cyan"; $green = "Green"; $yellow = "Yellow"
-          Write-Host "🚀 Checking for bin directory..." -ForegroundColor $cyan
-          if (-not (Test-Path "bin")) { 
-            New-Item -ItemType Directory -Path "bin" | Out-Null
-            Write-Host "✅ Created bin directory." -ForegroundColor $green
-          } else {
-            Write-Host "ℹ️ Bin directory already exists. Skipping." -ForegroundColor $yellow
-          }
+          if (-not (Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" | Out-Null }
+          if (-not (Test-Path "src")) { New-Item -ItemType Directory -Path "src" | Out-Null }
 
-      - name: "📁 [Step 2] Prepare Binary Directory (MacOS)"
+      - name: "📁 [Step 4] Prepare Binary Directory (MacOS)"
         if: matrix.os == 'macos-latest'
-        run: |
-          echo "🚀 Creating bin directory..."
-          mkdir -p bin
-          echo "✅ Done."
+        run: mkdir -p bin src
 
-      # --- 公式エンジン・コンパイル工程 ---
-      - name: "🏗️ [Step 3] Compile VO-SE Official Engine (Windows)"
+      # --- 公式音源のパッキング (ここで voice_data.h を生成) ---
+      - name: "🎙️ [Step 5] Pack Official Voice Data"
+        run: |
+          python tools/pack_voice.py
+        # これにより src/voice_data.h が動的に生成され、ビルドエラーが解消されます
+
+      # --- Windowsビルド (MinGW/GCC) ---
+      - name: "🏗️ [Step 6] Compile Engine (Windows)"
         if: matrix.os == 'windows-latest'
         run: |
-          Write-Host "🔨 Compiling vose_core.dll with Official Logic..." -ForegroundColor Cyan
-          # -DVOSE_OFFICIAL_RELEASE フラグで公式音源モードを有効化
+          Write-Host "🔨 Compiling with C++17 and -O3 Full Optimization..." -ForegroundColor Cyan
           g++ -std=c++17 -O3 -Wall -shared -fPIC -DVOSE_OFFICIAL_RELEASE -o bin/vose_core.dll `
             src/vose_core.cpp `
             src/world/*.cpp `
             -Iinclude `
             -Iinclude/world `
             -static-libgcc -static-libstdc++
-          Write-Host "🎉 VO-SE Official Engine is Ready!" -ForegroundColor Green
+          Write-Host "✅ VO-SE Official Engine (DLL) is Ready!" -ForegroundColor Green
 
-      - name: "🏗️ [Step 3] Compile VO-SE Official Engine (MacOS)"
+      # --- MacOSビルド (Clang) ---
+      - name: "🏗️ [Step 6] Compile Engine (MacOS)"
         if: matrix.os == 'macos-latest'
         run: |
-          echo "🔨 Compiling vose_core.dylib with Official Logic..."
+          echo "🔨 Compiling with C++17 and -O3 Full Optimization..."
           clang++ -std=c++17 -O3 -Wall -shared -fPIC -DVOSE_OFFICIAL_RELEASE -o bin/vose_core.dylib \
             src/vose_core.cpp \
             src/world/*.cpp \
             -Iinclude \
             -Iinclude/world \
             -undefined dynamic_lookup
-          echo "🎉 VO-SE Official Engine is Ready!"
+          echo "✅ VO-SE Official Engine (DYLIB) is Ready!"
 
-      # --- 成果物のパッキング ---
-      - name: "📦 [Step 4] Archive and Upload Artifacts"
+      # --- 成果物の保存 ---
+      - name: "📦 [Step 7] Archive and Upload Artifacts"
         uses: actions/upload-artifact@v4
         with:
-          # 公式音源を含むバイナリであることを明示
           name: vose-official-engine-${{ matrix.os }}
           path: bin/
           retention-days: 7
-
-      - name: "✅ [Step 5] Workflow Summary"
-        run: echo "VO-SE Pro Official Build Pipeline Completed!"
