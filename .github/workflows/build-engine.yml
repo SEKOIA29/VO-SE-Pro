@@ -1,4 +1,4 @@
-name: "🎙️ VO-SE Pro: Official Integrated Builder"
+name: "🎙️ VO-SE Pro: Official Engine Builder (Final)"
 
 on:
   push:
@@ -27,7 +27,7 @@ jobs:
       - name: "📦 [Step 3] Install Python Dependencies"
         run: pip install numpy
 
-      # --- 環境準備 (OSごとのディレクトリ作成) ---
+      # --- 環境準備 ---
       - name: "📁 [Step 4] Prepare Binary Directory (Windows)"
         if: matrix.os == 'windows-latest'
         run: |
@@ -38,37 +38,38 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: mkdir -p bin src
 
-      # --- 公式音源のパッキング (ここで voice_data.h を生成) ---
+      # --- 公式音源のパッキング (modules/tools/配下を正確に参照) ---
       - name: "🎙️ [Step 5] Pack Official Voice Data"
         run: |
-          python tools/pack_voice.py
-        # これにより src/voice_data.h が動的に生成され、ビルドエラーが解消されます
+          # 代表のディレクトリ構成「modules/tools/」を正確に叩きます
+          python modules/tools/pack_voice.py 
+        # これで src/voice_data.h が動的に生成されます
 
       # --- Windowsビルド (MinGW/GCC) ---
       - name: "🏗️ [Step 6] Compile Engine (Windows)"
         if: matrix.os == 'windows-latest'
         run: |
-          Write-Host "🔨 Compiling with C++17 and -O3 Full Optimization..." -ForegroundColor Cyan
+          Write-Host "🔨 Compiling vose_core.dll with C++17..." -ForegroundColor Cyan
           g++ -std=c++17 -O3 -Wall -shared -fPIC -DVOSE_OFFICIAL_RELEASE -o bin/vose_core.dll `
             src/vose_core.cpp `
             src/world/*.cpp `
             -Iinclude `
             -Iinclude/world `
             -static-libgcc -static-libstdc++
-          Write-Host "✅ VO-SE Official Engine (DLL) is Ready!" -ForegroundColor Green
+          Write-Host "✅ Windows DLL Build Complete!" -ForegroundColor Green
 
       # --- MacOSビルド (Clang) ---
       - name: "🏗️ [Step 6] Compile Engine (MacOS)"
         if: matrix.os == 'macos-latest'
         run: |
-          echo "🔨 Compiling with C++17 and -O3 Full Optimization..."
+          echo "🔨 Compiling vose_core.dylib with C++17..."
           clang++ -std=c++17 -O3 -Wall -shared -fPIC -DVOSE_OFFICIAL_RELEASE -o bin/vose_core.dylib \
             src/vose_core.cpp \
             src/world/*.cpp \
             -Iinclude \
             -Iinclude/world \
             -undefined dynamic_lookup
-          echo "✅ VO-SE Official Engine (DYLIB) is Ready!"
+          echo "✅ MacOS Dylib Build Complete!"
 
       # --- 成果物の保存 ---
       - name: "📦 [Step 7] Archive and Upload Artifacts"
