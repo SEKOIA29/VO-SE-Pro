@@ -28,8 +28,9 @@ extern "C" {
 
 
 void init_official_engine() {
-    // Pythonが自動生成した変数名で登録
-    load_embedded_resource("あ", OFFICIAL_VOICE_あ, OFFICIAL_VOICE_あ_LEN);
+    // Pythonが自動生成した「全登録関数」を叩く
+    // これで中の変数が「VOICE_0」だろうが「あ」だろうが関係なく登録される
+    register_all_embedded_voices();
 }
 
 /**
