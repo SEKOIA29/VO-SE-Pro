@@ -629,6 +629,15 @@ class MainWindow(QMainWindow):
          
         self.init_ui()
         self.init_engine()
+
+        # Canvasをプロ仕様のダークカラーに設定
+        self.canvas = tk.Canvas(self.root, bg="#1E1E1E", highlightthickness=0)
+
+        # グリッド（拍子線）を描画する場合の色例
+        for x in range(0, 5000, 100):
+            self.canvas.create_line(x, 0, x, 1000, fill="#2D2D2D") # 縦線
+        for y in range(0, 1000, 50):
+        self.canvas.create_line(0, y, 5000, y, fill="#2D2D2D") # 横線
         
         # --- 1. 基盤の初期化 ---
         self.config_manager = ConfigHandler()
