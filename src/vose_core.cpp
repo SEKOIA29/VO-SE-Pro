@@ -5,6 +5,9 @@
 #include <cmath>
 #include <cstring>
 #include "vose_core.h"
+#include "voice_data_a.h" // Pythonが作ったファイル
+
+
 
 // WORLDライブラリ (徹底的に使い倒す)
 #include "world/synthesis.h"
@@ -20,6 +23,11 @@ struct EmbeddedVoice {
 static std::map<std::string, EmbeddedVoice> g_voice_db;
 
 extern "C" {
+
+void init_official_voice() {
+    // ファイルを読み込まず、直接メモリ配列から登録
+    load_embedded_resource("あ", OFFICIAL_VOICE_A, OFFICIAL_VOICE_A_LEN);
+}
 
 /**
  * load_embedded_resource (無省略・バリデーション付き)
