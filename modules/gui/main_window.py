@@ -239,11 +239,30 @@ class ProMonitoringUI:
         self.canvas.after(16, self.update_frame)
 
     def draw_waveform_line(self, x, rms):
-        """再生ヘッドが通った場所にAppleブルーの波形を描き込む"""
-        h = rms * 60 # 振幅の高さ
-        center_y = 400 # タイムラインの中央高さ（適宜調整）
-        self.canvas.create_line(x, center_y - h, x, center_y + h, fill="#007AFF", width=1, tags="wf_trace")
-    
+        """漆黒に映える発光ブルー波形を描画（Apple Pro仕様）"""
+        # 1. 振幅の計算（少し感度を上げてダイナミックに）
+        h = rms * 80 
+        center_y = 400 
+
+        # 2. 波形の線を描画
+        # 色を #0A84FF (System Blue) に変更し、質感をアップ
+        line_id = self.canvas.create_line(
+            x, center_y - h, x, center_y + h, 
+            fill="#0A84FF", width=2, tags="wf_trace"
+        )
+
+        # 3. 【プロの演出】古い波形を少しずつ暗くして、最後に消す処理
+        # これをやらないと、メモリが波形データでパンパンになって重くなります
+        self.canvas.after(2000, lambda: self.fade_out_waveform(line_id))
+
+    def fade_out_waveform(self, line_id):
+        """波形を徐々に暗くして、最終的に削除する（メモリ節約）"""
+        if self.canvas.find_withtag(line_id):
+            # 色を少し暗い青 (#004080) に変えてから消す
+            self.canvas.itemconfig(line_id, fill="#003366")
+            self.canvas.after(1000, lambda: self.canvas.delete(line_id))
+
+   
     def time_to_x(self, t):
         """秒数をX座標に変換（1秒=100pxなど、MainWindowの設定に合わせる）"""
         return t * 100
@@ -719,6 +738,36 @@ class MainWindow(QMainWindow):
         self.scan_utau_voices()
         # ウィンドウタイトル
         self.setWindowTitle("VO-SE Pro")
+
+
+        self.root = root
+        self.root.title("VO-SE Pro")
+        
+        # 1. まずCanvas（キャンバス）を作る
+        # ここで背景を「漆黒」に設定します！
+        self.canvas = tk.Canvas(
+            self.root, 
+            width=1200, 
+            height=800, 
+            bg="#121212",        # ← これ！
+            highlightthickness=0 # ← これ！
+        )
+        self.canvas.pack(fill="both", expand=True)
+
+        # 2. グリッドを描く
+        self.draw_pro_grid() # ← ここで呼び出す！
+
+    def draw_pro_grid(self):
+        """プロ仕様のグリッド（背景線）を描画"""
+        # 代表のコードをここに配属
+        # 縦線（時間軸）
+        for x in range(0, 10000, 50):
+            color = "#3A3A3C" if x % 200 == 0 else "#242424"
+            self.canvas.create_line(x, 0, x, 1000, fill=color)
+        
+        # 横線（音階軸）
+        for y in range(0, 1000, 40):
+            self.canvas.create_line(0, y, 10000, y, fill="#242424")
 
     # --- [2] 連続音（VCV）解決メソッド ---
     def resolve_vcv_alias(self, lyric, prev_lyric):
