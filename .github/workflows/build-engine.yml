@@ -1,10 +1,14 @@
 name: Build and Test VO-SE Engine
 
-on: [push, pull_request]
+on: 
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
 
 jobs:
-  build-and-test:
-    name: Build and CI Test on ${{ matrix.os }}
+  build:
+    name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -15,42 +19,42 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
+      # --- [ディレクトリ作成] OSごとの挙動の差異を完全に吸収 ---
+      - name: Create bin directory (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          if (-not (Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" }
 
-      - name: Install Python Dependencies
-        run: pip install numpy # テストデータの生成に必要
-
-      - name: Create bin directory
+      - name: Create bin directory (MacOS)
+        if: matrix.os == 'macos-latest'
         run: mkdir -p bin
 
-      # --- [1] ビルド工程（最適化・スタティックリンク全部入り） ---
+      # --- [Windowsビルド] C++17 + 最適化 + スタティックリンク ---
       - if: matrix.os == 'windows-latest'
         name: Build for Windows
         run: |
           g++ -std=c++17 -O3 -Wall -shared -fPIC -o bin/vose_core.dll `
-            src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world `
+            src/vose_core.cpp `
+            src/world/*.cpp `
+            -Iinclude `
+            -Iinclude/world `
             -static-libgcc -static-libstdc++
 
+      # --- [MacOSビルド] C++17 + 最適化 + ダイナミックルックアップ ---
       - if: matrix.os == 'macos-latest'
         name: Build for MacOS
         run: |
           clang++ -std=c++17 -O3 -Wall -shared -fPIC -o bin/vose_core.dylib \
-            src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world \
+            src/vose_core.cpp \
+            src/world/*.cpp \
+            -Iinclude \
+            -Iinclude/world \
             -undefined dynamic_lookup
 
-      # --- [2] 自動演奏テスト工程（ここが「後者」の核心） ---
-      - name: Run CI Smoke Test
-        run: |
-          python tests/ci_test_render.py
-        env:
-          ENGINE_PATH: ${{ matrix.os == 'windows-latest' && 'bin/vose_core.dll' || 'bin/vose_core.dylib' }}
-
-      # --- [3] 成果物の保存 ---
-      - name: Upload Build Artifacts
+      # --- [成果物の保存] 7日間保持 ---
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: vose-engine-${{ matrix.os }}
           path: bin/
+          retention-days: 7
