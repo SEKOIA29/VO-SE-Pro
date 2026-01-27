@@ -203,6 +203,16 @@ class ProMonitoringUI:
         self.canvas.itemconfig(self.meter_l, fill=color)
         self.canvas.itemconfig(self.meter_r, fill=color)
 
+
+    def draw_waveform_realtime(self, x_pos, rms):
+        """再生ヘッドの位置に波形の縦線を描画して、軌跡を残す"""
+        # 音量(rms)に応じて上下に線を伸ばす
+        height = rms * 50  # 振幅の大きさ
+        self.canvas.create_line(
+            x_pos, 400 - height, x_pos, 400 + height, 
+            fill="#007AFF", width=1, tags="waveform"
+        ) # Apple純正のブルー (#007AFF) を採用
+
     # --- 3. GUIループ機構 ---
     def update_frame(self):
         """1秒間に60回呼ばれるUI更新ループ"""
