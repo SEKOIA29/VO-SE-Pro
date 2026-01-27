@@ -98,7 +98,23 @@ class AIManager(QObject):
         return data
 
     def _postprocess(self, outputs):
-        """推論結果（確率値）を[onset, overlap, pre_utterance]に変換"""
-        # ここはモデルの出力形式に合わせて代表が調整するコア部分
-        res = outputs[0][0] 
-        return res
+        """
+        AIの出力テンソルから [onset, overlap, pre_utterance] のリストを生成
+        outputs: モデルからの生の出力
+        """
+        all_results = []
+        
+        # モデルの出力形状に合わせてループを回す
+        # 例: outputs[0] が [n_notes, 3] の形状だとする
+        raw_data = outputs[0]
+        
+        for data in raw_data:
+            # 1つずつの発音データを整形
+            res = {
+                "onset": float(data[0]),
+                "overlap": float(data[1]) if len(data) > 1 else 0.05,
+                "pre_utterance": float(data[2]) if len(data) > 2 else 0.1
+            }
+            all_results.append(res)
+            
+        return all_results # リストを丸ごと返す
