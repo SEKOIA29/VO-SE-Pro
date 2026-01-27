@@ -1,15 +1,13 @@
-name: "🎙️ VO-SE Pro: Official Engine Builder (Final)"
+name: "🎙️ VO-SE Pro: Official Engine Builder (Final-v2)"
 
-on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+on: [push, pull_request]
 
 jobs:
   build:
     name: "🛠️ Build & Pack on ${{ matrix.os }}"
     runs-on: ${{ matrix.os }}
+    env:
+      PYTHONIOENCODING: "utf-8"  # Windowsのエンコードエラー対策
     strategy:
       fail-fast: false
       matrix:
@@ -27,54 +25,28 @@ jobs:
       - name: "📦 [Step 3] Install Python Dependencies"
         run: pip install numpy
 
-      # --- 環境準備 ---
-      - name: "📁 [Step 4] Prepare Binary Directory (Windows)"
-        if: matrix.os == 'windows-latest'
+      - name: "📁 [Step 4] Prepare Directory"
         run: |
-          if (-not (Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" | Out-Null }
-          if (-not (Test-Path "src")) { New-Item -ItemType Directory -Path "src" | Out-Null }
+          mkdir -p bin
+          mkdir -p src
 
-      - name: "📁 [Step 4] Prepare Binary Directory (MacOS)"
-        if: matrix.os == 'macos-latest'
-        run: mkdir -p bin src
-
-      # --- 公式音源のパッキング (modules/tools/配下を正確に参照) ---
       - name: "🎙️ [Step 5] Pack Official Voice Data"
-        run: |
-          # 代表のディレクトリ構成「modules/tools/」を正確に叩きます
-          python modules/tools/pack_voice.py 
-        # これで src/voice_data.h が動的に生成されます
+        run: python modules/tools/pack_voice.py 
 
-      # --- Windowsビルド (MinGW/GCC) ---
       - name: "🏗️ [Step 6] Compile Engine (Windows)"
         if: matrix.os == 'windows-latest'
         run: |
-          Write-Host "🔨 Compiling vose_core.dll with C++17..." -ForegroundColor Cyan
           g++ -std=c++17 -O3 -Wall -shared -fPIC -DVOSE_OFFICIAL_RELEASE -o bin/vose_core.dll `
-            src/vose_core.cpp `
-            src/world/*.cpp `
-            -Iinclude `
-            -Iinclude/world `
-            -static-libgcc -static-libstdc++
-          Write-Host "✅ Windows DLL Build Complete!" -ForegroundColor Green
+            src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world -static-libgcc -static-libstdc++
 
-      # --- MacOSビルド (Clang) ---
       - name: "🏗️ [Step 6] Compile Engine (MacOS)"
         if: matrix.os == 'macos-latest'
         run: |
-          echo "🔨 Compiling vose_core.dylib with C++17..."
           clang++ -std=c++17 -O3 -Wall -shared -fPIC -DVOSE_OFFICIAL_RELEASE -o bin/vose_core.dylib \
-            src/vose_core.cpp \
-            src/world/*.cpp \
-            -Iinclude \
-            -Iinclude/world \
-            -undefined dynamic_lookup
-          echo "✅ MacOS Dylib Build Complete!"
+            src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world -undefined dynamic_lookup
 
-      # --- 成果物の保存 ---
-      - name: "📦 [Step 7] Archive and Upload Artifacts"
+      - name: "📦 [Step 7] Archive Artifacts"
         uses: actions/upload-artifact@v4
         with:
           name: vose-official-engine-${{ matrix.os }}
           path: bin/
-          retention-days: 7
