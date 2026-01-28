@@ -42,7 +42,7 @@ if __name__ == "__main__":
         engine.initialize()
         
         # 奏瀬（kanase）の「あ」を鳴らしてみる
-        engine.play_voice("kanase_あ")
+        #engine.play_voice("kanase_あ")
         
     except Exception as e:
-        print(f"❌ Error: {e}")
+       # print(f"❌ Error: {e}")
