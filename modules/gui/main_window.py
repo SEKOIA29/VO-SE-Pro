@@ -2139,6 +2139,20 @@ class MainWindow(QMainWindow):
         self.voice_manager.voices = found_voices
         return found_voices
 
+        # 3. 【追加】公式音源フォルダ内をスキャンして全員登録
+        official_base = os.path.join(self.base_path, "assets", "official_voices")
+        if os.path.exists(official_base):
+            # フォルダ（kanase, characters_b, etc...）をすべて取得
+            for char_dir in os.listdir(official_base):
+                full_dir = os.path.join(official_base, char_dir)
+                if os.path.isdir(full_dir):
+                    # 「[Official] 奏瀬」のような表示名で登録
+                    display_name = f"[Official] {char_dir}"
+                    # 内部パスとして "__INTERNAL__:{フォルダ名}" としておくと後で判別しやすい
+                    self.voices[display_name] = f"__INTERNAL__:{char_dir}"
+        
+        return self.voices
+
     def parse_oto_ini(self, voice_path: str) -> dict:
         """
         oto.iniを解析して辞書に格納する
@@ -2266,6 +2280,18 @@ class MainWindow(QMainWindow):
         self.scan_utau_voices()
         self.update_voice_list()
         print("ボイスリストを更新しました")
+
+    def play_selected_voice(self, note_text):
+        selected_name = self.character_selector.currentText()
+        voice_path = self.voices.get(selected_name, "")
+
+        if voice_path.startswith("__INTERNAL__"):
+            # 内蔵音源モード
+            char_id = voice_path.split(":")[1] # "kanase" など
+            # 合成したい文字と組み合わせて呼び出し
+            # 例: "kanase_あ"
+            internal_key = f"{char_id}_{note_text}"
+            self.vose_engine.play_voice(internal_key)
 
     # ==========================================================================
     # 歌詞・ノート操作
