@@ -13,9 +13,7 @@ jobs:
   build:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45  # 🛑 Windowsのビルド停滞を防ぐために長めに設定
-    env:
-      PYTHONIOENCODING: "utf-8"
+    timeout-minutes: 30 # 爆速化するので30分で十分
     strategy:
       matrix:
         os: [windows-latest, macos-latest]
@@ -24,16 +22,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --- 1. Python環境構築 ---
+      # --- 1. Python環境 & キャッシュ (無料枠節約の要) ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'pip' # 一度入れたライブラリを次回から使い回す設定
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install PySide6 numpy sounddevice soundfile mido janome pyopenjtalk pyinstaller Pillow
+          python -m pip install --upgrade pip setuptools wheel
+          # pyopenjtalkの「ビルド地獄」を避けるためにバイナリ版を優先指定
+          pip install PySide6 numpy sounddevice soundfile mido janome Pillow pyinstaller
+          pip install pyopenjtalk --only-binary :all: || pip install pyopenjtalk
 
       # --- 2. 公式音源のパッキング (voice_data.h 生成) ---
       - name: Pack Official Voice Data
@@ -46,7 +47,6 @@ jobs:
           mkdir -p bin
           echo "🔨 Compiling C++ Engine..."
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # -O2 にしてビルド負荷を抑えつつ、-Isrc で voice_data.h を確実に読み込む
             g++ -shared -fPIC -o bin/vose_core.dll src/vose_core.cpp src/world/*.cpp \
               -Isrc -Iinclude -Iinclude/world \
               -O2 -static-libgcc -static-libstdc++
@@ -57,11 +57,11 @@ jobs:
           fi
           echo "✅ Build Completed."
 
-      # --- 4. アプリケーションのパッケージング ---
+      # --- 4. パッケージング (PyInstaller) ---
       - name: Package App
         shell: bash
         run: |
-          # アセットパスの自動検知
+          # アイコンとアセットの自動検知
           ICON=$(ls assets/icon.ico Assets/icon.ico assets/icon.icns Assets/icon.icns 2>/dev/null | head -n 1)
           DATA_DIR=$(ls -d assets Assets 2>/dev/null | head -n 1)
           
@@ -81,32 +81,21 @@ jobs:
               --name "VO-SE_PRO_Mac" \
               --osx-bundle-identifier "com.vosepro.app" main.py
             
-            echo "--- Ad-hoc Signing ---"
-            codesign --force --deep --sign - dist/VO-SE_PRO_Mac.app
+            # Mac版のパッケージング
             cd dist && zip -r ../VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
-      # --- 5. チェックサム生成 & GitHub Release への投稿 ---
-      - name: Generate Checksums
-        shell: bash
-        run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            sha256sum dist/VO-SE_PRO_Win.exe > checksum_${{ matrix.os }}.txt
-          else
-            sha256sum VO-SE_PRO_Mac.zip > checksum_${{ matrix.os }}.txt
-          fi
-
+      # --- 5. GitHub Release への投稿 ---
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/VO-SE_PRO_Win.exe
             VO-SE_PRO_Mac.zip
-            checksum_*.txt
           body: |
-            ## VO-SE PRO Official Release
+            ## VO-SE PRO Official Release (Build Optimized)
             - Windows (.exe) & macOS (.zip) 対応
-            - 公式音源内蔵済み (Embedded Official Voices)
-            - AI音声解析エンジン搭載
+            - 公式音源（内蔵）同梱済み
+            - GitHub Actions のリソース消費を最適化しました。
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
