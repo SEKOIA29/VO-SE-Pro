@@ -13,6 +13,7 @@ jobs:
   build:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45  # 🛑 Windowsのビルド停滞を防ぐために長めに設定
     env:
       PYTHONIOENCODING: "utf-8"
     strategy:
@@ -23,7 +24,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --- 1. Python環境 & 依存関係 (パッキングに必要) ---
+      # --- 1. Python環境構築 ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -34,32 +35,37 @@ jobs:
           python -m pip install --upgrade pip
           pip install PySide6 numpy sounddevice soundfile mido janome pyopenjtalk pyinstaller Pillow
 
-      # --- 2. 公式音源のパッキング (重要！) ---
+      # --- 2. 公式音源のパッキング (voice_data.h 生成) ---
       - name: Pack Official Voice Data
         run: python modules/tools/pack_voice.py
 
-      # --- 3. C++ エンジンビルド (修正版) ---
+      # --- 3. C++ エンジンビルド (安定・最適化版) ---
       - name: Build C++ Engine
         shell: bash
         run: |
           mkdir -p bin
+          echo "🔨 Compiling C++ Engine..."
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # -Isrc を追加して voice_data.h を見つけさせる
-            g++ -shared -fPIC -o bin/vose_core.dll src/vose_core.cpp src/world/*.cpp -Isrc -Iinclude -Iinclude/world -O3 -static-libgcc -static-libstdc++
+            # -O2 にしてビルド負荷を抑えつつ、-Isrc で voice_data.h を確実に読み込む
+            g++ -shared -fPIC -o bin/vose_core.dll src/vose_core.cpp src/world/*.cpp \
+              -Isrc -Iinclude -Iinclude/world \
+              -O2 -static-libgcc -static-libstdc++
           else
-            clang++ -shared -fPIC -o bin/vose_core.dylib src/vose_core.cpp src/world/*.cpp -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O3
+            clang++ -shared -fPIC -o bin/vose_core.dylib src/vose_core.cpp src/world/*.cpp \
+              -Isrc -Iinclude -Iinclude/world \
+              -undefined dynamic_lookup -O2
           fi
+          echo "✅ Build Completed."
 
-      # --- 4. パッケージング (PyInstaller) ---
+      # --- 4. アプリケーションのパッケージング ---
       - name: Package App
         shell: bash
         run: |
-          # アイコンとアセットのディレクトリ判定
+          # アセットパスの自動検知
           ICON=$(ls assets/icon.ico Assets/icon.ico assets/icon.icns Assets/icon.icns 2>/dev/null | head -n 1)
           DATA_DIR=$(ls -d assets Assets 2>/dev/null | head -n 1)
           
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # Windows版: vose_core.dll を含める
             pyinstaller --windowed --noconsole --onefile \
               --collect-all PySide6 --collect-all numpy --collect-all pyopenjtalk \
               --add-data "bin/vose_core.dll;bin" \
@@ -67,7 +73,6 @@ jobs:
               --icon "${ICON}" \
               --name "VO-SE_PRO_Win" main.py
           else
-            # Mac版: vose_core.dylib を含める
             pyinstaller --windowed --noconsole \
               --collect-all PySide6 --collect-all numpy --collect-all pyopenjtalk \
               --add-data "bin/vose_core.dylib:bin" \
@@ -81,7 +86,7 @@ jobs:
             cd dist && zip -r ../VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
-      # --- 5. チェックサム & リリース ---
+      # --- 5. チェックサム生成 & GitHub Release への投稿 ---
       - name: Generate Checksums
         shell: bash
         run: |
@@ -99,8 +104,9 @@ jobs:
             VO-SE_PRO_Mac.zip
             checksum_*.txt
           body: |
-            VO-SE PRO Official Release
-            - Windows & macOS 対応
-            - 公式音源（内蔵）同梱済み
+            ## VO-SE PRO Official Release
+            - Windows (.exe) & macOS (.zip) 対応
+            - 公式音源内蔵済み (Embedded Official Voices)
+            - AI音声解析エンジン搭載
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
