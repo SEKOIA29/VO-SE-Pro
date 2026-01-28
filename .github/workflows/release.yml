@@ -100,11 +100,7 @@ jobs:
             VO-SE_PRO_Mac.zip
             checksum.txt
           body: |
-            VO-SE PRO 正式リリース
-            
-            - GarageBand自作SE内蔵
-            - UTAU音源(ZIP)ドラッグ&ドロップ対応
-            - AIピッチダイナミクス搭載
+           
             - Windows & macOS (Ad-hoc Signed) 対応
             
             ※Mac版で「開発元を検証できない」と出る場合は、Finderで右クリックして「開く」を選択してください。
