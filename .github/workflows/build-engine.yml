@@ -1,6 +1,10 @@
 name: "🎙️ VO-SE Pro: Official Engine Builder (Safe-v3)"
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   build:
@@ -8,6 +12,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       PYTHONIOENCODING: "utf-8"
+    permissions: # リリース作成に必要
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -25,7 +31,6 @@ jobs:
       - name: "📦 [Step 3] Install Python Dependencies"
         run: pip install numpy
 
-      # --- 修正したStep 4 ---
       - name: "📁 [Step 4] Prepare Directory (Windows)"
         if: matrix.os == 'windows-latest'
         run: |
@@ -56,3 +61,24 @@ jobs:
         with:
           name: vose-official-engine-${{ matrix.os }}
           path: bin/
+
+      # --- 🚀 [ここから追加：省略されていたReleaseステップ] ---
+      - name: "🚀 [Step 8] Publish GitHub Release"
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-build
+          name: "VO-SE PRO (Auto-Generated)"
+          body: |
+            ## VO-SE PRO 自動ビルド成果物
+            - 最終更新: ${{ github.event.head_commit.timestamp }}
+            - コミット: ${{ github.sha }}
+            
+            ※このリリースはプッシュのたびに自動的に最新版へ上書きされます。
+          files: |
+            bin/vose_core.dll
+            bin/vose_core.dylib
+          generate_release_notes: true
+          overwrite: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
