@@ -2,9 +2,11 @@ name: "🚀 Release VO-SE PRO (Official Edition)"
 
 on:
   push:
+    branches:
+      - main  # mainブランチにプッシュされたら実行
     tags:
       - 'v*'
-  workflow_dispatch:
+  workflow_dispatch: # 手動実行ボタンも残す
 
 permissions:
   contents: write
