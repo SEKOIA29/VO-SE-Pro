@@ -599,6 +599,18 @@ class VoiceCardGallery(QWidget):
 
             # 2. カードの生成
             card = VoiceCardWidget(display_name, icon_path, card_color)
+            # --- QSS（スタイルシート）だけでホバーを制御する ---
+            card.setStyleSheet(f"""
+                VoiceCardWidget {{
+                    background-color: {card_color};
+                    border: 2px solid #2D2D2D;
+                    border-radius: 12px;
+                }}
+                VoiceCardWidget:hover {{
+                    background-color: #3D3D4D; /* ホバーで少し明るく */
+                    border: 2px solid #00AAFF; /* VO-SEブルー */
+                }}
+            """)   
             card.clicked.connect(lambda name=display_name, iid=internal_id: self.on_card_clicked(name, iid))
             
             # 3. レイアウトに追加（4列で折り返し）
