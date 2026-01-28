@@ -50,9 +50,18 @@ class VoiceManager:
                 # 重複した場合は、より「深い（個別設定された）」パスを優先
                 self.voices[v_name] = v_dir
         
+        # 3. 【追加】内蔵音源（公式）をリストに加える
+        # DLL内に焼き込まれているので、物理パスの代わりに特殊なキーワードを入れる
+        self.voices["VO-SE Official (Embedded)"] = "__INTERNAL__"
+        
         logging.info(f"VO-SE: {len(self.voices)} 件の音源を検出しました。")
         return self.voices
 
+    def is_internal(self, voice_name):
+        """選択された音源が内蔵（公式）かどうかを判定"""
+        return self.voices.get(voice_name) == "__INTERNAL__"
+
+    
     def parse_oto_ini(self, voice_dir):
         """
         指定された音源フォルダの oto.ini を解析。
