@@ -1524,45 +1524,60 @@ class MainWindow(QMainWindow):
             elif file_path.lower().endswith('.json'):
                 self.load_file_from_path(file_path)
 
-    def import_voice_bank(self, zip_path: str):
-        """ZIP音源インストール（ゴミ排除・再帰スキャン・Aural AI優先接続）"""
+def import_voice_bank(self, zip_path: str):
+        """
+        ZIP音源インストール完全版
+        1. 文字化け修復解凍 2. ゴミ排除 3. AI解析(oto.ini生成) 4. Aural AI接続 5. UI更新
+        """
         import zipfile
         import shutil
         import os
+        from PySide6.QtWidgets import QMessageBox
 
-        # 保存先ディレクトリの準備
+        # 保存先ディレクトリ（voicesフォルダ）
         extract_base_dir = get_resource_path("voices")
         os.makedirs(extract_base_dir, exist_ok=True)
         
         installed_name = None
         valid_files = [] 
+        found_oto = False
 
         try:
+            # --- STEP 1: ZIP解析と文字化け対策 ---
             with zipfile.ZipFile(zip_path, 'r') as z:
-                # 1. ZIP解析（文字化け対策 + Macゴミ排除 + oto.ini探索）
                 for info in z.infolist():
+                    # Macで作られたZIPの日本語名化けを修正 (cp437 -> cp932)
                     try:
                         filename = info.filename.encode('cp437').decode('cp932')
                     except:
                         filename = info.filename
                     
+                    # 不要なゴミファイル（Mac由来など）をスキップ
                     if "__MACOSX" in filename or ".DS_Store" in filename:
                         continue
                     
                     valid_files.append((info, filename))
                     
-                    if "oto.ini" in filename.lower() and not installed_name:
+                    # oto.iniがあるかチェック
+                    if "oto.ini" in filename.lower():
+                        found_oto = True
+                        # フォルダ構造から音源名を推測
                         parts = filename.replace('\\', '/').strip('/').split('/')
-                        if len(parts) > 1:
-                            installed_name = parts[-2] # 深い階層のフォルダ名
-                        else:
-                            # ルートにある場合はZIP名を採用
-                            installed_name = os.path.splitext(os.path.basename(zip_path))[0]
+                        if len(parts) > 1 and not installed_name:
+                            installed_name = parts[-2]
 
+                # 音源名が確定しなかった場合はZIPファイル名を使用
                 if not installed_name:
-                    raise Exception("有効なUTAU音源(oto.ini)が見つかりませんでした。")
+                    installed_name = os.path.splitext(os.path.basename(zip_path))[0]
 
-                # 2. クリーンな解凍
+                target_voice_dir = os.path.join(extract_base_dir, installed_name)
+                
+                # --- STEP 2: クリーンインストール ---
+                if os.path.exists(target_voice_dir):
+                    shutil.rmtree(target_voice_dir)
+                os.makedirs(target_voice_dir, exist_ok=True)
+
+                # ファイルを実際に展開
                 for info, filename in valid_files:
                     target_path = os.path.join(extract_base_dir, filename)
                     if info.is_dir():
@@ -1572,42 +1587,46 @@ class MainWindow(QMainWindow):
                     with z.open(info) as source, open(target_path, "wb") as target:
                         shutil.copyfileobj(source, target)
 
-            # 3. AIエンジンへの接続（Aural AI 優先ロジック）
-            voice_dir = os.path.join(extract_base_dir, installed_name)
-            aural_model = os.path.join(voice_dir, "aural_dynamics.onnx")
-            std_model = os.path.join(voice_dir, "model.onnx")
+            # --- STEP 3: AIエンジン自動解析 (oto.iniがない場合) ---
+            if not found_oto:
+                self.statusBar().showMessage(f"AI解析中: {installed_name} の原音設定を自動生成しています...", 0)
+                # 代表の作ったAI解析メソッドを呼び出し
+                self.generate_and_save_oto(target_voice_dir)
+
+            # --- STEP 4: AIエンジンの優先接続 (Aural AI > Standard > Generic) ---
+            aural_model = os.path.join(target_voice_dir, "aural_dynamics.onnx")
+            std_model = os.path.join(target_voice_dir, "model.onnx")
 
             if os.path.exists(aural_model):
-                # 上位互換エンジン Aural AI
                 self.dynamics_ai = AuralAIEngine(model_path=aural_model)
-                engine_msg = "[Aural AI] 上位モデル接続"
+                engine_msg = "上位Auralモデル"
             elif os.path.exists(std_model):
-                # 標準 Dynamics AI
                 self.dynamics_ai = DynamicsAIEngine(model_path=std_model)
-                engine_msg = "[Dynamics AI] 標準モデル接続"
+                engine_msg = "標準Dynamicsモデル"
             else:
-                # 汎用 Aural AI
-                self.dynamics_ai = AuralAIEngine()
-                engine_msg = "汎用Auralエンジン起動"
+                self.dynamics_ai = AuralAIEngine() # 汎用エンジン
+                engine_msg = "汎用Auralエンジン"
 
-            # 4. UI反映
+            # --- STEP 5: UIの即時反映 ---
             if hasattr(self, 'voice_manager'):
-                self.voice_manager.scan_utau_voices()
-                self.refresh_voice_ui_with_scan()
+                self.voice_manager.scan_utau_voices() # 内部リスト更新
             
-            if hasattr(self, 'character_selector'):
-                self.character_selector.setCurrentText(installed_name)
+            # ボイスカードの再描画メソッドがあれば呼ぶ
+            if hasattr(self, 'refresh_voice_ui'):
+                self.refresh_voice_ui()
             
+            # 成功通知とSE
             self.statusBar().showMessage(f"'{installed_name}' インストール完了！ ({engine_msg})", 5000)
-            
             if hasattr(self, 'audio_output'):
-                se_path = get_resource_path(os.path.join("assets", "install_success.wav"))
+                se_path = get_resource_path("assets/install_success.wav")
                 if os.path.exists(se_path):
                     self.audio_output.play_se(se_path)
 
+            QMessageBox.information(self, "導入成功", f"音源 '{installed_name}' をインストールしました。\nエンジン: {engine_msg}")
+
         except Exception as e:
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "エラー", f"インストールの失敗:\n{str(e)}")
+            QMessageBox.critical(self, "導入エラー", f"インストール中にエラーが発生しました:\n{str(e)}")
+            
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
