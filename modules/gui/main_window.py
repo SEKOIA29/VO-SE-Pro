@@ -546,53 +546,81 @@ class ConfigHandler:  #愛なんてシャボン玉！
 # ボイスカードウィジェット
 # ==============================================================================
 
-class VoiceCardWidget(QFrame):
-    """音源選択用のカードUI"""
-    clicked = Signal(str)
-    
-    def __init__(self, name: str, icon_path: str, color: str):
+class VoiceCardGallery(QWidget):
+    """カードを並べて表示するメインコンテナ"""
+    voice_selected = Signal(str, str) # (表示名, 内部ID)
+
+    def __init__(self, voice_manager):
         super().__init__()
-        self.name = name
-        self.is_selected = False
+        self.manager = voice_manager
+        self.cards = {}
+
+        # メインレイアウト
+        self.main_layout = QVBoxLayout(self)
         
-        self.setFrameStyle(QFrame.Box | QFrame.Raised)
-        self.setLineWidth(2)
-        self.setMaximumSize(150, 180)
-        self.setMinimumSize(150, 180)
+        # スクロールエリアの設定（音源が増えても大丈夫なように）
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setStyleSheet("background-color: #1E1E1E; border: none;")
         
-        layout = QVBoxLayout(self)
+        self.container = QWidget()
+        self.grid = QGridLayout(self.container)
+        self.grid.setSpacing(15)
+        self.scroll.setWidget(self.container)
         
-        # アイコン
-        icon_label = QLabel()
-        if os.path.exists(icon_path):
-            pixmap = QPixmap(icon_path).scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            icon_label.setPixmap(pixmap)
-        else:
-            icon_label.setText("🎤")
-            icon_label.setAlignment(Qt.AlignCenter)
-            icon_label.setStyleSheet("font-size: 48px;")
+        self.main_layout.addWidget(self.scroll)
+
+    def setup_gallery(self):
+        """音源をスキャンしてカードを生成・配置する"""
+        # 既存のカードをクリア
+        for i in reversed(range(self.grid.count())): 
+            widget = self.grid.itemAt(i).widget()
+            if widget:
+                widget.setParent(None)
+        self.cards.clear()
+
+        # VoiceManagerから全音源（公式・外部）を取得
+        all_voices = self.manager.scan_voices()
         
-        icon_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(icon_label)
+        row, col = 0, 0
+        for display_name, internal_id in all_voices.items():
+            # 1. アイコンとカラーのパス解決
+            if internal_id.startswith("__INTERNAL__"):
+                # 公式（内蔵）の場合: assets/official_voices/{キャラ名}/ から探す
+                char_dir = internal_id.split(":")[1]
+                base_path = os.path.join(self.manager.base_path, "assets", "official_voices", char_dir)
+                icon_path = os.path.join(base_path, "icon.png")
+                # 公式カラー（もしフォルダ内に設定ファイルがなければデフォルト色）
+                card_color = "#3A3A4A" 
+            else:
+                # 外部UTAU音源の場合
+                icon_path = os.path.join(internal_id, "icon.png") # UTAUの標準アイコン
+                card_color = "#2D2D2D"
+
+            # 2. カードの生成
+            card = VoiceCardWidget(display_name, icon_path, card_color)
+            card.clicked.connect(lambda name=display_name, iid=internal_id: self.on_card_clicked(name, iid))
+            
+            # 3. レイアウトに追加（4列で折り返し）
+            self.grid.addWidget(card, row, col)
+            self.cards[display_name] = card
+            
+            col += 1
+            if col >= 4:
+                col = 0
+                row += 1
+
+    def on_card_clicked(self, name, internal_id):
+        """カードがクリックされた時の処理"""
+        # 全カードの選択状態をリセット
+        for card in self.cards.values():
+            card.set_selected(False)
         
-        # 名前
-        name_label = QLabel(name)
-        name_label.setAlignment(Qt.AlignCenter)
-        name_label.setWordWrap(True)
-        layout.addWidget(name_label)
+        # クリックされたカードを選択状態にする
+        self.cards[name].set_selected(True)
         
-        self.setStyleSheet(f"background-color: {color}; border-radius: 8px;")
-    
-    def mousePressEvent(self, event):
-        self.clicked.emit(self.name)
-    
-    def set_selected(self, selected: bool):
-        self.is_selected = selected
-        if selected:
-            self.setLineWidth(4)
-            self.setStyleSheet(self.styleSheet() + "border: 4px solid #FFD700;")
-        else:
-            self.setLineWidth(2)
+        # GUIメイン側に通知（これで再生エンジンが切り替わる）
+        self.voice_selected.emit(name, internal_id)
 
 
 # ==============================================================================
