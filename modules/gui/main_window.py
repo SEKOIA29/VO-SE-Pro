@@ -4,17 +4,18 @@ import sys
 import os
 import time
 import json
+import wave
 import ctypes
+import librosa
+import librosa
+import pickle
 import zipfile
 import platform
 import threading
 import numpy as np
-import librosa
+import pyworld as pw
 import soundfile as sf
 import sounddevice as sd
-import librosa
-import wave
-import pyworld as pw
 from typing import List
 from typing import List, Optional, Dict, Any
 from scipy.io.wavfile import write as wav_write
@@ -2469,6 +2470,22 @@ class MainWindow(QMainWindow):
             # 例: "kanase_あ"
             internal_key = f"{char_id}_{note_text}"
             self.vose_engine.play_voice(internal_key)
+
+    def get_cached_oto(self, voice_path):
+        cache_path = os.path.join(voice_path, "oto_cache.vose")
+        ini_path = os.path.join(voice_path, "oto.ini")
+    
+        # oto.iniが更新されていなければキャッシュを読み込む
+        if os.path.exists(cache_path):
+            if os.path.getmtime(cache_path) > os.path.getmtime(ini_path):
+                with open(cache_path, 'rb') as f:
+                    return pickle.load(f)
+    
+        # キャッシュがない、または古い場合はパースして保存
+        oto_data = self.parse_oto_ini(voice_path)
+        with open(cache_path, 'wb') as f:
+            pickle.dump(oto_data, f)
+        return oto_data
 
     # ==========================================================================
     # 歌詞・ノート操作
