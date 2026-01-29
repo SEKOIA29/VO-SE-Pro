@@ -800,6 +800,34 @@ class MainWindow(QMainWindow):
         # ここでショートカットを登録
         self.setup_vose_shortcuts()
 
+        # Python側で保持するノートデータのリスト
+        self.notes_data = [] 
+        self.selected_index = -1 # 現在選択されているノートの番号
+        self.setup_vose_shortcuts()
+
+    def setup_vose_shortcuts(self):
+        # 1音移動 (Alt + 矢印)
+        QShortcut(QKeySequence("Alt+Right"), self).activated.connect(self.select_next_note)
+        QShortcut(QKeySequence("Alt+Left"), self).activated.connect(self.select_prev_note)
+
+        # 削除 (Delete)
+        QShortcut(QKeySequence(Qt.Key_Delete), self).activated.connect(self.delete_selected_note)
+
+    def select_next_note(self):
+        if self.selected_index < len(self.notes_data) - 1:
+            self.selected_index += 1
+            self.update_ui_selection() # UIの見た目（色など）を変える関数
+
+    def delete_selected_note(self):
+        if 0 <= self.selected_index < len(self.notes_data):
+            # リストから削除
+            self.notes_data.pop(self.selected_index)
+            # インデックスの調整
+            self.selected_index = max(-1, self.selected_index - 1)
+            self.update_ui_entirely() # UI全体を再描画
+
+    
+
     def setup_vose_shortcuts(self):
         # 1. 1音移動 (Alt + Right/Left)
         QShortcut(QKeySequence("Alt+Right"), self).activated.connect(self.select_next_note)
