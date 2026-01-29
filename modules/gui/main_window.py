@@ -797,6 +797,27 @@ class MainWindow(QMainWindow):
         # 2. グリッドを描く
         self.draw_pro_grid() # ← ここで呼び出す！
 
+        # ここでショートカットを登録
+        self.setup_vose_shortcuts()
+
+    def setup_vose_shortcuts(self):
+        # 1. 1音移動 (Alt + Right/Left)
+        QShortcut(QKeySequence("Alt+Right"), self).activated.connect(self.select_next_note)
+        QShortcut(QKeySequence("Alt+Left"), self).activated.connect(self.select_prev_note)
+
+        # 2. 削除 (Del / Backspace)
+        QShortcut(QKeySequence(Qt.Key_Delete), self).activated.connect(self.delete_selected_note)
+        QShortcut(QKeySequence(Qt.Key_Backspace), self).activated.connect(self.delete_selected_note)
+
+    # --- 実際の動作 ---
+    def select_next_note(self):
+        # C++エンジンのインデックスを進める処理
+        pass
+
+    def delete_selected_note(self):
+        # 選択中のノートを消去する処理
+        pass
+
     def draw_pro_grid(self):
         """プロ仕様のグリッド（背景線）を描画"""
         # 代表のコードをここに配属
