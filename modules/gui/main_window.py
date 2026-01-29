@@ -797,54 +797,64 @@ class MainWindow(QMainWindow):
         # 2. グリッドを描く
         self.draw_pro_grid() # ← ここで呼び出す！
 
-        # ここでショートカットを登録
-        self.setup_vose_shortcuts()
+        # Python側で管理するデータモデルのリスト
+        self.notes = []        # ここに NoteEvent オブジェクトが溜まっていく
+        self.selected_index = -1
+        
+        # UI上の入力欄（QLineEdit）のリスト（Tab移動用）
+        self.input_fields = [] 
 
-        # Python側で保持するノートデータのリスト
-        self.notes_data = [] 
-        self.selected_index = -1 # 現在選択されているノートの番号
         self.setup_vose_shortcuts()
 
     def setup_vose_shortcuts(self):
-        # 1音移動 (Alt + 矢印)
+        # 1. 1音移動 (Alt + Left/Right)
         QShortcut(QKeySequence("Alt+Right"), self).activated.connect(self.select_next_note)
         QShortcut(QKeySequence("Alt+Left"), self).activated.connect(self.select_prev_note)
 
-        # 削除 (Delete)
-        QShortcut(QKeySequence(Qt.Key_Delete), self).activated.connect(self.delete_selected_note)
-
-    def select_next_note(self):
-        if self.selected_index < len(self.notes_data) - 1:
-            self.selected_index += 1
-            self.update_ui_selection() # UIの見た目（色など）を変える関数
-
-    def delete_selected_note(self):
-        if 0 <= self.selected_index < len(self.notes_data):
-            # リストから削除
-            self.notes_data.pop(self.selected_index)
-            # インデックスの調整
-            self.selected_index = max(-1, self.selected_index - 1)
-            self.update_ui_entirely() # UI全体を再描画
-
-    
-
-    def setup_vose_shortcuts(self):
-        # 1. 1音移動 (Alt + Right/Left)
-        QShortcut(QKeySequence("Alt+Right"), self).activated.connect(self.select_next_note)
-        QShortcut(QKeySequence("Alt+Left"), self).activated.connect(self.select_prev_note)
-
-        # 2. 削除 (Del / Backspace)
+        # 2. 削除 (Delete / Backspace)
+        # ※誤削除防止のため、入力欄にフォーカスがない時だけ動くように調整も可能
         QShortcut(QKeySequence(Qt.Key_Delete), self).activated.connect(self.delete_selected_note)
         QShortcut(QKeySequence(Qt.Key_Backspace), self).activated.connect(self.delete_selected_note)
 
-    # --- 実際の動作 ---
+        # 3. Tabキーによる歌詞入力フォーカス移動
+        # ※PySide6標準のTab移動を強化し、最後の欄でTabを押すと新規追加する等の拡張も可能
+        QShortcut(QKeySequence(Qt.Key_Tab), self).activated.connect(self.focus_next_note_input)
+
+    # --- 動作ロジック ---
+
     def select_next_note(self):
-        # C++エンジンのインデックスを進める処理
-        pass
+        if self.notes and self.selected_index < len(self.notes) - 1:
+            self.selected_index += 1
+            self.sync_ui_to_selection()
+
+    def select_prev_note(self):
+        if self.notes and self.selected_index > 0:
+            self.selected_index -= 1
+            self.sync_ui_to_selection()
 
     def delete_selected_note(self):
-        # 選択中のノートを消去する処理
-        pass
+        if 0 <= self.selected_index < len(self.notes):
+            # データモデルから削除
+            self.notes.pop(self.selected_index)
+            # 選択位置を調整
+            self.selected_index = min(self.selected_index, len(self.notes) - 1)
+            # UI全体を更新（再描画）
+            self.refresh_canvas() 
+            print(f"DEBUG: Note deleted. Remaining: {len(self.notes)}")
+
+    def focus_next_note_input(self):
+        """Tabキーで次の入力欄へ。Pro Audio的な爆速入力を実現"""
+        if not self.input_fields: return
+        
+        # 現在フォーカスされているウィジェットを確認
+        current = self.focusWidget()
+        if current in self.input_fields:
+            idx = self.input_fields.index(current)
+            next_idx = (idx + 1) % len(self.input_fields)
+            self.input_fields[next_idx].setFocus()
+            self.input_fields[next_idx].selectAll() # 文字を全選択状態にすると上書きが楽
+
+
 
     def draw_pro_grid(self):
         """プロ仕様のグリッド（背景線）を描画"""
@@ -947,9 +957,9 @@ class MainWindow(QMainWindow):
         # 見つからなければデフォルト（既存の挙動）
         return os.path.join(voice_bank_path, f"{lyric}.wav")
 
-    #---------
+    #===========================================================
     #エンジン接続関係
-    #---------
+    #===========================================================
 
     def init_ui(self):
         self.setWindowTitle("VO-SE Engine DAW")
@@ -961,6 +971,7 @@ class MainWindow(QMainWindow):
         container = QWidget()
         container.setLayout(layout)
         self.setCentralWidget(container)
+        self.setup_vose_shortcuts() # ← ここでショートカットを登録
 
     def generate_pitch_curve(self, note, prev_note=None):
         """ノートのピッチをHz配列として生成（ポルタメント対応）"""
@@ -993,6 +1004,64 @@ class MainWindow(QMainWindow):
         # ここではテスト用にダミーのリストを返します
         return []
 
+    def synthesize(self, notes, output_path="output.wav"):
+        """
+        Python側のノートリストをC++の構造体配列に変換し、
+        WORLDエンジンでレンダリングを実行する。
+        """
+        if not notes:
+            print("Rendering skipped: No notes found.")
+            return None
+
+        note_count = len(notes)
+    
+        # 1. C++側の構造体(NoteEvent)の配列をメモリ上に確保
+        # NoteEventクラスは以前定義したctypes.Structureを想定
+        cpp_notes_array = (NoteEvent * note_count)()
+
+        # 2. ガベージコレクション(GC)対策
+        # レンダリングが終わるまで、numpy配列がメモリから消えないようにリストで保持する
+        # これを忘れるとM3の高速処理中にメモリアクセス違反で落ちます
+        keep_alive = []
+
+        for i, n in enumerate(notes):
+            # --- ピッチカーブ (必須) ---
+            # numpy配列をfloat64に固定し、C++ポインタを取得
+            p_curve = n.pitch_curve.astype(np.float64)
+            keep_alive.append(p_curve) # 参照保持
+        
+            # --- ダミーパラメータ (Gender / Tension / Breath) ---
+            # 代表のC++エンジンの引数仕様に合わせ、全てのノートにダミーカーブを作成
+            length = len(p_curve)
+            g_curve = np.full(length, 0.5, dtype=np.float64) # 標準的な性別
+            t_curve = np.full(length, 0.5, dtype=np.float64) # 標準的な緊張感
+            b_curve = np.full(length, 0.0, dtype=np.float64) # 息漏れなし
+        
+            keep_alive.extend([g_curve, t_curve, b_curve]) # 参照保持
+
+            # --- C++構造体(cpp_notes_array[i])への流し込み ---
+            # n.phonemes は「あ」「い」などの音源キー
+            cpp_notes_array[i].wav_path = n.phonemes.encode('utf-8')
+            cpp_notes_array[i].pitch_curve = p_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+            cpp_notes_array[i].pitch_length = length
+            cpp_notes_array[i].gender_curve = g_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+            cpp_notes_array[i].tension_curve = t_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+            cpp_notes_array[i].breath_curve = b_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+
+        # 3. C++エンジンの execute_render をコール
+        # 第3引数は出力先のパス
+        try:
+            self.engine_dll.execute_render(
+                cpp_notes_array, 
+                note_count, 
+                output_path.encode('utf-8')
+            )
+            print(f"Successfully rendered to: {os.path.abspath(output_path)}")
+            return output_path
+        except Exception as e:
+            print(f"C++ Engine Error: {e}")
+            return None
+
 
     # ==========================================================================
     #  Pro audio modeling の起動、呼び出し　　　　　　　　　　　
@@ -1024,7 +1093,7 @@ class MainWindow(QMainWindow):
 
     # ==========================================================================
     # VO-SE Pro v1.3.0: 連続音（VCV）解決 ＆ レンダリング準備
-    # ==========================================================================
+    #==========================================================================
 
     def resolve_target_wav(self, lyric, prev_lyric):
         """前の歌詞から母音を判定し、最適なWAVパスを特定する"""
@@ -1123,7 +1192,7 @@ class MainWindow(QMainWindow):
     
     # ==========================================================================
     # 初期化メソッド
-    # ==========================================================================
+    #==========================================================================
 
     def init_dll_engine(self):
         """C言語レンダリングエンジンDLLの接続"""
