@@ -85,28 +85,14 @@ jobs:
             cd dist && zip -r ../VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
-      # --- 5. GitHub Release への投稿 ---
-      - name: Create Release
+      # --- 5. GitHub Release への投稿 ---- name: Upload 
+      - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
-          # タグがあればそれを使い、なければ 'latest'。自動でReleaseを作成・更新する。
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
-          name: ${{ github.ref_type == 'tag' && github.ref_name || 'Latest Release' }}
+          tag_name: latest  # もしくは ${{ github.ref_name }}
           files: |
+            dist/VO-SE_PRO_Mac.zip
             dist/VO-SE_PRO_Win.exe
-            VO-SE_PRO_Mac.zip
-          body: |
-            ## VO-SE PRO Official Release (v1.3.6.1)
-            
-            ### 🛠️ アップデート内容
-            - **メモリ最適化**: M3環境で開発・検証された軽量設計
-            - **ワンパッケージ化**: 公式音源をバイナリに内蔵
-            - **マルチプラットフォーム**: Windows & macOS (Intel/Apple Silicon) 対応
-            
-            ### 📥 インストール
-            - Windows: `VO-SE_PRO_Win.exe` をダウンロードして実行
-            - Mac: `VO-SE_PRO_Mac.zip` を展開して `VO-SE_PRO_Mac.app` を実行
-          draft: false
-          prerelease: false
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
