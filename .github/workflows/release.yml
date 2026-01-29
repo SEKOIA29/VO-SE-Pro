@@ -3,10 +3,10 @@ name: "🚀 Release VO-SE PRO (Official Edition)"
 on:
   push:
     branches:
-      - main  # mainブランチにプッシュされたら実行
+      - main
     tags:
       - 'v*'
-  workflow_dispatch: # 手動実行ボタンも残す
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -15,7 +15,7 @@ jobs:
   build:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30 # 爆速化するので30分で十分
+    timeout-minutes: 30
     strategy:
       matrix:
         os: [windows-latest, macos-latest]
@@ -24,48 +24,44 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --- 1. Python環境 & キャッシュ (無料枠節約の要) ---
+      # --- 1. Python環境 & キャッシュ ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          cache: 'pip' # 一度入れたライブラリを次回から使い回す設定
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          # pyopenjtalkの「ビルド地獄」を避けるためにバイナリ版を優先指定
           pip install PySide6 numpy sounddevice soundfile mido janome Pillow pyinstaller
           pip install pyopenjtalk --only-binary :all: || pip install pyopenjtalk
 
-      # --- 2. 公式音源のパッキング (voice_data.h 生成) ---
+      # --- 2. 公式音源のパッキング ---
       - name: Pack Official Voice Data
         run: python modules/tools/pack_voice.py
 
-      # --- 3. C++ エンジンビルド (C++17指定版) ---
+      # --- 3. C++ エンジンビルド ---
       - name: Build C++ Engine
         shell: bash
         run: |
           mkdir -p bin
-          echo "🔨 Compiling C++ Engine with C++17..."
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # -std=c++17 を追加。これで std::clamp が使えるようになります
             g++ -std=c++17 -shared -fPIC -o bin/vose_core.dll src/vose_core.cpp src/world/*.cpp \
               -Isrc -Iinclude -Iinclude/world \
               -O2 -static-libgcc -static-libstdc++
           else
-            # Mac用。同じく -std=c++17 を追加
+            # Mac用 (M1/M2/M3対応のユニバーサルビルドは複雑なので一旦標準ビルド)
             clang++ -std=c++17 -shared -fPIC -o bin/vose_core.dylib src/vose_core.cpp src/world/*.cpp \
               -Isrc -Iinclude -Iinclude/world \
               -undefined dynamic_lookup -O2
           fi
-          echo "✅ Build Completed."
 
       # --- 4. パッケージング (PyInstaller) ---
       - name: Package App
         shell: bash
         run: |
-          # アイコンとアセットの自動検知
+          # アイコンとアセットディレクトリの自動判定
           ICON=$(ls assets/icon.ico Assets/icon.ico assets/icon.icns Assets/icon.icns 2>/dev/null | head -n 1)
           DATA_DIR=$(ls -d assets Assets 2>/dev/null | head -n 1)
           
@@ -85,7 +81,7 @@ jobs:
               --name "VO-SE_PRO_Mac" \
               --osx-bundle-identifier "com.vosepro.app" main.py
             
-            # Mac版のパッケージング
+            # Macは.appのままだと配布できないのでzip化
             cd dist && zip -r ../VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
@@ -93,13 +89,24 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          # タグがあればそれを使い、なければ 'latest'。自動でReleaseを作成・更新する。
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
+          name: ${{ github.ref_type == 'tag' && github.ref_name || 'Latest Release' }}
           files: |
             dist/VO-SE_PRO_Win.exe
             VO-SE_PRO_Mac.zip
           body: |
-            ## VO-SE PRO Official Release (Build Optimized)
-            - Windows (.exe) & macOS (.zip) 対応
-            - 公式音源（内蔵）同梱済み
-            - GitHub Actions のリソース消費を最適化しました。
+            ## VO-SE PRO Official Release (v1.3.6.1)
+            
+            ### 🛠️ アップデート内容
+            - **メモリ最適化**: M3環境で開発・検証された軽量設計
+            - **ワンパッケージ化**: 公式音源をバイナリに内蔵
+            - **マルチプラットフォーム**: Windows & macOS (Intel/Apple Silicon) 対応
+            
+            ### 📥 インストール
+            - Windows: `VO-SE_PRO_Win.exe` をダウンロードして実行
+            - Mac: `VO-SE_PRO_Mac.zip` を展開して `VO-SE_PRO_Mac.app` を実行
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
