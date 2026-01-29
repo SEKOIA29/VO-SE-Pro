@@ -1654,7 +1654,7 @@ class MainWindow(QMainWindow):
             elif file_path.lower().endswith('.json'):
                 self.load_file_from_path(file_path)
 
-def import_voice_bank(self, zip_path: str):
+    def import_voice_bank(self, zip_path: str):
         """
         ZIP音源インストール完全版
         1. 文字化け修復解凍 2. ゴミ排除 3. AI解析(oto.ini生成) 4. Aural AI接続 5. UI更新
