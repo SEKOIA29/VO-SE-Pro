@@ -83,14 +83,19 @@ jobs:
             cd dist_out && zip -r VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
-      # --- 5. リリースへアップロード ---
-      - name: Upload Release Assets
+
+      # --- 6. アップロード (上書き許可設定) ---
+      - name: Upload Release
         uses: softprops/action-gh-release@v2
         if: always()
         with:
           tag_name: latest
+          name: "VO-SE PRO (Official Edition)"
+          overwrite: true  # ← これを追加！既存のファイルを新しいので置き換えます
           files: |
             dist_out/VO-SE_PRO_Win.exe
             dist_out/VO-SE_PRO_Mac.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          
