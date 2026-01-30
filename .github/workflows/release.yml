@@ -57,23 +57,30 @@ jobs:
               -undefined dynamic_lookup -O2
           fi
 
-# --- 4. パッケージング (PyInstaller) ---
+       # --- 4. パッケージング (PyInstaller) ---
       - name: Package App
         shell: bash
         run: |
+          # アイコンとアセットのパスを特定（デバッグ用に出力）
           ICON=$(ls assets/icon.ico Assets/icon.ico assets/icon.icns Assets/icon.icns 2>/dev/null | head -n 1)
           DATA_DIR=$(ls -d assets Assets 2>/dev/null | head -n 1)
+          echo "Using ICON: $ICON"
+          echo "Using DATA_DIR: $DATA_DIR"
           
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # Windows版: --onefile で dist/ に生成
+            # Windows版: --onefile 実行
             pyinstaller --windowed --noconsole --onefile \
               --collect-all PySide6 --collect-all numpy --collect-all pyopenjtalk \
               --add-data "bin/vose_core.dll;bin" \
               --add-data "${DATA_DIR}/*;assets" \
               --icon "${ICON}" \
               --name "VO-SE_PRO_Win" main.py
+            
+            # 【重要】Windowsの生成物を確認
+            echo "--- Checking dist folder (Windows) ---"
+            ls -R dist/
           else
-            # Mac版: bundle形式で生成
+            # Mac版: bundle形式
             pyinstaller --windowed --noconsole \
               --collect-all PySide6 --collect-all numpy --collect-all pyopenjtalk \
               --add-data "bin/vose_core.dylib:bin" \
@@ -82,19 +89,27 @@ jobs:
               --name "VO-SE_PRO_Mac" \
               --osx-bundle-identifier "com.vosepro.app" main.py
             
-            # ZIPの作成先を dist/ の中に固定する
+            # 【重要】Macの生成物を確認して、distの中にzipを作る
+            echo "--- Checking dist folder (Mac) ---"
+            ls -R dist/
             cd dist && zip -r VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
-      # --- 5. GitHub Release への投稿 ---
+      # --- 5. ファイルの存在を最終確認してからアップロード ---
+      - name: Verify Files
+        run: |
+          echo "Current directory contents:"
+          ls -F
+          echo "Dist directory contents:"
+          ls -F dist/
+
       - name: Upload Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        if: always() # デバッグのため、失敗しても実行してログを確認
         with:
-          tag_name: ${{ github.ref_name || 'latest' }}
+          tag_name: latest
           files: |
             dist/VO-SE_PRO_Mac.zip
             dist/VO-SE_PRO_Win.exe
-          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
