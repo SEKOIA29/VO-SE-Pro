@@ -53,63 +53,65 @@ jobs:
               -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O2
           fi
 
-# --- 4. 実行ファイル一体化 (徹底デバッグモード) ---
+# --- 4. 実行ファイル一体化 (強制・ログ全出力モード) ---
       - name: Package App
         shell: bash
         run: |
-          # 1. 念入りな掃除
+          # フォルダを完全にリセット
           rm -rf dist build dist_out
           mkdir dist_out
 
-          # 2. main.py がどこにあるか検索（念のため）
-          MAIN_PATH=$(find . -name "main.py" | head -n 1)
-          echo "Target main.py found at: $MAIN_PATH"
+          # main.pyの場所を特定
+          MAIN_FILE=$(find . -maxdepth 2 -name "main.py")
+          echo "Using main file: $MAIN_FILE"
 
-          if [ -z "$MAIN_PATH" ]; then
-            echo "ERROR: main.py not found anywhere!"
-            exit 1
-          fi
-
-          # 3. PyInstaller実行（詳細ログを出す設定）
+          # PyInstaller実行 (詳細ログを強制)
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            pyinstaller --noconsole --onefile --clean \
+            pyinstaller --noconsole --onefile --log-level DEBUG \
               --add-data "bin/vose_core.dll;bin" \
               --add-data "assets;assets" \
-              --name "VO-SE_PRO_Win" "$MAIN_PATH"
+              --name "VO-SE_PRO_Win" "$MAIN_FILE"
           else
-            pyinstaller --noconsole --windowed --clean \
+            pyinstaller --noconsole --windowed --log-level DEBUG \
               --add-data "bin/vose_core.dylib:bin" \
               --add-data "assets:assets" \
-              --name "VO-SE_PRO_Mac" "$MAIN_PATH"
+              --name "VO-SE_PRO_Mac" "$MAIN_FILE"
           fi
 
-      # --- 5. 成果物を「捜索」して強制移動 ---
-      - name: 🔍 Locate and Move Artifacts
+      # --- 5. 成果物の存在を「物理的」に確認し、なければ強制終了 ---
+      - name: 🔍 Final Physical Check
         shell: bash
         run: |
-          echo "=== Searching for created files ==="
-          # dist フォルダの中身を全部表示
-          ls -R dist/ || echo "dist folder is empty"
-          
-          # WindowsのEXEを回収
-          find dist -name "*.exe" -exec cp {} dist_out/VO-SE_PRO_Win.exe \;
-          
-          # Macのappをzipにして回収
-          if [ -d "dist/VO-SE_PRO_Mac.app" ]; then
-            cd dist && zip -r ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
+          echo "=== Scanning for Artifacts ==="
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            if [ -f "dist/VO-SE_PRO_Win.exe" ]; then
+              cp dist/VO-SE_PRO_Win.exe dist_out/
+              echo "✅ Windows EXE found and moved."
+            else
+              echo "❌ ERROR: Windows EXE was NEVER created!"
+              ls -R
+              exit 1
+            fi
+          else
+            if [ -d "dist/VO-SE_PRO_Mac.app" ]; then
+              cd dist && zip -r ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
+              echo "✅ Mac ZIP created."
+            else
+              echo "❌ ERROR: Mac App was NEVER created!"
+              ls -R
+              exit 1
+            fi
           fi
-          
-          echo "=== Contents of dist_out (Final Check) ==="
-          ls -R dist_out
 
-      # --- 6. アップロード (名前を確実に合わせる) ---
+      # --- 6. アップロード (確実に上書き) ---
       - name: Upload Release
         uses: softprops/action-gh-release@v2
-        if: always()
+        if: success()
         with:
           tag_name: latest
-          name: "VO-SE PRO (Official Edition)"
+          name: "VO-SE PRO (Official Edition) - ${{ github.sha }}"
           overwrite_files: true
+          make_latest: true
           files: |
             dist_out/VO-SE_PRO_Win.exe
             dist_out/VO-SE_PRO_Mac.zip
