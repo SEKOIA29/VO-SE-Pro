@@ -57,15 +57,15 @@ jobs:
               -undefined dynamic_lookup -O2
           fi
 
-      # --- 4. パッケージング (PyInstaller) ---
+# --- 4. パッケージング (PyInstaller) ---
       - name: Package App
         shell: bash
         run: |
-          # アイコンとアセットディレクトリの自動判定
           ICON=$(ls assets/icon.ico Assets/icon.ico assets/icon.icns Assets/icon.icns 2>/dev/null | head -n 1)
           DATA_DIR=$(ls -d assets Assets 2>/dev/null | head -n 1)
           
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # Windows版: --onefile で dist/ に生成
             pyinstaller --windowed --noconsole --onefile \
               --collect-all PySide6 --collect-all numpy --collect-all pyopenjtalk \
               --add-data "bin/vose_core.dll;bin" \
@@ -73,6 +73,7 @@ jobs:
               --icon "${ICON}" \
               --name "VO-SE_PRO_Win" main.py
           else
+            # Mac版: bundle形式で生成
             pyinstaller --windowed --noconsole \
               --collect-all PySide6 --collect-all numpy --collect-all pyopenjtalk \
               --add-data "bin/vose_core.dylib:bin" \
@@ -81,15 +82,16 @@ jobs:
               --name "VO-SE_PRO_Mac" \
               --osx-bundle-identifier "com.vosepro.app" main.py
             
-            # Macは.appのままだと配布できないのでzip化
-            cd dist && zip -r ../VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
+            # ZIPの作成先を dist/ の中に固定する
+            cd dist && zip -r VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
-      # --- 5. GitHub Release への投稿 ---- name: Upload 
+      # --- 5. GitHub Release への投稿 ---
       - name: Upload Release
         uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         with:
-          tag_name: latest  # もしくは ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name || 'latest' }}
           files: |
             dist/VO-SE_PRO_Mac.zip
             dist/VO-SE_PRO_Win.exe
