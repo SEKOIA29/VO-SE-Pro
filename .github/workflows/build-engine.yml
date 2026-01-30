@@ -1,19 +1,18 @@
-name: "🎙️ VO-SE Pro: Official Engine Builder (Safe-v3)"
+name: "🎙️ VO-SE Pro: Official Engine Builder (Integrated)"
 
 on:
   push:
     branches:
       - main
-  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
     name: "🛠️ Build & Pack on ${{ matrix.os }}"
     runs-on: ${{ matrix.os }}
-    env:
-      PYTHONIOENCODING: "utf-8"
-    permissions: # リリース作成に必要
-      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -28,55 +27,56 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: "📦 [Step 3] Install Python Dependencies"
-        run: pip install numpy
-
-      - name: "📁 [Step 4] Prepare Directory (Windows)"
-        if: matrix.os == 'windows-latest'
+      - name: "📦 [Step 3] Install Dependencies"
         run: |
-          if (-not (Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" }
-          if (-not (Test-Path "src")) { New-Item -ItemType Directory -Path "src" }
+          pip install numpy PySide6 sounddevice soundfile mido janome Pillow pyinstaller
+          pip install pyopenjtalk --only-binary :all: || pip install pyopenjtalk
 
-      - name: "📁 [Step 4] Prepare Directory (MacOS)"
-        if: matrix.os == 'macos-latest'
-        run: mkdir -p bin src
+      - name: "📂 [Step 4] Prepare Directory"
+        shell: bash
+        run: mkdir -p bin src assets dist_out
 
       - name: "🎙️ [Step 5] Pack Official Voice Data"
         run: python modules/tools/pack_voice.py 
 
-      - name: "🏗️ [Step 6] Compile Engine (Windows)"
-        if: matrix.os == 'windows-latest'
+      - name: "🏗️ [Step 6] Compile Engine"
+        shell: bash
         run: |
-          g++ -std=c++17 -O3 -Wall -shared -fPIC -DVOSE_OFFICIAL_RELEASE -o bin/vose_core.dll `
-            src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world -static-libgcc -static-libstdc++
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            g++ -std=c++17 -O3 -shared -fPIC -o bin/vose_core.dll src/vose_core.cpp src/world/*.cpp \
+              -I. -Isrc -Iinclude -Iinclude/world -static-libgcc -static-libstdc++
+          else
+            clang++ -std=c++17 -O3 -shared -fPIC -o bin/vose_core.dylib src/vose_core.cpp src/world/*.cpp \
+              -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup
+          fi
 
-      - name: "🏗️ [Step 6] Compile Engine (MacOS)"
-        if: matrix.os == 'macos-latest'
+      - name: "📦 [Step 7] Package Integrated Executable (PyInstaller)"
+        shell: bash
         run: |
-          clang++ -std=c++17 -O3 -Wall -shared -fPIC -DVOSE_OFFICIAL_RELEASE -o bin/vose_core.dylib \
-            src/vose_core.cpp src/world/*.cpp -Iinclude -Iinclude/world -undefined dynamic_lookup
-
-      - name: "📦 [Step 7] Archive Artifacts"
-        uses: actions/upload-artifact@v4
-        with:
-          name: vose-official-engine-${{ matrix.os }}
-          path: bin/
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # EXEにすべてを統合
+            pyinstaller --noconsole --onefile \
+              --add-data "bin/vose_core.dll;bin" \
+              --add-data "assets;assets" \
+              --distpath ./dist_out --name "VO-SE_PRO_Win" main.py
+          else
+            # Macアプリ化してZIPに固める
+            pyinstaller --noconsole --windowed \
+              --add-data "bin/vose_core.dylib:bin" \
+              --add-data "assets:assets" \
+              --distpath ./dist_out --name "VO-SE_PRO_Mac" main.py
+            cd dist_out && zip -r VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
+          fi
 
       - name: "🚀 [Step 8] Publish GitHub Release"
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest-build
-          name: "VO-SE PRO (Auto-Generated)"
-          body: |
-            ## VO-SE PRO 自動ビルド成果物
-            - 最終更新: ${{ github.event.head_commit.timestamp }}
-            - コミット: ${{ github.sha }}
+          tag_name: latest
+          name: "VO-SE PRO (Official Edition)"
+          overwrite: true  # これで上書きエラーを回避！
+          make_latest: true
           files: |
-            bin/vose_core.dll
-            bin/vose_core.dylib
-          generate_release_notes: true
-          # overwrite: true  <-- これを削除
-          make_latest: true  # ← 代わりにこれを追加すると「最新」として扱われます
+            dist_out/VO-SE_PRO_Win.exe
+            dist_out/VO-SE_PRO_Mac.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
