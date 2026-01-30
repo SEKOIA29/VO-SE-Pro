@@ -36,16 +36,15 @@ jobs:
           pip install PySide6 numpy sounddevice soundfile mido janome Pillow pyinstaller
           pip install pyopenjtalk --only-binary :all: || pip install pyopenjtalk
 
-      # --- 2. 公式音源パッキング (voice_data.h の生成) ---
+      # --- 2. 公式音源パッキング ---
       - name: Pack Official Voice Data
         run: python modules/tools/pack_voice.py
 
-      # --- 3. C++ エンジンビルド (ヘッダーパス解決済み) ---
+      # --- 3. C++ エンジンビルド ---
       - name: Build C++ Engine
         shell: bash
         run: |
           mkdir -p bin
-          # -I. を追加して、生成された voice_data.h を確実に読み込む
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             g++ -std=c++17 -shared -fPIC -o bin/vose_core.dll src/vose_core.cpp src/world/*.cpp \
               -I. -Isrc -Iinclude -Iinclude/world -O2 -static-libgcc -static-libstdc++
@@ -54,7 +53,7 @@ jobs:
               -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O2
           fi
 
-      # --- 4. 実行ファイル一体化 (One-File / Bundle) ---
+      # --- 4. 実行ファイル一体化 (PyInstaller) ---
       - name: Package App
         shell: bash
         run: |
@@ -62,7 +61,6 @@ jobs:
           mkdir dist_out
           
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # Windows: 1つのEXEに集約
             pyinstaller --noconsole --onefile \
               --collect-all PySide6 --collect-all numpy \
               --add-data "bin/vose_core.dll;bin" \
@@ -70,7 +68,6 @@ jobs:
               --distpath ./dist_out \
               --name "VO-SE_PRO_Win" main.py
           else
-            # Mac: .appを生成してZIP化
             pyinstaller --noconsole --windowed \
               --collect-all PySide6 --collect-all numpy \
               --add-data "bin/vose_core.dylib:bin" \
@@ -79,23 +76,22 @@ jobs:
               --distpath ./dist_out \
               --name "VO-SE_PRO_Mac" main.py
             
-            # appを1つのzipにまとめる
+            # Macで確実に実行可能にするため、appの中身をzip化
             cd dist_out && zip -r VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
-
-      # --- 6. アップロード (上書き許可設定) ---
+      # --- 6. アップロード (エラー修正済み) ---
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         if: always()
         with:
           tag_name: latest
           name: "VO-SE PRO (Official Edition)"
-          overwrite: true  # ← これを追加！既存のファイルを新しいので置き換えます
+          # ↓ここが重要！ログで指摘された正しい名前に修正
+          overwrite_files: true  
+          make_latest: true
           files: |
             dist_out/VO-SE_PRO_Win.exe
             dist_out/VO-SE_PRO_Mac.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-          
