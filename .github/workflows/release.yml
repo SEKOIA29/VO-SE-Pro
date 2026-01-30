@@ -15,7 +15,6 @@ jobs:
   build:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
     strategy:
       matrix:
         os: [windows-latest, macos-latest]
@@ -24,7 +23,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --- 1. Python環境 & キャッシュ ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -37,88 +35,46 @@ jobs:
           pip install PySide6 numpy sounddevice soundfile mido janome Pillow pyinstaller
           pip install pyopenjtalk --only-binary :all: || pip install pyopenjtalk
 
-      # --- 2. 公式音源のパッキング ---
-      - name: Pack Official Voice Data
-        run: python modules/tools/pack_voice.py
-
-      # --- 3. C++ エンジンビルド ---
       - name: Build C++ Engine
         shell: bash
         run: |
           mkdir -p bin
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             g++ -std=c++17 -shared -fPIC -o bin/vose_core.dll src/vose_core.cpp src/world/*.cpp \
-              -Isrc -Iinclude -Iinclude/world \
-              -O2 -static-libgcc -static-libstdc++
+              -Isrc -Iinclude -Iinclude/world -O2 -static-libgcc -static-libstdc++
           else
-            # Mac用 (M1/M2/M3対応のユニバーサルビルドは複雑なので一旦標準ビルド)
             clang++ -std=c++17 -shared -fPIC -o bin/vose_core.dylib src/vose_core.cpp src/world/*.cpp \
-              -Isrc -Iinclude -Iinclude/world \
-              -undefined dynamic_lookup -O2
+              -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O2
           fi
 
-# --- 4. 実行ファイル一体化ビルド (PyInstaller) ---
-      - name: Package Integrated App
+      - name: Package App (One-File Integration)
         shell: bash
         run: |
-          # 出力先を完全にクリーンアップ
           rm -rf dist_out build
           mkdir dist_out
-
-          # ライブラリの区切り文字とパスをOSごとに設定
+          
+          # OSごとの設定
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            SEP=";"
-            OUT_NAME="VO-SE_PRO_Win"
-            # Windowsは --onefile で1つのEXEに集約
+            # Windows: 全てを1つのEXEに集約
             pyinstaller --noconsole --onefile \
-              --collect-all PySide6 \
-              --collect-all numpy \
-              --add-data "bin/vose_core.dll${SEP}bin" \
-              --add-data "assets${SEP}assets" \
+              --collect-all PySide6 --collect-all numpy \
+              --add-data "bin/vose_core.dll;bin" \
+              --add-data "assets;assets" \
               --distpath ./dist_out \
-              --name "${OUT_NAME}" main.py
+              --name "VO-SE_PRO_Win" main.py
           else
-            SEP=":"
-            OUT_NAME="VO-SE_PRO_Mac"
-            # Macは .app (Bundle) 形式で作成
+            # Mac: .appを生成してZIP化
             pyinstaller --noconsole --windowed \
-              --collect-all PySide6 \
-              --collect-all numpy \
-              --add-data "bin/vose_core.dylib${SEP}bin" \
-              --add-data "assets${SEP}assets" \
-              --osx-bundle-identifier "com.vosepro.app" \
+              --collect-all PySide6 --collect-all numpy \
+              --add-data "bin/vose_core.dylib:bin" \
+              --add-data "assets:assets" \
               --distpath ./dist_out \
-              --name "${OUT_NAME}" main.py
+              --name "VO-SE_PRO_Mac" main.py
             
-            # 作成された .app を ZIP に固める（一体化）
-            if [ -d "dist_out/${OUT_NAME}.app" ]; then
-              cd dist_out
-              zip -r "${OUT_NAME}.zip" "${OUT_NAME}.app"
-              cd ..
-            fi
+            cd dist_out && zip -r VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
-      # --- 5. 成果物の存在をログで最終確認 ---
-      - name: Verify Final Assets
-        shell: bash
-        run: |
-          echo "=== Executables created in dist_out ==="
-          ls -R dist_out/
-
-      # --- 6. GitHub Release へのアップロード ---
-      - name: Upload Release
-        uses: softprops/action-gh-release@v2
-        if: always()
-        with:
-          tag_name: latest
-          files: |
-            dist_out/VO-SE_PRO_Win.exe
-            dist_out/VO-SE_PRO_Mac.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # --- 6. アップロード ---
-      - name: Upload Release
+      - name: Verify and Upload
         uses: softprops/action-gh-release@v2
         if: always()
         with:
