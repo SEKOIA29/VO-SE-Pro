@@ -53,29 +53,46 @@ jobs:
               -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O2
           fi
 
-# --- 4. 実行ファイル一体化 (強制・ログ全出力モード) ---
+# --- 4. 実行ファイル一体化 (フルパワー・ビルド) ---
       - name: Package App
         shell: bash
         run: |
-          # フォルダを完全にリセット
           rm -rf dist build dist_out
           mkdir dist_out
 
-          # main.pyの場所を特定
-          MAIN_FILE=$(find . -maxdepth 2 -name "main.py")
-          echo "Using main file: $MAIN_FILE"
+          # ライブラリが足りないせいで一瞬で終わるのを防ぐ
+          pip install --upgrade pyinstaller
 
-          # PyInstaller実行 (詳細ログを強制)
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            pyinstaller --noconsole --onefile --log-level DEBUG \
+            # --clean をつけて毎回真っ新な状態でビルド (少し時間はかかるが確実)
+            # --collect-all でライブラリを全部詰め込む
+            pyinstaller --noconsole --onefile --clean \
+              --collect-all PySide6 \
+              --collect-all numpy \
               --add-data "bin/vose_core.dll;bin" \
               --add-data "assets;assets" \
-              --name "VO-SE_PRO_Win" "$MAIN_FILE"
+              --name "VO-SE_PRO_Win" main.py
+            
+            # 物理チェック (なければエラーで止める)
+            if [ -f "dist/VO-SE_PRO_Win.exe" ]; then
+              cp dist/VO-SE_PRO_Win.exe dist_out/
+            else
+              echo "EXE NOT FOUND" && exit 1
+            fi
           else
-            pyinstaller --noconsole --windowed --log-level DEBUG \
+            # Mac版もフルビルド
+            pyinstaller --noconsole --windowed --clean \
+              --collect-all PySide6 \
+              --collect-all numpy \
               --add-data "bin/vose_core.dylib:bin" \
               --add-data "assets:assets" \
-              --name "VO-SE_PRO_Mac" "$MAIN_FILE"
+              --name "VO-SE_PRO_Mac" main.py
+            
+            if [ -d "dist/VO-SE_PRO_Mac.app" ]; then
+              cd dist && zip -r ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
+            else
+              echo "APP NOT FOUND" && exit 1
+            fi
           fi
 
       # --- 5. 成果物の存在を「物理的」に確認し、なければ強制終了 ---
