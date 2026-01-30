@@ -57,59 +57,53 @@ jobs:
               -undefined dynamic_lookup -O2
           fi
 
-       # --- 4. パッケージング (PyInstaller) ---
+# --- 4. パッケージング (PyInstaller) ---
       - name: Package App
         shell: bash
         run: |
-          # アイコンとアセットのパスを特定（デバッグ用に出力）
           ICON=$(ls assets/icon.ico Assets/icon.ico assets/icon.icns Assets/icon.icns 2>/dev/null | head -n 1)
           DATA_DIR=$(ls -d assets Assets 2>/dev/null | head -n 1)
-          echo "Using ICON: $ICON"
-          echo "Using DATA_DIR: $DATA_DIR"
+          
+          # distディレクトリを確実に作り直す
+          rm -rf dist_out && mkdir dist_out
           
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # Windows版: --onefile 実行
             pyinstaller --windowed --noconsole --onefile \
               --collect-all PySide6 --collect-all numpy --collect-all pyopenjtalk \
               --add-data "bin/vose_core.dll;bin" \
               --add-data "${DATA_DIR}/*;assets" \
               --icon "${ICON}" \
+              --distpath ./dist_out \
               --name "VO-SE_PRO_Win" main.py
-            
-            # 【重要】Windowsの生成物を確認
-            echo "--- Checking dist folder (Windows) ---"
-            ls -R dist/
           else
-            # Mac版: bundle形式
             pyinstaller --windowed --noconsole \
               --collect-all PySide6 --collect-all numpy --collect-all pyopenjtalk \
               --add-data "bin/vose_core.dylib:bin" \
               --add-data "${DATA_DIR}/*:assets" \
               --icon "${ICON}" \
+              --distpath ./dist_out \
               --name "VO-SE_PRO_Mac" \
               --osx-bundle-identifier "com.vosepro.app" main.py
             
-            # 【重要】Macの生成物を確認して、distの中にzipを作る
-            echo "--- Checking dist folder (Mac) ---"
-            ls -R dist/
-            cd dist && zip -r VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
+            # Macは.appをzipに固めてdist_out直下に置く
+            cd dist_out && zip -r VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
-      # --- 5. ファイルの存在を確認（OSを問わない書き方） ---
-      - name: Verify Files
-        shell: bash  # ここをbashに固定することでWindowsでもlsが使えるようになります
+      # --- 5. 成果物の存在をログに強制出力 ---
+      - name: Debug Output
+        shell: bash
         run: |
-          echo "Checking directory structure..."
-          ls -R dist/ || echo "dist folder not found"
+          echo "=== Contents of dist_out ==="
+          ls -R dist_out/
 
+      # --- 6. アップロード ---
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         if: always()
         with:
           tag_name: latest
           files: |
-            dist/*.zip
-            dist/*.exe
-          generate_release_notes: true
+            dist_out/VO-SE_PRO_Mac.zip
+            dist_out/VO-SE_PRO_Win.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
