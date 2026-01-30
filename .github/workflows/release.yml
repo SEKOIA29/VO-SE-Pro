@@ -95,21 +95,21 @@ jobs:
             cd dist && zip -r VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
-      # --- 5. ファイルの存在を最終確認してからアップロード ---
+      # --- 5. ファイルの存在を確認（OSを問わない書き方） ---
       - name: Verify Files
+        shell: bash  # ここをbashに固定することでWindowsでもlsが使えるようになります
         run: |
-          echo "Current directory contents:"
-          ls -F
-          echo "Dist directory contents:"
-          ls -F dist/
+          echo "Checking directory structure..."
+          ls -R dist/ || echo "dist folder not found"
 
       - name: Upload Release
         uses: softprops/action-gh-release@v2
-        if: always() # デバッグのため、失敗しても実行してログを確認
+        if: always()
         with:
           tag_name: latest
           files: |
-            dist/VO-SE_PRO_Mac.zip
-            dist/VO-SE_PRO_Win.exe
+            dist/*.zip
+            dist/*.exe
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
