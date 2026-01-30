@@ -57,44 +57,41 @@ jobs:
               -undefined dynamic_lookup -O2
           fi
 
-# --- 4. パッケージング (PyInstaller) ---
+# --- 4. パッケージング (最小構成で再挑戦) ---
       - name: Package App
         shell: bash
         run: |
-          ICON=$(ls assets/icon.ico Assets/icon.ico assets/icon.icns Assets/icon.icns 2>/dev/null | head -n 1)
-          DATA_DIR=$(ls -d assets Assets 2>/dev/null | head -n 1)
-          
-          # distディレクトリを確実に作り直す
-          rm -rf dist_out && mkdir dist_out
-          
+          # 1. 必要なディレクトリを掃除して作成
+          rm -rf dist_out build
+          mkdir dist_out
+
+          # 2. PyInstaller実行（最小限のフラグで）
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            pyinstaller --windowed --noconsole --onefile \
-              --collect-all PySide6 --collect-all numpy --collect-all pyopenjtalk \
+            pyinstaller --noconsole --onefile \
               --add-data "bin/vose_core.dll;bin" \
-              --add-data "${DATA_DIR}/*;assets" \
-              --icon "${ICON}" \
               --distpath ./dist_out \
               --name "VO-SE_PRO_Win" main.py
           else
-            pyinstaller --windowed --noconsole \
-              --collect-all PySide6 --collect-all numpy --collect-all pyopenjtalk \
+            pyinstaller --noconsole --windowed \
               --add-data "bin/vose_core.dylib:bin" \
-              --add-data "${DATA_DIR}/*:assets" \
-              --icon "${ICON}" \
               --distpath ./dist_out \
-              --name "VO-SE_PRO_Mac" \
-              --osx-bundle-identifier "com.vosepro.app" main.py
+              --name "VO-SE_PRO_Mac" main.py
             
-            # Macは.appをzipに固めてdist_out直下に置く
-            cd dist_out && zip -r VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
+            # Mac用のZIP化（dist_out内にファイルがあるか確認しながら）
+            if [ -d "dist_out/VO-SE_PRO_Mac.app" ]; then
+              cd dist_out && zip -r VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
+            fi
           fi
 
-      # --- 5. 成果物の存在をログに強制出力 ---
-      - name: Debug Output
+      # --- 5. 強制捜査（ファイルがどこにあるか全検索） ---
+      - name: Locate Files
         shell: bash
         run: |
-          echo "=== Contents of dist_out ==="
-          ls -R dist_out/
+          echo "=== Searching for executable files ==="
+          find . -name "*.exe"
+          find . -name "*.zip"
+          echo "=== Content of dist_out ==="
+          ls -R dist_out || echo "dist_out is empty"
 
       # --- 6. アップロード ---
       - name: Upload Release
@@ -103,7 +100,7 @@ jobs:
         with:
           tag_name: latest
           files: |
-            dist_out/VO-SE_PRO_Mac.zip
             dist_out/VO-SE_PRO_Win.exe
+            dist_out/VO-SE_PRO_Mac.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
