@@ -53,37 +53,34 @@ jobs:
               -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O2
           fi
 
-# --- 4. 実行ファイル一体化 (フルパワー・ビルド) ---
+# --- 4. 実行ファイル一体化 (VO-SE PRO 最適化ビルド) ---
       - name: Package App
         shell: bash
         run: |
           rm -rf dist build dist_out
           mkdir dist_out
 
-          # ライブラリが足りないせいで一瞬で終わるのを防ぐ
-          pip install --upgrade pyinstaller
-
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # --clean をつけて毎回真っ新な状態でビルド (少し時間はかかるが確実)
-            # --collect-all でライブラリを全部詰め込む
+            # --collect-all をやめて、必要なライブラリだけを指定
             pyinstaller --noconsole --onefile --clean \
-              --collect-all PySide6 \
-              --collect-all numpy \
+              --hidden-import=PySide6.QtCore \
+              --hidden-import=PySide6.QtGui \
+              --hidden-import=PySide6.QtWidgets \
               --add-data "bin/vose_core.dll;bin" \
               --add-data "assets;assets" \
               --name "VO-SE_PRO_Win" main.py
             
-            # 物理チェック (なければエラーで止める)
             if [ -f "dist/VO-SE_PRO_Win.exe" ]; then
               cp dist/VO-SE_PRO_Win.exe dist_out/
             else
-              echo "EXE NOT FOUND" && exit 1
+              exit 1
             fi
           else
-            # Mac版もフルビルド
+            # Mac版も最適化
             pyinstaller --noconsole --windowed --clean \
-              --collect-all PySide6 \
-              --collect-all numpy \
+              --hidden-import=PySide6.QtCore \
+              --hidden-import=PySide6.QtGui \
+              --hidden-import=PySide6.QtWidgets \
               --add-data "bin/vose_core.dylib:bin" \
               --add-data "assets:assets" \
               --name "VO-SE_PRO_Mac" main.py
@@ -91,7 +88,7 @@ jobs:
             if [ -d "dist/VO-SE_PRO_Mac.app" ]; then
               cd dist && zip -r ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
             else
-              echo "APP NOT FOUND" && exit 1
+              exit 1
             fi
           fi
 
