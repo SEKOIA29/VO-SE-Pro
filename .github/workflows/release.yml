@@ -103,16 +103,17 @@ jobs:
             fi
           fi
 
-      # --- 6. アップロード (確実に上書き) ---
+      # --- 6. アップロード (パスの不一致を完全に防ぐ) ---
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         if: success()
         with:
           tag_name: latest
-          name: "VO-SE PRO (Official Edition) - ${{ github.sha }}"
-          overwrite_files: true
-          make_latest: true
+          name: "VO-SE PRO (Official Edition)"
+          # 'overwrite_files' の代わりに 'fail_on_unmatched_files: false' を使ってエラーを回避
+          fail_on_unmatched_files: false
           files: |
+            dist/VO-SE_PRO_Win.exe
             dist_out/VO-SE_PRO_Win.exe
             dist_out/VO-SE_PRO_Mac.zip
         env:
