@@ -53,38 +53,56 @@ jobs:
               -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O2
           fi
 
-# --- 4. 実行ファイル一体化 (場所を絶対に見失わない設定) ---
+# --- 4. 実行ファイル一体化 (徹底デバッグモード) ---
       - name: Package App
         shell: bash
         run: |
-          # 1. 掃除して準備
+          # 1. 念入りな掃除
           rm -rf dist build dist_out
           mkdir dist_out
-          
-          # 2. PyInstaller実行 (あえて distpath を指定せず標準の dist に出させる)
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            pyinstaller --noconsole --onefile \
-              --add-data "bin/vose_core.dll;bin" \
-              --add-data "assets;assets" \
-              --name "VO-SE_PRO_Win" main.py
-            # 標準の dist フォルダから dist_out へ強制移動
-            cp dist/VO-SE_PRO_Win.exe dist_out/
-          else
-            pyinstaller --noconsole --windowed \
-              --add-data "bin/vose_core.dylib:bin" \
-              --add-data "assets:assets" \
-              --name "VO-SE_PRO_Mac" main.py
-            # appをzipにして dist_out へ
-            cd dist && zip -r ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
+
+          # 2. main.py がどこにあるか検索（念のため）
+          MAIN_PATH=$(find . -name "main.py" | head -n 1)
+          echo "Target main.py found at: $MAIN_PATH"
+
+          if [ -z "$MAIN_PATH" ]; then
+            echo "ERROR: main.py not found anywhere!"
+            exit 1
           fi
 
-      # --- 5. 【重要】ここで中身を強制表示（ログで確認するため） ---
-      - name: Debug List Files
+          # 3. PyInstaller実行（詳細ログを出す設定）
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            pyinstaller --noconsole --onefile --clean \
+              --add-data "bin/vose_core.dll;bin" \
+              --add-data "assets;assets" \
+              --name "VO-SE_PRO_Win" "$MAIN_PATH"
+          else
+            pyinstaller --noconsole --windowed --clean \
+              --add-data "bin/vose_core.dylib:bin" \
+              --add-data "assets:assets" \
+              --name "VO-SE_PRO_Mac" "$MAIN_PATH"
+          fi
+
+      # --- 5. 成果物を「捜索」して強制移動 ---
+      - name: 🔍 Locate and Move Artifacts
+        shell: bash
         run: |
-          echo "Checking dist_out folder..."
+          echo "=== Searching for created files ==="
+          # dist フォルダの中身を全部表示
+          ls -R dist/ || echo "dist folder is empty"
+          
+          # WindowsのEXEを回収
+          find dist -name "*.exe" -exec cp {} dist_out/VO-SE_PRO_Win.exe \;
+          
+          # Macのappをzipにして回収
+          if [ -d "dist/VO-SE_PRO_Mac.app" ]; then
+            cd dist && zip -r ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
+          fi
+          
+          echo "=== Contents of dist_out (Final Check) ==="
           ls -R dist_out
 
-      # --- 6. アップロード (確実に dist_out を狙い撃ち) ---
+      # --- 6. アップロード (名前を確実に合わせる) ---
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         if: always()
