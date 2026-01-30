@@ -53,7 +53,7 @@ jobs:
               -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O2
           fi
 
-# --- 4. 実行ファイル一体化 (VO-SE PRO 最適化・完結版) ---
+# --- 4. 実行ファイル一体化 (アイコン設定・最適化版) ---
       - name: Package App
         shell: bash
         run: |
@@ -61,8 +61,9 @@ jobs:
           mkdir dist_out
 
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # 必要なものを「全部」ではなく「よく使うもの」に絞って指定
+            # --icon で assets 内のアイコンを指定
             pyinstaller --noconsole --onefile --clean \
+              --icon="assets/icon.ico" \
               --hidden-import=PySide6.QtCore \
               --hidden-import=PySide6.QtGui \
               --hidden-import=PySide6.QtWidgets \
@@ -71,15 +72,15 @@ jobs:
               --add-data "assets;assets" \
               --name "VO-SE_PRO_Win" main.py
             
-            # exeができたか確認して移動
             if [ -f "dist/VO-SE_PRO_Win.exe" ]; then
               cp dist/VO-SE_PRO_Win.exe dist_out/
             else
               echo "EXE NOT FOUND" && exit 1
             fi
           else
-            # Mac版：重すぎるQtPdfなどを除外してビルド
+            # Mac版：--icon で .icns を指定
             pyinstaller --noconsole --windowed --clean \
+              --icon="assets/icon.icns" \
               --exclude-module PySide6.QtPdf \
               --add-data "bin/vose_core.dylib:bin" \
               --add-data "assets:assets" \
