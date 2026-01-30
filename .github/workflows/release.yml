@@ -57,41 +57,65 @@ jobs:
               -undefined dynamic_lookup -O2
           fi
 
-# --- 4. パッケージング (最小構成で再挑戦) ---
-      - name: Package App
+# --- 4. 実行ファイル一体化ビルド (PyInstaller) ---
+      - name: Package Integrated App
         shell: bash
         run: |
-          # 1. 必要なディレクトリを掃除して作成
+          # 出力先を完全にクリーンアップ
           rm -rf dist_out build
           mkdir dist_out
 
-          # 2. PyInstaller実行（最小限のフラグで）
+          # ライブラリの区切り文字とパスをOSごとに設定
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            SEP=";"
+            OUT_NAME="VO-SE_PRO_Win"
+            # Windowsは --onefile で1つのEXEに集約
             pyinstaller --noconsole --onefile \
-              --add-data "bin/vose_core.dll;bin" \
+              --collect-all PySide6 \
+              --collect-all numpy \
+              --add-data "bin/vose_core.dll${SEP}bin" \
+              --add-data "assets${SEP}assets" \
               --distpath ./dist_out \
-              --name "VO-SE_PRO_Win" main.py
+              --name "${OUT_NAME}" main.py
           else
+            SEP=":"
+            OUT_NAME="VO-SE_PRO_Mac"
+            # Macは .app (Bundle) 形式で作成
             pyinstaller --noconsole --windowed \
-              --add-data "bin/vose_core.dylib:bin" \
+              --collect-all PySide6 \
+              --collect-all numpy \
+              --add-data "bin/vose_core.dylib${SEP}bin" \
+              --add-data "assets${SEP}assets" \
+              --osx-bundle-identifier "com.vosepro.app" \
               --distpath ./dist_out \
-              --name "VO-SE_PRO_Mac" main.py
+              --name "${OUT_NAME}" main.py
             
-            # Mac用のZIP化（dist_out内にファイルがあるか確認しながら）
-            if [ -d "dist_out/VO-SE_PRO_Mac.app" ]; then
-              cd dist_out && zip -r VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
+            # 作成された .app を ZIP に固める（一体化）
+            if [ -d "dist_out/${OUT_NAME}.app" ]; then
+              cd dist_out
+              zip -r "${OUT_NAME}.zip" "${OUT_NAME}.app"
+              cd ..
             fi
           fi
 
-      # --- 5. 強制捜査（ファイルがどこにあるか全検索） ---
-      - name: Locate Files
+      # --- 5. 成果物の存在をログで最終確認 ---
+      - name: Verify Final Assets
         shell: bash
         run: |
-          echo "=== Searching for executable files ==="
-          find . -name "*.exe"
-          find . -name "*.zip"
-          echo "=== Content of dist_out ==="
-          ls -R dist_out || echo "dist_out is empty"
+          echo "=== Executables created in dist_out ==="
+          ls -R dist_out/
+
+      # --- 6. GitHub Release へのアップロード ---
+      - name: Upload Release
+        uses: softprops/action-gh-release@v2
+        if: always()
+        with:
+          tag_name: latest
+          files: |
+            dist_out/VO-SE_PRO_Win.exe
+            dist_out/VO-SE_PRO_Mac.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # --- 6. アップロード ---
       - name: Upload Release
