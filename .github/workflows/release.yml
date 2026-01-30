@@ -23,6 +23,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # --- 1. Python環境構築 ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -35,27 +36,33 @@ jobs:
           pip install PySide6 numpy sounddevice soundfile mido janome Pillow pyinstaller
           pip install pyopenjtalk --only-binary :all: || pip install pyopenjtalk
 
+      # --- 2. 公式音源パッキング (voice_data.h の生成) ---
+      - name: Pack Official Voice Data
+        run: python modules/tools/pack_voice.py
+
+      # --- 3. C++ エンジンビルド (ヘッダーパス解決済み) ---
       - name: Build C++ Engine
         shell: bash
         run: |
           mkdir -p bin
+          # -I. を追加して、生成された voice_data.h を確実に読み込む
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             g++ -std=c++17 -shared -fPIC -o bin/vose_core.dll src/vose_core.cpp src/world/*.cpp \
-              -Isrc -Iinclude -Iinclude/world -O2 -static-libgcc -static-libstdc++
+              -I. -Isrc -Iinclude -Iinclude/world -O2 -static-libgcc -static-libstdc++
           else
             clang++ -std=c++17 -shared -fPIC -o bin/vose_core.dylib src/vose_core.cpp src/world/*.cpp \
-              -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O2
+              -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O2
           fi
 
-      - name: Package App (One-File Integration)
+      # --- 4. 実行ファイル一体化 (One-File / Bundle) ---
+      - name: Package App
         shell: bash
         run: |
           rm -rf dist_out build
           mkdir dist_out
           
-          # OSごとの設定
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # Windows: 全てを1つのEXEに集約
+            # Windows: 1つのEXEに集約
             pyinstaller --noconsole --onefile \
               --collect-all PySide6 --collect-all numpy \
               --add-data "bin/vose_core.dll;bin" \
@@ -68,13 +75,16 @@ jobs:
               --collect-all PySide6 --collect-all numpy \
               --add-data "bin/vose_core.dylib:bin" \
               --add-data "assets:assets" \
+              --osx-bundle-identifier "com.vosepro.app" \
               --distpath ./dist_out \
               --name "VO-SE_PRO_Mac" main.py
             
+            # appを1つのzipにまとめる
             cd dist_out && zip -r VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
-      - name: Verify and Upload
+      # --- 5. リリースへアップロード ---
+      - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
         if: always()
         with:
