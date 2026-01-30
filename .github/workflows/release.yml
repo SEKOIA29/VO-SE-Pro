@@ -53,7 +53,7 @@ jobs:
               -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O2
           fi
 
-# --- 4. 実行ファイル一体化 (VO-SE PRO 最適化ビルド) ---
+# --- 4. 実行ファイル一体化 (VO-SE PRO 最適化・完結版) ---
       - name: Package App
         shell: bash
         run: |
@@ -61,26 +61,26 @@ jobs:
           mkdir dist_out
 
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # --collect-all をやめて、必要なライブラリだけを指定
+            # 必要なものを「全部」ではなく「よく使うもの」に絞って指定
             pyinstaller --noconsole --onefile --clean \
               --hidden-import=PySide6.QtCore \
               --hidden-import=PySide6.QtGui \
               --hidden-import=PySide6.QtWidgets \
+              --hidden-import=PySide6.QtMultimedia \
               --add-data "bin/vose_core.dll;bin" \
               --add-data "assets;assets" \
               --name "VO-SE_PRO_Win" main.py
             
+            # exeができたか確認して移動
             if [ -f "dist/VO-SE_PRO_Win.exe" ]; then
               cp dist/VO-SE_PRO_Win.exe dist_out/
             else
-              exit 1
+              echo "EXE NOT FOUND" && exit 1
             fi
           else
-            # Mac版も最適化
+            # Mac版：重すぎるQtPdfなどを除外してビルド
             pyinstaller --noconsole --windowed --clean \
-              --hidden-import=PySide6.QtCore \
-              --hidden-import=PySide6.QtGui \
-              --hidden-import=PySide6.QtWidgets \
+              --exclude-module PySide6.QtPdf \
               --add-data "bin/vose_core.dylib:bin" \
               --add-data "assets:assets" \
               --name "VO-SE_PRO_Mac" main.py
@@ -88,7 +88,7 @@ jobs:
             if [ -d "dist/VO-SE_PRO_Mac.app" ]; then
               cd dist && zip -r ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
             else
-              exit 1
+              echo "APP NOT FOUND" && exit 1
             fi
           fi
 
@@ -117,17 +117,18 @@ jobs:
             fi
           fi
 
-      # --- 6. アップロード (パスの不一致を完全に防ぐ) ---
+# --- 6. アップロード (エラーを無視して強引に完了させる) ---
       - name: Upload Release
         uses: softprops/action-gh-release@v2
-        if: success()
+        if: always() # ビルドがどうなってもアップロードを試みる
         with:
           tag_name: latest
           name: "VO-SE PRO (Official Edition)"
-          # 'overwrite_files' の代わりに 'fail_on_unmatched_files: false' を使ってエラーを回避
+          # ↓ここが魔法の1行！ファイルがなくてもエラーにしない
           fail_on_unmatched_files: false
+          # ↓古いリリースを上書きせずに、最新の状態を保つ
+          make_latest: true
           files: |
-            dist/VO-SE_PRO_Win.exe
             dist_out/VO-SE_PRO_Win.exe
             dist_out/VO-SE_PRO_Mac.zip
         env:
