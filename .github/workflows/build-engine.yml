@@ -73,7 +73,8 @@ jobs:
         with:
           tag_name: latest
           name: "VO-SE PRO (Official Edition)"
-          overwrite: true  # これで上書きエラーを回避！
+          # 'overwrite' を 'overwrite_files' に修正
+          overwrite_files: true  
           make_latest: true
           files: |
             dist_out/VO-SE_PRO_Win.exe
