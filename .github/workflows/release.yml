@@ -53,43 +53,45 @@ jobs:
               -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O2
           fi
 
-      # --- 4. 実行ファイル一体化 (PyInstaller) ---
+# --- 4. 実行ファイル一体化 (場所を絶対に見失わない設定) ---
       - name: Package App
         shell: bash
         run: |
-          rm -rf dist_out build
+          # 1. 掃除して準備
+          rm -rf dist build dist_out
           mkdir dist_out
           
+          # 2. PyInstaller実行 (あえて distpath を指定せず標準の dist に出させる)
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             pyinstaller --noconsole --onefile \
-              --collect-all PySide6 --collect-all numpy \
               --add-data "bin/vose_core.dll;bin" \
               --add-data "assets;assets" \
-              --distpath ./dist_out \
               --name "VO-SE_PRO_Win" main.py
+            # 標準の dist フォルダから dist_out へ強制移動
+            cp dist/VO-SE_PRO_Win.exe dist_out/
           else
             pyinstaller --noconsole --windowed \
-              --collect-all PySide6 --collect-all numpy \
               --add-data "bin/vose_core.dylib:bin" \
               --add-data "assets:assets" \
-              --osx-bundle-identifier "com.vosepro.app" \
-              --distpath ./dist_out \
               --name "VO-SE_PRO_Mac" main.py
-            
-            # Macで確実に実行可能にするため、appの中身をzip化
-            cd dist_out && zip -r VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
+            # appをzipにして dist_out へ
+            cd dist && zip -r ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
-      # --- 6. アップロード (エラー修正済み) ---
+      # --- 5. 【重要】ここで中身を強制表示（ログで確認するため） ---
+      - name: Debug List Files
+        run: |
+          echo "Checking dist_out folder..."
+          ls -R dist_out
+
+      # --- 6. アップロード (確実に dist_out を狙い撃ち) ---
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         if: always()
         with:
           tag_name: latest
           name: "VO-SE PRO (Official Edition)"
-          # ↓ここが重要！ログで指摘された正しい名前に修正
-          overwrite_files: true  
-          make_latest: true
+          overwrite_files: true
           files: |
             dist_out/VO-SE_PRO_Win.exe
             dist_out/VO-SE_PRO_Mac.zip
