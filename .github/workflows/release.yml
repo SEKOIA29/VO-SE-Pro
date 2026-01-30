@@ -117,3 +117,13 @@ jobs:
             dist_out/VO-SE_PRO_Mac.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- [追加] Releaseとは別に、Actions画面に直接ファイルを出す ---
+      - name: 📦 Save Artifacts (Direct Download)
+        uses: actions/upload-artifact@v4
+        with:
+          name: VO-SE-PRO-Package-${{ matrix.os }}
+          path: dist_out/
+
+
+          
