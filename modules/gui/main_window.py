@@ -2754,9 +2754,16 @@ class MainWindow(QMainWindow):
     # ==========================================================================
 
     def _get_yomi_from_lyrics(self, lyrics: str) -> str:
-        """歌詞から読みを取得（簡易実装）"""
-        # 実際にはMeCabやjanomeで形態素解析
-        return lyrics
+        """歌詞を読み（ひらがな/ローマ字）に変換する（PyKakasi等を利用）"""
+        try:
+            import pykakasi
+            kks = pykakasi.kakasi()
+            result = kks.convert(lyrics)
+            # UTAU等で一般的な「ひらがな」をデフォルトとして返す
+            return "".join([item['hira'] for item in result])
+        except ImportError:
+            # ライブラリがない場合はそのまま返す
+            return lyrics
 
     def midi_to_hz(self, midi_note: int) -> float:
         """MIDI音番号を周波数(Hz)に変換"""
