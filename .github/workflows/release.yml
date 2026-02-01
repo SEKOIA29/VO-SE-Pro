@@ -53,7 +53,7 @@ jobs:
               -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O2
           fi
 
-# --- 4. 実行ファイル一体化 (アイコン設定・最適化版) ---
+      # --- 4. 実行ファイル一体化 & 権限修正 ---
       - name: Package App
         shell: bash
         run: |
@@ -61,7 +61,6 @@ jobs:
           mkdir dist_out
 
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # --icon で assets 内のアイコンを指定
             pyinstaller --noconsole --onefile --clean \
               --icon="assets/icon.ico" \
               --hidden-import=PySide6.QtCore \
@@ -72,13 +71,9 @@ jobs:
               --add-data "assets;assets" \
               --name "VO-SE_PRO_Win" main.py
             
-            if [ -f "dist/VO-SE_PRO_Win.exe" ]; then
-              cp dist/VO-SE_PRO_Win.exe dist_out/
-            else
-              echo "EXE NOT FOUND" && exit 1
-            fi
+            cp dist/VO-SE_PRO_Win.exe dist_out/
           else
-            # Mac版：--icon で .icns を指定
+            # Mac版：PyInstaller実行
             pyinstaller --noconsole --windowed --clean \
               --icon="assets/icon.icns" \
               --exclude-module PySide6.QtPdf \
@@ -86,48 +81,23 @@ jobs:
               --add-data "assets:assets" \
               --name "VO-SE_PRO_Mac" main.py
             
-            if [ -d "dist/VO-SE_PRO_Mac.app" ]; then
-              cd dist && zip -r ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
-            else
-              echo "APP NOT FOUND" && exit 1
-            fi
+            # 【重要】実行権限をバイナリに直接付与
+            chmod +x dist/VO-SE_PRO_Mac.app/Contents/MacOS/VO-SE_PRO_Mac
+            
+            # 【重要】Mac独自の構造（シンボリックリンク等）を壊さずに圧縮
+            cd dist
+            zip -ry ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app
+            cd ..
           fi
 
-      # --- 5. 成果物の存在を「物理的」に確認し、なければ強制終了 ---
-      - name: 🔍 Final Physical Check
-        shell: bash
-        run: |
-          echo "=== Scanning for Artifacts ==="
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            if [ -f "dist/VO-SE_PRO_Win.exe" ]; then
-              cp dist/VO-SE_PRO_Win.exe dist_out/
-              echo "✅ Windows EXE found and moved."
-            else
-              echo "❌ ERROR: Windows EXE was NEVER created!"
-              ls -R
-              exit 1
-            fi
-          else
-            if [ -d "dist/VO-SE_PRO_Mac.app" ]; then
-              cd dist && zip -r ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
-              echo "✅ Mac ZIP created."
-            else
-              echo "❌ ERROR: Mac App was NEVER created!"
-              ls -R
-              exit 1
-            fi
-          fi
-
-# --- 6. アップロード (エラーを無視して強引に完了させる) ---
+      # --- 5. アップロード ---
       - name: Upload Release
         uses: softprops/action-gh-release@v2
-        if: always() # ビルドがどうなってもアップロードを試みる
+        if: always()
         with:
           tag_name: latest
           name: "VO-SE PRO (Official Edition)"
-          # ↓ここが魔法の1行！ファイルがなくてもエラーにしない
           fail_on_unmatched_files: false
-          # ↓古いリリースを上書きせずに、最新の状態を保つ
           make_latest: true
           files: |
             dist_out/VO-SE_PRO_Win.exe
@@ -135,12 +105,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- [追加] Releaseとは別に、Actions画面に直接ファイルを出す ---
+      # --- 6. Artifact保存 ---
       - name: 📦 Save Artifacts (Direct Download)
         uses: actions/upload-artifact@v4
         with:
           name: VO-SE-PRO-Package-${{ matrix.os }}
           path: dist_out/
-
-
-          
