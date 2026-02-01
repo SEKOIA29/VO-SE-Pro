@@ -71,14 +71,11 @@ jobs:
               --name "VO-SE_PRO_Win" main.py
             cp dist/VO-SE_PRO_Win.exe dist_out/
           else
-            # Mac版：modulesフォルダを構造ごと追加し、パスを徹底指定
+            # Mac版：フォルダ構造を維持してコピー
             pyinstaller --noconsole --windowed --clean \
               --paths . \
-              --paths modules \
-              --paths modules/GUI \
               --icon="assets/icon.icns" \
               --exclude-module PySide6.QtPdf \
-              --hidden-import=modules.GUI.main_window \
               --add-data "bin/vose_core.dylib:bin" \
               --add-data "assets:assets" \
               --add-data "modules:modules" \
