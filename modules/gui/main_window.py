@@ -2601,19 +2601,40 @@ class MainWindow(QMainWindow):
         # 次のノートのために、このノートの長さを足した時間を返す
         return note, current_time_sec + duration_sec
 
+　　 # ==========================================================================
+    # スクロールバー制御（2つを1つに統合）
+    # ==========================================================================
+
+    @Slot()
     def update_scrollbar_range(self):
-        """ノートの長さに合わせてスクロールバーの最大値を更新"""
-        max_time = self.timeline_widget.get_total_duration()
+        """
+        ノートの長さに合わせて、水平スクロールバーの範囲とステップを更新。
+        秒数ではなく『拍数(Beat)』を基準にすることで、音楽的な管理を容易にします。
+        """
+        # 1. ノートがない場合はリセット
+        if not self.timeline_widget.notes_list:
+            self.h_scrollbar.setRange(0, 0)
+            return
         
-        # 1秒=100pxなどのスケールに合わせて最大値を設定
-        scale = 100 
-        self.horizontal_scrollbar.setMaximum(int(max_time * scale))
+        # 2. 最大範囲の計算（拍数 × 1拍あたりのピクセル数）
+        max_beats = self.timeline_widget.get_max_beat_position()
+        # 少し余裕を持たせるために +4拍（1小節分）足すのがプロの工夫
+        max_x_position = (max_beats + 4) * self.timeline_widget.pixels_per_beat
         
-        # ページステップ（スクロールバー自体の長さ）も可視範囲に合わせる
-        view_width = self.timeline_widget.width()
-        self.horizontal_scrollbar.setPageStep(view_width)
+        # 3. 可視範囲（表示されている幅）の取得
+        viewport_width = self.timeline_widget.width()
         
-        print(f"Scroll range updated: {max_time}s")
+        # 4. スクロール可能な最大値を設定
+        # (全体の長さ - 今見えている長さ) がスクロールできる限界値
+        max_scroll_value = max(0, int(max_x_position - viewport_width))
+        self.h_scrollbar.setRange(0, max_scroll_value)
+        
+        # 5. ページステップ（スクロールバーのつまみをクリックした時の移動量）を設定
+        # これを設定すると、一気に1画面分移動できるようになります
+        self.h_scrollbar.setPageStep(viewport_width)
+        
+        # デバッグ出力（必要に応じて）
+        # print(f"Scroll range updated: max_beats={max_beats}, max_value={max_scroll_value}")
     # ==========================================================================
     # その他のスロット
     # ==========================================================================
@@ -2725,17 +2746,6 @@ class MainWindow(QMainWindow):
         
         self.h_scrollbar.setRange(0, max_scroll_value)
 
-    @Slot()
-    def update_scrollbar_v_range(self):
-        """垂直スクロールバー範囲更新"""
-        key_h = self.timeline_widget.key_height_pixels
-        full_height = 128 * key_h
-        viewport_height = self.timeline_widget.height()
-
-        max_scroll_value = max(0, int(full_height - viewport_height + key_h))
-        self.v_scrollbar.setRange(0, max_scroll_value)
-
-        self.keyboard_sidebar.set_key_height_pixels(key_h)
 
 
     @Slot()
