@@ -1216,6 +1216,14 @@ class MainWindow(QMainWindow):
         """About画面を表示"""
         dialog = CreditsDialog(self.confirmed_partners, self)
         dialog.exec()
+
+    def clear_layout(self, layout):
+        """レイアウト内のウィジェットを安全に全削除"""
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
     
     def init_ui(self):
         """UIの組み立て（司令塔）"""
