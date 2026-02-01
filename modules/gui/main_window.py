@@ -2732,19 +2732,18 @@ class MainWindow(QMainWindow):
         elif event_type == 'off':
             self.vo_se_engine.stop_realtime_note(note_number)
 
+
     @Slot()
-    def update_scrollbar_range(self):
-        """水平スクロールバー範囲更新"""
-        if not self.timeline_widget.notes_list:
-            self.h_scrollbar.setRange(0, 0)
-            return
-        
-        max_beats = self.timeline_widget.get_max_beat_position()
-        max_x_position = max_beats * self.timeline_widget.pixels_per_beat
-        viewport_width = self.timeline_widget.width()
-        max_scroll_value = max(0, int(max_x_position - viewport_width))
-        
-        self.h_scrollbar.setRange(0, max_scroll_value)
+    def update_scrollbar_v_range(self):
+        """垂直スクロールバー範囲更新"""
+        key_h = self.timeline_widget.key_height_pixels
+        full_height = 128 * key_h
+        viewport_height = self.timeline_widget.height()
+
+        max_scroll_value = max(0, int(full_height - viewport_height + key_h))
+        self.v_scrollbar.setRange(0, max_scroll_value)
+
+        self.keyboard_sidebar.set_key_height_pixels(key_h)
 
 
 
