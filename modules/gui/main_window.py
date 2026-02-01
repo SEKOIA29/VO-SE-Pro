@@ -941,18 +941,6 @@ class MainWindow(QMainWindow):
     #エンジン接続関係
     #===========================================================
 
-    def init_ui(self):
-        self.setWindowTitle("VO-SE Engine DAW")
-        layout = QVBoxLayout()
-        self.play_btn = QPushButton("再生")
-        self.play_btn.clicked.connect(self.handle_playback)
-        layout.addWidget(self.play_btn)
-        
-        container = QWidget()
-        container.setLayout(layout)
-        self.setCentralWidget(container)
-        self.setup_vose_shortcuts() # ← ここでショートカットを登録
-
     def generate_pitch_curve(self, note, prev_note=None):
         """ノートのピッチをHz配列として生成（ポルタメント対応）"""
         target_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
@@ -1230,72 +1218,83 @@ class MainWindow(QMainWindow):
         dialog.exec()
     
     def init_ui(self):
-        """UIコンポーネントの構築（安定・高速化版）"""
-        self.setWindowTitle("VO-SE Pro - Next Gen Vocal Synthesizer")
+        """UIの組み立て（司令塔）"""
+        self.setWindowTitle("VO-SE Engine DAW Pro")
         self.setGeometry(100, 100, 1200, 800)
-    
-        # メインウィジェットとベースレイアウト  
-        central_widget = QWidget()  
+        
+        central_widget = QWidget()
         self.setCentralWidget(central_widget)
         self.main_layout = QVBoxLayout(central_widget)
-        self.main_layout.setContentsMargins(5, 5, 5, 5) # 画面端に少し隙間を
+        self.main_layout.setContentsMargins(5, 5, 5, 5)
         self.main_layout.setSpacing(2)
 
-        # 1. ツールバーと上部コントロール（固定）
+        # 各セクションの呼び出し
+        self.setup_toolbar()
+        self.setup_main_editor_area() # タイムラインと音源グリッド
+        self.setup_bottom_panel()
+        self.setup_status_bar()
+        self.setup_menus()
+        
+        # スタイル適用
+        self.update_timeline_style()
+
+    # ==========================================================================
+    # UI セクション構築
+    # ==========================================================================
+
+    def setup_toolbar(self):
+        """上部ツールバー：再生・録音・テンポ"""
         self.toolbar = QToolBar("Main Toolbar")
         self.addToolBar(self.toolbar)
-        self.setup_control_panel() # テンポや再生ボタン等
 
-        # 2. 【改善】メインエディタエリア（スプリッターで左右分割）
-        self.content_splitter = QSplitter(Qt.Horizontal)
-    
-        # --- 左側：タイムライン（メイン編集画面） ---
-        self.timeline_container = QWidget()
-        self.timeline_layout = QVBoxLayout(self.timeline_container)
-        self.setup_timeline_area() # ここでタイムラインウィジェットを作成
-        self.content_splitter.addWidget(self.timeline_container)
+        self.play_btn = QPushButton("▶ 再生")
+        self.play_btn.clicked.connect(self.on_play_pause_toggled)
+        self.toolbar.addWidget(self.play_btn)
 
-        # --- 右側：音源管理サイドバー（スクロール可能） ---
-        self.voice_sidebar = QScrollArea()
-        self.voice_sidebar.setWidgetResizable(True)
-        self.voice_sidebar.setMinimumWidth(250)
-        self.voice_sidebar.setMaximumWidth(400)
-    
-        self.voice_widget = QWidget()
-        self.setup_voice_grid() # self.voice_gridをここで作成・配置
-        self.voice_sidebar.setWidget(self.voice_widget)
-    
-        self.content_splitter.addWidget(self.voice_sidebar)
-    
-        # 左右の初期バランスを設定（タイムライン 8 : 音源 2）
-        self.content_splitter.setStretchFactor(0, 8)
-        self.content_splitter.setStretchFactor(1, 2)
-    
-        self.main_layout.addWidget(self.content_splitter)
+        self.toolbar.addSeparator()
+        
+        self.toolbar.addWidget(QLabel(" Tempo: "))
+        self.tempo_input = QLineEdit("120")
+        self.tempo_input.setFixedWidth(40)
+        self.tempo_input.returnPressed.connect(self.update_tempo_from_input)
+        self.toolbar.addWidget(self.tempo_input)
 
-        # 3. 下部：サブコントロールエリア（歌詞・スライダーなど）
-        self.bottom_tool_panel = QHBoxLayout()
-    
-        # 歌詞一括入力ボタンをここに配置（浮かないように！）
+    def setup_main_editor_area(self):
+        """中央エリア：QSplitterで左右に分割"""
+        self.editor_splitter = QSplitter(Qt.Horizontal)
+
+        # --- 左：タイムライン ---
+        self.timeline_widget = TimelineWidget() # 仮定：自作ウィジェット
+        self.editor_splitter.addWidget(self.timeline_widget)
+
+        # --- 右：音源リスト（スクロール可能） ---
+        self.voice_scroll = QScrollArea()
+        self.voice_scroll.setWidgetResizable(True)
+        self.voice_scroll.setFixedWidth(280)
+        
+        self.voice_container = QWidget()
+        self.voice_grid = QGridLayout(self.voice_container) # ここにカードを追加していく
+        self.voice_scroll.setWidget(self.voice_container)
+        
+        self.editor_splitter.addWidget(self.voice_scroll)
+        self.editor_splitter.setStretchFactor(0, 8) # タイムライン優先
+
+        self.main_layout.addWidget(self.editor_splitter)
+
+    def setup_bottom_panel(self):
+        """下部：歌詞入力などのツール"""
+        bottom_box = QHBoxLayout()
+        
         self.lyrics_button = QPushButton("歌詞一括入力")
-        self.lyrics_button.setMinimumHeight(40)
+        self.lyrics_button.setFixedHeight(40)
         self.lyrics_button.clicked.connect(self.on_click_apply_lyrics_bulk)
-        self.bottom_tool_panel.addWidget(self.lyrics_button)
+        bottom_box.addWidget(self.lyrics_button)
+        
+        # フォルマントやパフォーマンス等のボタンもここに追加
+        self.main_layout.addLayout(bottom_box)
+
+
     
-        # フォルマント等のスライダー系
-        self.setup_formant_slider() 
-        self.setup_performance_toggle()
-    
-        self.main_layout.addLayout(self.bottom_tool_panel)
-
-        # 4. その他・初期化
-        self.setup_status_bar()
-        self.setup_actions()
-        self.setup_menus()
-        self.init_pro_talk_ui()
-
-        print("✓ UI components successfully assembled in stable layout")
-
     def setup_control_panel(self):
         """上部コントロールパネルの構築"""
         panel_layout = QHBoxLayout()
