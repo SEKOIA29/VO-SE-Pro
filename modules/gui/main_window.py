@@ -2739,6 +2739,8 @@ class MainWindow(QMainWindow):
         key_h = self.timeline_widget.key_height_pixels
         full_height = 128 * key_h
         viewport_height = self.timeline_widget.height()
+        max_v = 128 * self.timeline_widget.note_height
+        self.vertical_scroll.setRange(0, max_v)
 
         max_scroll_value = max(0, int(full_height - viewport_height + key_h))
         self.v_scrollbar.setRange(0, max_scroll_value)
