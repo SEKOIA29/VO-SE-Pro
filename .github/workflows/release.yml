@@ -45,12 +45,16 @@ jobs:
         shell: bash
         run: |
           mkdir -p bin
+          # ソースファイルが存在するか確認（デバッグ用）
+          ls -R src/
+          
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             g++ -std=c++17 -shared -fPIC -o bin/vose_core.dll src/vose_core.cpp src/world/*.cpp \
               -I. -Isrc -Iinclude -Iinclude/world -O2 -static-libgcc -static-libstdc++
           else
+            # Mac版：最適化フラグ -O3 を使い、警告を無視して高速にビルド
             clang++ -std=c++17 -shared -fPIC -o bin/vose_core.dylib src/vose_core.cpp src/world/*.cpp \
-              -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O2
+              -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O3 -w
           fi
 
 # --- 4. 実行ファイル一体化 & 権限修正 ---
