@@ -333,11 +333,10 @@ def get_resource_path(relative_path):
 
 
 
-
-# 内部モジュール（存在しない場合はモック実装があっった）
 try:
     from GUI.vo_se_engine import VO_SE_Engine
 except ImportError:
+    pass # ← これを追加！(半角スペース4つのインデントを忘れずに)
 
 
 class VoSeEngine:
