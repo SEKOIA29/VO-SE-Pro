@@ -16,7 +16,6 @@ jobs:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
-      # 片方が失敗しても、もう片方のOSのビルドを続行させる
       fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
@@ -25,7 +24,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --- 1. Python環境構築 ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -38,11 +36,9 @@ jobs:
           pip install PySide6 numpy sounddevice soundfile mido janome Pillow pyinstaller
           pip install pyopenjtalk --only-binary :all: || pip install pyopenjtalk
 
-      # --- 2. 公式音源パッキング ---
       - name: Pack Official Voice Data
         run: python modules/tools/pack_voice.py
 
-      # --- 3. C++ エンジンビルド ---
       - name: Build C++ Engine
         shell: bash
         run: |
@@ -55,7 +51,6 @@ jobs:
               -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O3 -w
           fi
 
-      # --- 4. 実行ファイル一体化 & 権限修正 ---
       - name: Package App
         shell: bash
         run: |
@@ -63,21 +58,24 @@ jobs:
           mkdir dist_out
 
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # Windows版：modules/GUI内のファイルを見つけられるように設定
+            # Windows版：modulesフォルダを構造ごと追加
             pyinstaller --noconsole --onefile --clean \
-              --paths . --paths modules/GUI \
+              --paths . \
+              --paths modules \
+              --paths modules/GUI \
               --icon="assets/icon.ico" \
               --hidden-import=modules.GUI.main_window \
               --add-data "bin/vose_core.dll;bin" \
               --add-data "assets;assets" \
-              --add-data "modules/GUI/main_window.py;modules/GUI" \
+              --add-data "modules;modules" \
               --name "VO-SE_PRO_Win" main.py
-            
             cp dist/VO-SE_PRO_Win.exe dist_out/
           else
-            # Mac版：--paths と --hidden-import で依存関係を解決
+            # Mac版：modulesフォルダを構造ごと追加し、パスを徹底指定
             pyinstaller --noconsole --windowed --clean \
-              --paths . --paths modules/GUI \
+              --paths . \
+              --paths modules \
+              --paths modules/GUI \
               --icon="assets/icon.icns" \
               --exclude-module PySide6.QtPdf \
               --hidden-import=modules.GUI.main_window \
@@ -86,14 +84,10 @@ jobs:
               --add-data "modules:modules" \
               --name "VO-SE_PRO_Mac" main.py
             
-            # 権限付与
             chmod +x dist/VO-SE_PRO_Mac.app/Contents/MacOS/VO-SE_PRO_Mac
-            
-            # 圧縮
             cd dist && zip -ry ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
-      # --- 5. アップロード ---
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         if: always()
@@ -108,8 +102,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- 6. Artifact保存 ---
-      - name: 📦 Save Artifacts (Direct Download)
+      - name: 📦 Save Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: VO-SE-PRO-Package-${{ matrix.os }}
