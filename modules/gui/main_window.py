@@ -335,7 +335,7 @@ def get_resource_path(relative_path):
 
 
 try:
-    from GUI.vo_se_engine import VO_SE_Engine
+    from gui.vo_se_engine import VO_SE_Engine
 except ImportError:
     pass # ← これを追加！(半角スペース4つのインデントを忘れずに)
 
