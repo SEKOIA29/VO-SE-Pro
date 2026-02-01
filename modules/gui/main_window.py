@@ -1106,37 +1106,32 @@ class MainWindow(QMainWindow):
         return os.path.join(voice_path, f"{lyric}.wav")
 
     def prepare_rendering_data(self):
-        """GUIのノート情報をエンジン用のデータ構造に変換する (VCV解決込み)"""
-        import numpy as np
-        
-        gui_notes = self.timeline_widget.get_all_notes()
-        song_data = []
-        prev_lyric = None # 前の歌詞を記憶
+        """タイムラインとグラフのデータをエンジン形式にシリアライズ"""
+        notes = self.timeline_widget.notes_list
+        if not notes:
+            return None
+            
+        render_data = {
+            "project_name": "New Project",
+            "voice_path": self.voice_manager.get_current_voice_path(),
+            "tempo": self.timeline_widget.tempo,
+            "notes": []
+        }
 
-        for note in gui_notes:
-            # --- 連続音解決ロジックを実行 ---
-            target_wav_path = self.resolve_target_wav(note.lyrics, prev_lyric)
+        for note in notes:
+            # グラフエディタの各レイヤーから値を抽出
+            note_info = {
+                "lyric": note.lyrics,
+                "note_num": note.note_number,
+                "start_sec": note.start_time,
+                "duration_sec": note.duration,
+                "pitch_bend": self._sample_range(self.graph_editor_widget.all_parameters["Pitch"], note, 64),
+                "dynamics": self._sample_range(self.graph_editor_widget.all_parameters["Tension"], note, 64)
+            }
+            render_data["notes"].append(note_info)
+            
+        return render_data
 
-            # 1. MIDIノート番号を基本周波数(Hz)に変換
-            base_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
-
-            # 2. 5msごとのフレーム数を計算 (WORLDエンジンの仕様)
-            num_frames = int(max(1, (note.duration * 1000) / 5))
-        
-            # 3. ピッチ配列の作成
-            pitch_list = np.ones(num_frames, dtype=np.float32) * base_hz
-
-            # 4. エンジン用辞書にパッキング
-            song_data.append({
-                'lyric': note.lyrics,
-                'wav_path': target_wav_path, # ここで決定したフルパスを渡す
-                'pitch_list': pitch_list
-            })
-
-            # 今回の歌詞を保存
-            prev_lyric = note.lyrics
-    
-        return song_data
 
     def start_playback(self):
         """再生ボタンが押された時のメインエントリ"""
