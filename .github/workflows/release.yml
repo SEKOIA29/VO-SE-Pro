@@ -24,7 +24,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --- 1. Python環境構築 ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -37,11 +36,9 @@ jobs:
           pip install PySide6 numpy sounddevice soundfile mido janome Pillow pyinstaller
           pip install pyopenjtalk --only-binary :all: || pip install pyopenjtalk
 
-      # --- 2. 公式音源パッキング ---
       - name: Pack Official Voice Data
         run: python modules/tools/pack_voice.py
 
-      # --- 3. C++ エンジンビルド (main.pyの指定名 libvo_se に合わせる) ---
       - name: Build C++ Engine
         shell: bash
         run: |
@@ -54,7 +51,6 @@ jobs:
               -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O3 -w
           fi
 
-      # --- 4. 実行ファイル一体化 & 権限修正 ---
       - name: Package App
         shell: bash
         run: |
@@ -62,12 +58,11 @@ jobs:
           mkdir dist_out
 
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # Windows版：構造を保ってパッケージング
             pyinstaller --noconsole --onefile --clean \
               --paths . \
               --paths modules \
               --icon="assets/icon.ico" \
-              --hidden-import=modules.GUI.main_window \
+              --hidden-import=modules.gui.main_window \
               --add-data "bin/libvo_se.dll;bin" \
               --add-data "assets;assets" \
               --add-data "modules;modules" \
@@ -75,26 +70,21 @@ jobs:
             
             cp dist/VO-SE_PRO_Win.exe dist_out/
           else
-            # Mac版：構造を保ってパッケージング
             pyinstaller --noconsole --windowed --clean \
               --paths . \
               --paths modules \
               --icon="assets/icon.icns" \
               --exclude-module PySide6.QtPdf \
-              --hidden-import=modules.GUI.main_window \
+              --hidden-import=modules.gui.main_window \
               --add-data "bin/libvo_se.dylib:bin" \
               --add-data "assets:assets" \
               --add-data "modules:modules" \
               --name "VO-SE_PRO_Mac" main.py
             
-            # 権限付与
             chmod +x dist/VO-SE_PRO_Mac.app/Contents/MacOS/VO-SE_PRO_Mac
-            
-            # 圧縮
             cd dist && zip -ry ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
-      # --- 5. アップロード ---
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         if: always()
@@ -109,7 +99,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- 6. Artifact保存 ---
       - name: 📦 Save Artifacts
         uses: actions/upload-artifact@v4
         with:
