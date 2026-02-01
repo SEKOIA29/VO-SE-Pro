@@ -672,7 +672,7 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
 
 
-       self.vowel_groups = {
+        self.vowel_groups = {
             'a': 'あかさたなはまやらわがざだばぱぁゃ',
             'i': 'いきしちにひみりぎじぢびぴぃ',
             'u': 'うくすつぬふむゆるぐずづぶぷぅゅ',
