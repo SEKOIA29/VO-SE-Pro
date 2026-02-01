@@ -10,7 +10,7 @@ import json
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QIcon
 
-from modules.GUI.main_window import MainWindow
+from modules.gui.main_window import MainWindow
 
 # --- [1] リソースパス解決関数 (PyInstaller対応) ---
 def get_resource_path(relative_path):
