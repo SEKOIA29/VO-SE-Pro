@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QAction, QKeySequence, QKeyEvent, QPainter, QPen, QPixmap
 from PySide6.QtCore import Slot, Qt, QTimer, Signal, QThread, QUrl
+from PySide6.QtCore import QThread, Signal
 
 # 外部ライブラリ
 from janome.tokenizer import Tokenizer
