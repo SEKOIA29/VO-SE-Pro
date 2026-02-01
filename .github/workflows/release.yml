@@ -16,6 +16,8 @@ jobs:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      # 片方が失敗しても、もう片方のOSのビルドを続行させる
+      fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
 
@@ -45,19 +47,15 @@ jobs:
         shell: bash
         run: |
           mkdir -p bin
-          # ソースファイルが存在するか確認（デバッグ用）
-          ls -R src/
-          
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             g++ -std=c++17 -shared -fPIC -o bin/vose_core.dll src/vose_core.cpp src/world/*.cpp \
               -I. -Isrc -Iinclude -Iinclude/world -O2 -static-libgcc -static-libstdc++
           else
-            # Mac版：最適化フラグ -O3 を使い、警告を無視して高速にビルド
             clang++ -std=c++17 -shared -fPIC -o bin/vose_core.dylib src/vose_core.cpp src/world/*.cpp \
               -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O3 -w
           fi
 
-# --- 4. 実行ファイル一体化 & 権限修正 ---
+      # --- 4. 実行ファイル一体化 & 権限修正 ---
       - name: Package App
         shell: bash
         run: |
@@ -65,24 +63,21 @@ jobs:
           mkdir dist_out
 
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # Windows版：modules/GUI内のファイルを見つけられるように設定
             pyinstaller --noconsole --onefile --clean \
+              --paths . --paths modules/GUI \
               --icon="assets/icon.ico" \
-              --hidden-import=PySide6.QtCore \
-              --hidden-import=PySide6.QtGui \
-              --hidden-import=PySide6.QtWidgets \
-              --hidden-import=PySide6.QtMultimedia \
+              --hidden-import=modules.GUI.main_window \
               --add-data "bin/vose_core.dll;bin" \
               --add-data "assets;assets" \
-              --add-data "main_window.py;." \
+              --add-data "modules/GUI/main_window.py;modules/GUI" \
               --name "VO-SE_PRO_Win" main.py
             
             cp dist/VO-SE_PRO_Win.exe dist_out/
           else
-            # Mac版：--paths で modules フォルダを検索対象に追加
-            # --hidden-import で深い階層にある GUI.main_window を明示的に指定
+            # Mac版：--paths と --hidden-import で依存関係を解決
             pyinstaller --noconsole --windowed --clean \
-              --paths . \
-              --paths modules/GUI \
+              --paths . --paths modules/GUI \
               --icon="assets/icon.icns" \
               --exclude-module PySide6.QtPdf \
               --hidden-import=modules.GUI.main_window \
@@ -91,13 +86,11 @@ jobs:
               --add-data "modules:modules" \
               --name "VO-SE_PRO_Mac" main.py
             
-            # 権限付与（これがないと「壊れている」と言われる）
+            # 権限付与
             chmod +x dist/VO-SE_PRO_Mac.app/Contents/MacOS/VO-SE_PRO_Mac
             
-            # 圧縮（シンボリックリンクを保持）
-            cd dist
-            zip -ry ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app
-            cd ..
+            # 圧縮
+            cd dist && zip -ry ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
       # --- 5. アップロード ---
