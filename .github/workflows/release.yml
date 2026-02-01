@@ -53,7 +53,7 @@ jobs:
               -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O2
           fi
 
-      # --- 4. 実行ファイル一体化 & 権限修正 ---
+# --- 4. 実行ファイル一体化 & 権限修正 ---
       - name: Package App
         shell: bash
         run: |
@@ -69,24 +69,27 @@ jobs:
               --hidden-import=PySide6.QtMultimedia \
               --add-data "bin/vose_core.dll;bin" \
               --add-data "assets;assets" \
+              --add-data "main_window.py;." \
               --name "VO-SE_PRO_Win" main.py
             
             cp dist/VO-SE_PRO_Win.exe dist_out/
           else
-            # Mac版：PyInstaller実行
+            # Mac版：自作モジュール（main_window等）をすべて含める
+            # ※もし自作ファイルが modules フォルダにあるなら --collect-all modules を追加
             pyinstaller --noconsole --windowed --clean \
               --icon="assets/icon.icns" \
               --exclude-module PySide6.QtPdf \
               --add-data "bin/vose_core.dylib:bin" \
               --add-data "assets:assets" \
+              --add-data "main_window.py:." \
               --name "VO-SE_PRO_Mac" main.py
             
-            # 【重要】実行権限をバイナリに直接付与
+            # 実行権限をバイナリに直接付与
             chmod +x dist/VO-SE_PRO_Mac.app/Contents/MacOS/VO-SE_PRO_Mac
             
-            # 【重要】Mac独自の構造（シンボリックリンク等）を壊さずに圧縮
+            # 圧縮
             cd dist
-            zip -ry ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app
+            zip -r -y ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app
             cd ..
           fi
 
