@@ -74,22 +74,25 @@ jobs:
             
             cp dist/VO-SE_PRO_Win.exe dist_out/
           else
-            # Mac版：自作モジュール（main_window等）をすべて含める
-            # ※もし自作ファイルが modules フォルダにあるなら --collect-all modules を追加
+            # Mac版：--paths で modules フォルダを検索対象に追加
+            # --hidden-import で深い階層にある GUI.main_window を明示的に指定
             pyinstaller --noconsole --windowed --clean \
+              --paths . \
+              --paths modules/GUI \
               --icon="assets/icon.icns" \
               --exclude-module PySide6.QtPdf \
+              --hidden-import=modules.GUI.main_window \
               --add-data "bin/vose_core.dylib:bin" \
               --add-data "assets:assets" \
-              --add-data "main_window.py:." \
+              --add-data "modules:modules" \
               --name "VO-SE_PRO_Mac" main.py
             
-            # 実行権限をバイナリに直接付与
+            # 権限付与（これがないと「壊れている」と言われる）
             chmod +x dist/VO-SE_PRO_Mac.app/Contents/MacOS/VO-SE_PRO_Mac
             
-            # 圧縮
+            # 圧縮（シンボリックリンクを保持）
             cd dist
-            zip -r -y ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app
+            zip -ry ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app
             cd ..
           fi
 
