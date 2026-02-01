@@ -706,13 +706,8 @@ class MainWindow(QMainWindow):
         self.init_engine()
 
         # Canvasをプロ仕様のダークカラーに設定
-        self.canvas = tk.Canvas(self.root, bg="#1E1E1E", highlightthickness=0)
+        self.timeline_widget.setStyleSheet("background-color: #121212;")
 
-        # グリッド（拍子線）を描画する場合の色例
-        for x in range(0, 5000, 100):
-            self.canvas.create_line(x, 0, x, 1000, fill="#2D2D2D") # 縦線
-        for y in range(0, 1000, 50):
-        self.canvas.create_line(0, y, 5000, y, fill="#2D2D2D") # 横線
         
         # --- 1. 基盤の初期化 ---
         self.config_manager = ConfigHandler()
@@ -779,23 +774,8 @@ class MainWindow(QMainWindow):
         # ウィンドウタイトル
         self.setWindowTitle("VO-SE Pro")
 
-
-        self.root = root
-        self.root.title("VO-SE Pro")
         
-        # 1. まずCanvas（キャンバス）を作る
-        # ここで背景を「漆黒」に設定します！
-        self.canvas = tk.Canvas(
-            self.root, 
-            width=1200, 
-            height=800, 
-            bg="#121212",        # ← これ！
-            highlightthickness=0 # ← これ！
-        )
-        self.canvas.pack(fill="both", expand=True)
 
-        # 2. グリッドを描く
-        self.draw_pro_grid() # ← ここで呼び出す！
 
         # Python側で管理するデータモデルのリスト
         self.notes = []        # ここに NoteEvent オブジェクトが溜まっていく
@@ -1249,46 +1229,72 @@ class MainWindow(QMainWindow):
         dialog = CreditsDialog(self.confirmed_partners, self)
         dialog.exec()
     
-
     def init_ui(self):
-        """UIコンポーネントの構築"""
-        self.setWindowTitle("VO-SE Pro ")
+        """UIコンポーネントの構築（安定・高速化版）"""
+        self.setWindowTitle("VO-SE Pro - Next Gen Vocal Synthesizer")
         self.setGeometry(100, 100, 1200, 800)
-        
-        # メインウィジェット
-        central_widget = QWidget()
+    
+        # メインウィジェットとベースレイアウト  
+        central_widget = QWidget()  
         self.setCentralWidget(central_widget)
         self.main_layout = QVBoxLayout(central_widget)
-        
-        # ツールバー作成
+        self.main_layout.setContentsMargins(5, 5, 5, 5) # 画面端に少し隙間を
+        self.main_layout.setSpacing(2)
+
+        # 1. ツールバーと上部コントロール（固定）
         self.toolbar = QToolBar("Main Toolbar")
         self.addToolBar(self.toolbar)
-        
-        # コントロールパネル（上部）
-        self.setup_control_panel()
-        
-        # タイムライン・エディタ（中央）
-        self.setup_timeline_area()
-        
-        # 音源選択グリッド（右サイド）
-        self.setup_voice_grid()
-        
-        # ステータスバー（下部）
+        self.setup_control_panel() # テンポや再生ボタン等
+
+        # 2. 【改善】メインエディタエリア（スプリッターで左右分割）
+        self.content_splitter = QSplitter(Qt.Horizontal)
+    
+        # --- 左側：タイムライン（メイン編集画面） ---
+        self.timeline_container = QWidget()
+        self.timeline_layout = QVBoxLayout(self.timeline_container)
+        self.setup_timeline_area() # ここでタイムラインウィジェットを作成
+        self.content_splitter.addWidget(self.timeline_container)
+
+        # --- 右側：音源管理サイドバー（スクロール可能） ---
+        self.voice_sidebar = QScrollArea()
+        self.voice_sidebar.setWidgetResizable(True)
+        self.voice_sidebar.setMinimumWidth(250)
+        self.voice_sidebar.setMaximumWidth(400)
+    
+        self.voice_widget = QWidget()
+        self.setup_voice_grid() # self.voice_gridをここで作成・配置
+        self.voice_sidebar.setWidget(self.voice_widget)
+    
+        self.content_splitter.addWidget(self.voice_sidebar)
+    
+        # 左右の初期バランスを設定（タイムライン 8 : 音源 2）
+        self.content_splitter.setStretchFactor(0, 8)
+        self.content_splitter.setStretchFactor(1, 2)
+    
+        self.main_layout.addWidget(self.content_splitter)
+
+        # 3. 下部：サブコントロールエリア（歌詞・スライダーなど）
+        self.bottom_tool_panel = QHBoxLayout()
+    
+        # 歌詞一括入力ボタンをここに配置（浮かないように！）
+        self.lyrics_button = QPushButton("歌詞一括入力")
+        self.lyrics_button.setMinimumHeight(40)
+        self.lyrics_button.clicked.connect(self.on_click_apply_lyrics_bulk)
+        self.bottom_tool_panel.addWidget(self.lyrics_button)
+    
+        # フォルマント等のスライダー系
+        self.setup_formant_slider() 
+        self.setup_performance_toggle()
+    
+        self.main_layout.addLayout(self.bottom_tool_panel)
+
+        # 4. その他・初期化
         self.setup_status_bar()
-        
-        # メニューとアクション
         self.setup_actions()
         self.setup_menus()
-        
-        # 追加UI（フォルマント、パフォーマンス、Talk）
-        self.setup_formant_slider()
-        self.setup_performance_toggle()
         self.init_pro_talk_ui()
-        self.lyrics_button = QPushButton("歌詞一括入力")
-        self.lyrics_button.clicked.connect(self.on_click_apply_lyrics_bulk)
-        
-        print("✓ UI components initialized")
-        
+
+        print("✓ UI components successfully assembled in stable layout")
 
     def setup_control_panel(self):
         """上部コントロールパネルの構築"""
@@ -1430,6 +1436,8 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self.graph_editor_widget)
         
         self.main_layout.addWidget(splitter)
+
+        self.timeline_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
     def setup_voice_grid(self):
         """音源選択グリッドの構築"""
