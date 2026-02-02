@@ -2748,19 +2748,44 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def on_notes_modified(self):
-        """ノートやOnset変更時"""
-        self.statusBar().showMessage("音声を更新中...", 1000)
-        updated_notes = self.timeline_widget.notes_list
+        """
+        ノートやパラメータに変更があった際に呼ばれる。
+        直接 Thread を立てず、タイマーを介すことでPCのパンク（爆弾3）を防ぐ。
+        """
+        # 1. 既存のタイマーを止めてリセット（連打防止）
+        self.render_timer.stop()
         
+        # 2. 300ms（0.3秒）後に execute_async_render を実行するように予約
+        # ユーザーがマウスを動かしている間はここが何度も呼ばれ、タイマーが更新され続ける
+        self.render_timer.start(300)
+        
+        self.statusBar().showMessage("変更を検知しました...", 500)
+
+    def execute_async_render(self):
+        """
+        タイマー満了時に一度だけ実行される「重い」計算処理。
+        ここで初めてスレッドを立てる。
+        """
+        self.statusBar().showMessage("音声をレンダリング中...", 1000)
+        
+        updated_notes = self.timeline_widget.notes_list
+        if not updated_notes:
+            return
+
+        # エンジンに最新データを渡す
         if hasattr(self.vo_se_engine, 'update_notes_data'):
             self.vo_se_engine.update_notes_data(updated_notes)
-        
+
+        # 【爆弾4対策】もし既に前の計算スレッドが動いていたら、
+        # 競合しないようにエンジン側で停止処理をしてから新しいスレッドを開始
         threading.Thread(
             target=self.vo_se_engine.synthesize_track,
             args=(updated_notes, self.pitch_data),
             kwargs={'preview_mode': True},
             daemon=True
         ).start()
+
+
 
     @Slot(list)
     def on_pitch_data_updated(self, new_pitch_events: List[PitchEvent]):
@@ -2814,12 +2839,6 @@ class MainWindow(QMainWindow):
 
         self.keyboard_sidebar.set_key_height_pixels(key_h)
 
-
-
-    @Slot()
-    def on_notes_modified(self):
-        """変更があったらタイマーをリスタート（300ms待機）"""
-        self.render_timer.start(300) 
 
     def execute_async_render(self):
         """タイマー満了で実際にスレッドを起動"""
