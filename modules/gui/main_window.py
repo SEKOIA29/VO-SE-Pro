@@ -1536,21 +1536,6 @@ class MainWindow(QMainWindow):
         if hasattr(self.vo_se_engine, 'vose_set_formant'):
             self.vo_se_engine.vose_set_formant(shift)
 
-    def setup_performance_toggle(self):
-        """パフォーマンスモード切り替え"""
-        self.perf_action = QAction("High Mode", self)
-        self.perf_action.setCheckable(True)
-        self.perf_action.triggered.connect(self.toggle_performance)
-        self.toolbar.addAction(self.perf_action)
-
-    def toggle_performance(self, checked):
-        """パフォーマンスモード切り替え処理"""
-        mode = 1 if checked else 0
-        if hasattr(self.vo_se_engine, 'lib') and hasattr(self.vo_se_engine.lib, 'vose_set_performance_mode'):
-            self.vo_se_engine.lib.vose_set_performance_mode(mode)
-        status = "高出力モード" if mode == 1 else "省電力モード"
-        self.statusBar().showMessage(f"VO-SE: {status} に切り替えました")
-
     def init_pro_talk_ui(self):
         """Talk入力UI初期化"""
         self.text_input = QLineEdit()
@@ -1603,6 +1588,58 @@ class MainWindow(QMainWindow):
             print("(-_-) Pro Audio Monitoring: STOP")
             self.pro_monitoring.is_playing = False
             self.engine.stop()
+
+    # ==========================================================================
+    # PERFORMANCE CONTROL CENTER (Core i3 Survival Logic)
+    # ==========================================================================
+
+    def setup_performance_toggle(self):
+        """
+        [Strategic Toggle] パフォーマンスモードの初期化。
+        リソースの乏しい環境(Core i3等)と、ハイスペック環境を瞬時に最適化します。
+        """
+        # アイコンやテキストで「プロのツール」感を演出
+        self.perf_action = QAction("High-Performance Mode", self)
+        self.perf_action.setCheckable(True)
+        # 初期状態は省電力(False)にしておき、ユーザーが必要に応じてブーストする仕様
+        self.perf_action.setChecked(False) 
+        self.perf_action.triggered.connect(self.toggle_performance)
+        
+        # ツールバーへの追加（メイン操作部に配置してアクセシビリティを確保）
+        self.toolbar.addAction(self.perf_action)
+
+    @Slot(bool)
+    def toggle_performance(self, checked):
+        """
+        パフォーマンスモードの動的切り替え。
+        C++エンジン(vose_core)の内部バッファやスレッド優先度を操作します。
+        """
+        # 1. 動作モードの決定 (1: 高負荷・高品質, 0: 低負荷・安定)
+        mode = 1 if checked else 0
+        
+        # 2. C++エンジン(Shared Library)への安全なアクセス
+        try:
+            if hasattr(self.vo_se_engine, 'lib'):
+                if hasattr(self.vo_se_engine.lib, 'vose_set_performance_mode'):
+                    # C言語形式でモードを転送
+                    self.vo_se_engine.lib.vose_set_performance_mode(mode)
+                
+                # [蹂躙ポイント] 省電力モード時は内部バッファを増やして途切れを防ぐなどの追加処理
+                if mode == 0 and hasattr(self.vo_se_engine.lib, 'vose_set_buffer_size'):
+                    self.vo_se_engine.lib.vose_set_buffer_size(4096) # Core i3向けの安全策
+                elif mode == 1 and hasattr(self.vo_se_engine.lib, 'vose_set_buffer_size'):
+                    self.vo_se_engine.lib.vose_set_buffer_size(1024) # 高速レスポンス
+        except Exception as e:
+            print(f"Engine Performance Control Warning: {e}")
+
+        # 3. ユーザーへのフィードバック
+        status = "【High-Mode】レンダリング優先" if mode == 1 else "【Power-Save】Core i3最適化モード"
+        color = "#ff4444" if mode == 1 else "#44ff44" # ステータスバーの色を変える演出もアリ
+        
+        self.statusBar().showMessage(f"System: {status} に切り替えました")
+        
+        # ログにも残して「まともに動いている」ことを証明
+        print(f"Performance Mode Changed to: {mode}")
 
     
 
