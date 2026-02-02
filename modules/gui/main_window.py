@@ -671,7 +671,8 @@ class MainWindow(QMainWindow):
 
     def __init__(self, parent=None, engine=None, ai=None, config=None):
         super().__init__(parent)
-
+       
+        self.playback_thread = None # 今の演奏スレッドを保存する変数
 
         self.vowel_groups = {
             'a': 'あかさたなはまやらわがざだばぱぁゃ',
@@ -1882,6 +1883,19 @@ class MainWindow(QMainWindow):
             self.loop_button.setText("ループ: OFF")
             self.status_label.setText("ループ再生を無効にしました")
 
+    def on_play_pause_toggled(self):
+        # 1. もし既に鳴っていたら止める
+        if self.playback_thread and self.playback_thread.is_alive():
+            self.vo_se_engine.stop_playback()
+            self.playback_thread.join(timeout=0.5) # 終わるのを少し待つ
+
+        # 2. 新しく再生を開始
+        self.playback_thread = threading.Thread(
+            target=self.vo_se_engine.play_audio, 
+            daemon=True
+        )
+        self.playback_thread.start()
+
     @Slot()
     def update_playback_cursor(self):
         """再生カーソルの更新（タイマー同期）"""
@@ -2110,6 +2124,22 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"UST読み込み完了: {len(notes)}ノート")
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"UST読み込み失敗: {e}")
+
+
+    def get_safe_installed_name(self, filename, zip_path):
+        """
+        パスをOSに合わせて綺麗にし、安全にフォルダ名を取り出す
+        """
+        # 1. バックスラッシュ等を現在のOSに合わせて統一
+        clean_path = os.path.normpath(filename)
+        parts = [p for p in clean_path.split(os.sep) if p]
+
+        # 2. フォルダ階層があるかチェックして名前を取得
+        if len(parts) >= 2:
+            return parts[-2] # フォルダ名
+    
+        # 3. フォルダがない場合はZIPファイル自体の名前を使う
+        return os.path.splitext(os.path.basename(zip_path))[0]
 
 
     @Slot()
