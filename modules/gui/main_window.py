@@ -2241,6 +2241,14 @@ class MainWindow(QMainWindow):
         # グラフエディタの補間関数 get_value_at_time を使用
         return [self.graph_editor_widget.get_value_at_time(events, t) for t in times]
 
+    def load_oto_ini_special(self, path):
+        try:
+            # 迷わず cp932 (Shift-JIS) を指定
+            with open(path, "r", encoding="cp932", errors="ignore") as f:
+                return f.read()
+        except:
+            return ""
+
     
 
     @Slot()
