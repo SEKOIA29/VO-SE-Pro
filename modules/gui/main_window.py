@@ -2391,8 +2391,7 @@ class MainWindow(QMainWindow):
                     }
         
         self.voice_manager.voices = found_voices
-        return found_voices
-
+        
         # 3. 【追加】公式音源フォルダ内をスキャンして全員登録
         official_base = os.path.join(self.base_path, "assets", "official_voices")
         if os.path.exists(official_base):
@@ -2406,6 +2405,8 @@ class MainWindow(QMainWindow):
                     self.voices[display_name] = f"__INTERNAL__:{char_dir}"
         
         return self.voices
+        return found_voices
+
 
     def parse_oto_ini(self, voice_path: str) -> dict:
         """
