@@ -20,6 +20,12 @@ from typing import List
 from typing import List, Optional, Dict, Any
 from scipy.io.wavfile import write as wav_write
 
+
+
+import shutil
+
+from PySide6.QtWidgets import QMessageBox
+
 # Qt関連
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -1671,10 +1677,6 @@ class MainWindow(QMainWindow):
         ZIP音源インストール完全版
         1. 文字化け修復解凍 2. ゴミ排除 3. AI解析(oto.ini生成) 4. Aural AI接続 5. UI更新
         """
-        import zipfile
-        import shutil
-        import os
-        from PySide6.QtWidgets import QMessageBox
 
         # 保存先ディレクトリ（voicesフォルダ）
         extract_base_dir = get_resource_path("voices")
@@ -1950,6 +1952,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("dynamics engine起動中...")
         
         self.analysis_thread.start()
+        self.analysis_thread.finished.connect(self.analysis_thread.deleteLater)
 
     def update_analysis_status(self, percent: int, filename: str):
         """解析進捗の表示"""
@@ -1979,6 +1982,22 @@ class MainWindow(QMainWindow):
         self.ai_analyze_button.setEnabled(True)
         self.progress_bar.hide()
         QMessageBox.critical(self, "AI解析エラー", f"エラー:\n{message}")
+
+    def closeEvent(self, event):
+        """ソフトを閉じる時、スレッドが動いていたら止める"""
+        if hasattr(self, 'analysis_thread') and self.analysis_thread.isRunning():
+            reply = QMessageBox.question(self, '確認', 
+                "解析中ですが終了しますか？（データは保存されません）",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+
+            if reply == QMessageBox.Yes:
+                self.analysis_thread.terminate() # 強制終了
+                self.analysis_thread.wait() # 完全に止まるまで待機
+                event.accept()
+            else:
+                event.ignore()
+        else:
+            event.accept()
 
     # ==========================================================================
     # レンダリング
