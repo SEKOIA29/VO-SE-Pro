@@ -129,6 +129,30 @@ class TimelineWidget(QWidget):
 
         # ノート & 音素
         for n in self.notes_list:
+            r = self.get_note_rect(n)
+            
+            # [蹂躙ポイント] 解析済みノートは少し光らせる、または色を変えて「プロ仕様」を演出
+            base_color = QColor(255, 159, 10) if n.is_selected else QColor(10, 132, 255)
+            if getattr(n, 'has_analysis', False):
+                # 解析済みは少し明るい青（シアン寄り）にするなどの差別化
+                color = base_color.lighter(110)
+            else:
+                color = base_color
+
+            p.setBrush(QBrush(color))
+            p.setPen(QPen(color.lighter(120), 1))
+            p.drawRoundedRect(r, 2, 2)
+            
+            # 解析結果(Onset)をガイド線として表示する場合（オプション）
+            if getattr(n, 'has_analysis', False):
+                # 先行発音(Pre-Utterance)の位置を細い線で表示
+                # これにより海外ニキが「お、正確に解析されてるな」と視認できる
+                line_x = r.left() - int(self.seconds_to_beats(n.pre_utterance) * self.pixels_per_beat)
+                p.setPen(QPen(QColor(255, 255, 255, 100), 1, Qt.DotLine))
+                p.drawLine(line_x, r.top(), line_x, r.bottom())
+
+        # ノート & 音素
+        for n in self.notes_list:
             r = self.get_note_rect(n); color = QColor(255, 159, 10) if n.is_selected else QColor(10, 132, 255)
             p.setBrush(QBrush(color)); p.setPen(QPen(color.lighter(120), 1)); p.drawRoundedRect(r, 2, 2)
             if n.lyrics:
