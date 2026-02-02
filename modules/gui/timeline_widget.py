@@ -51,15 +51,30 @@ class TimelineWidget(QWidget):
 
     # --- C言語エンジン連携ブリッジ ---
     def export_all_data(self, file_path="engine_input.json"):
-        """全データをC言語エンジンが読みやすい形式で保存"""
+        """
+        全データをC言語エンジンが読みやすい形式で保存。
+        Pro Audio Performance による解析結果(onset等)もここに含めます。
+        """
         data = {
             "metadata": {"tempo": self.tempo, "version": "1.4.0"},
-            "notes": [{"t": n.start_time, "d": n.duration, "n": n.note_number, "p": self.analyze_lyric_to_phoneme(n.lyrics)} for n in self.notes_list],
+            "notes": [
+                {
+                    "t": n.start_time, 
+                    "d": n.duration, 
+                    "n": n.note_number, 
+                    "p": self.analyze_lyric_to_phoneme(n.lyrics),
+                    # --- ここに解析データを追加 ---
+                    "onset": getattr(n, 'onset', 0.0),
+                    "overlap": getattr(n, 'overlap', 0.0),
+                    "pre_utterance": getattr(n, 'pre_utterance', 0.0),
+                    "optimized": getattr(n, 'has_analysis', False)
+                } for n in self.notes_list
+            ],
             "parameters": self.parameters
         }
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"✅ Exported to {file_path}")
+        print(f"✅ Exported to {file_path} with Pro Audio parameters")
 
     def init_voice_engine(self):
         """音源をメモリにパッキングしてC++エンジンを初期化"""
