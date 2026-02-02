@@ -1999,6 +1999,42 @@ class MainWindow(QMainWindow):
         else:
             event.accept()
 
+    # 
+    def start_voice_analysis(self, target_dir):
+        """AI解析スレッドを安全に起動する"""
+    
+        # 1. すでに動いていたら二重起動しないようにチェック
+        if hasattr(self, 'analysis_worker') and self.analysis_worker.isRunning():
+            QMessageBox.warning(self, "警告", "現在別の解析を実行中です。")
+            return
+
+        # 2. スレッドの作成
+        self.analysis_worker = AnalysisThread(self.voice_manager, target_dir)
+    
+        # 3. 信号（Signal）を窓口（Slot）につなぐ
+        self.analysis_worker.progress.connect(self.on_analysis_progress)
+        self.analysis_worker.finished.connect(self.on_analysis_finished)
+        self.analysis_worker.error.connect(self.on_analysis_error)
+    
+        # 4. 実行開始！
+        self.analysis_worker.start()
+        self.statusBar().showMessage("AI解析を開始しました...")
+
+     # --- 窓口（Slot）側の実装 ---
+
+    def on_analysis_progress(self, percent, message):
+        """解析の進捗をステータスバーやプログレスバーに表示"""
+        self.statusBar().showMessage(f"解析中: {percent}% - {message}")
+
+    def on_analysis_finished(self, results):
+        """解析が終わった時の処理"""
+        self.statusBar().showMessage("解析が正常に完了しました！", 5000)
+        self.refresh_voice_list() # 画面の音源リストを更新
+
+    def on_analysis_error(self, error_msg):
+        """エラーが起きた時の処理"""
+        QMessageBox.critical(self, "解析エラー", f"エラーが発生しました:\n{error_msg}")
+
     # ==========================================================================
     # レンダリング
     # ==========================================================================
