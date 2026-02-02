@@ -1930,110 +1930,136 @@ class MainWindow(QMainWindow):
         self.time_display_label.setText(f"{minutes:02d}:{seconds:06.3f}")
 
     # ==========================================================================
-    # AI解析機能
+    # Pro Audio Performance Enhancement Section (Advanced Acoustic Analysis)
     # ==========================================================================
 
-    def start_batch_analysis(self):
-        """AI一括解析の開始"""
+    @Slot()
+    def start_audio_performance_analysis(self):
+        """
+        [Advanced Engine] 音響特性のバッチ解析を開始。
+        AIという呼称を排し、純粋な信号処理技術(DSP)による最適化として実行します。
+        """
         target_dir = self.voice_manager.get_current_voice_path()
         
+        # ガード：音源フォルダの存在確認
         if not target_dir or not os.path.exists(target_dir):
-            QMessageBox.warning(self, "エラー", "有効な音源フォルダが選択されていません")
+            QMessageBox.warning(self, "Performance Error", "有効な音源ライブラリがロードされていません。")
             return
 
+        # スレッドの二重起動防止
+        if hasattr(self, 'analysis_thread') and self.analysis_thread.isRunning():
+            QMessageBox.warning(self, "System Busy", "現在、別のオーディオ解析プロセスが実行中です。")
+            return
+
+        # 解析スレッドの初期化
         self.analysis_thread = AnalysisThread(self.voice_manager, target_dir)
+        
+        # シグナルとスロットの完全接続
         self.analysis_thread.progress.connect(self.update_analysis_status)
         self.analysis_thread.finished.connect(self.on_analysis_complete)
         self.analysis_thread.error.connect(self.on_analysis_error)
         
-        self.ai_analyze_button.setEnabled(False)
+        # メモリ管理：終了時に自動破棄（爆弾5対策）
+        self.analysis_thread.finished.connect(self.analysis_thread.deleteLater)
+        
+        # UI状態の更新
+        self.ai_analyze_button.setEnabled(False) # 解析中はボタン無効
         self.progress_bar.show()
         self.progress_bar.setValue(0)
-        self.statusBar().showMessage("dynamics engine起動中...")
+        self.statusBar().showMessage("Pro Audio Performance Engine: Initializing...")
         
+        # 解析実行
         self.analysis_thread.start()
-        self.analysis_thread.finished.connect(self.analysis_thread.deleteLater)
 
     def update_analysis_status(self, percent: int, filename: str):
-        """解析進捗の表示"""
+        """解析進捗のリアルタイム表示"""
         self.progress_bar.setValue(percent)
-        self.statusBar().showMessage(f"解析中 [{percent}%]: {filename}")
+        self.statusBar().showMessage(f"Acoustic Sampling [{percent}%]: {filename}")
 
     def on_analysis_complete(self, results: dict):
-        """解析完了時の処理"""
-        # 解析結果をノートに反映
+        """
+        解析完了後のデータ統合処理。
+        抽出された音響パラメータ(Onset/Overlap/PreUtter)をタイムラインに反映します。
+        """
+        self.progress_bar.hide()
+        self.ai_analyze_button.setEnabled(True)
+        
+        if not results:
+            self.statusBar().showMessage("Analysis Finished with no data.")
+            return
+
+        # 解析結果の適用
+        update_count = 0
         for note in self.timeline_widget.notes_list:
             if note.lyrics in results:
                 res = results[note.lyrics]
+                # [爆弾2対策] データの整合性チェック
                 if isinstance(res, (list, tuple)) and len(res) >= 3:
-                    note.onset = res[0]
-                    note.overlap = res[1]
-                    note.pre_utterance = res[2]
+                    note.onset = self.safe_to_f(res[0])
+                    note.overlap = self.safe_to_f(res[1])
+                    note.pre_utterance = self.safe_to_f(res[2])
                     note.has_analysis = True
+                    update_count += 1
         
-        self.progress_bar.hide()
-        self.ai_analyze_button.setEnabled(True)
-        self.statusBar().showMessage(f"解析完了: {len(results)}件処理", 3000)
         self.timeline_widget.update()
-        QMessageBox.information(self, "完了", "解析が完了しました")
+        self.statusBar().showMessage(f"Optimization Complete: {update_count} parameters updated.", 5000)
+        
+        # oto.iniへの自動書き出し確認
+        reply = QMessageBox.question(self, "保存の確認", 
+            "解析された音響パラメータを音源フォルダの oto.ini に反映しますか？\n(既存のファイルはバックアップされます)",
+            QMessageBox.Yes | QMessageBox.No)
+            
+        if reply == QMessageBox.Yes:
+            self.export_analysis_to_oto_ini()
+
+    def export_analysis_to_oto_ini(self):
+        """
+        解析結果を UTAU 互換の oto.ini 形式で物理保存。
+        """
+        target_dir = self.voice_manager.get_current_voice_path()
+        file_path = os.path.join(target_dir, "oto.ini")
+        
+        # プロ仕様：バックアップの作成
+        if os.path.exists(file_path):
+            try:
+                import shutil
+                shutil.copy2(file_path, file_path + ".bak")
+            except Exception as e:
+                print(f"Backup failed: {e}")
+
+        # oto.ini 行データの作成
+        oto_lines = []
+        # 重複を避けるためセット等で管理するのが理想だが、ここではシンプルに全ノートを走査
+        processed_lyrics = set()
+        for note in self.timeline_widget.notes_list:
+            if note.has_analysis and note.lyrics not in processed_lyrics:
+                # 形式: ファイル名=エイリアス,左ブランク,固定範囲,右ブランク,先行発音,オーバーラップ
+                # 解析結果の pre_utterance と overlap を優先適用
+                line = f"{note.lyrics}.wav={note.lyrics},0,0,0,{note.pre_utterance},{note.overlap}"
+                oto_lines.append(line)
+                processed_lyrics.add(note.lyrics)
+
+        try:
+            # [爆弾4, 5対策] cp932/replace による文字化け・クラッシュ回避
+            with open(file_path, "w", encoding="cp932", errors="replace") as f:
+                f.write("\n".join(oto_lines))
+            QMessageBox.information(self, "Success", "音響設定ファイル(oto.ini)を更新しました。")
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"書き込みに失敗しました:\n{e}")
 
     def on_analysis_error(self, message: str):
-        """解析エラー時の処理"""
+        """エンジンの例外処理"""
         self.ai_analyze_button.setEnabled(True)
         self.progress_bar.hide()
-        QMessageBox.critical(self, "AI解析エラー", f"エラー:\n{message}")
+        QMessageBox.critical(self, "Engine Fault", f"解析プロセス中に致命的なエラーが発生しました:\n{message}")
 
-    def closeEvent(self, event):
-        """ソフトを閉じる時、スレッドが動いていたら止める"""
-        if hasattr(self, 'analysis_thread') and self.analysis_thread.isRunning():
-            reply = QMessageBox.question(self, '確認', 
-                "解析中ですが終了しますか？（データは保存されません）",
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-
-            if reply == QMessageBox.Yes:
-                self.analysis_thread.terminate() # 強制終了
-                self.analysis_thread.wait() # 完全に止まるまで待機
-                event.accept()
-            else:
-                event.ignore()
-        else:
-            event.accept()
-
-    # 
-    def start_voice_analysis(self, target_dir):
-        """AI解析スレッドを安全に起動する"""
-    
-        # 1. すでに動いていたら二重起動しないようにチェック
-        if hasattr(self, 'analysis_worker') and self.analysis_worker.isRunning():
-            QMessageBox.warning(self, "警告", "現在別の解析を実行中です。")
-            return
-
-        # 2. スレッドの作成
-        self.analysis_worker = AnalysisThread(self.voice_manager, target_dir)
-    
-        # 3. 信号（Signal）を窓口（Slot）につなぐ
-        self.analysis_worker.progress.connect(self.on_analysis_progress)
-        self.analysis_worker.finished.connect(self.on_analysis_finished)
-        self.analysis_worker.error.connect(self.on_analysis_error)
-    
-        # 4. 実行開始！
-        self.analysis_worker.start()
-        self.statusBar().showMessage("AI解析を開始しました...")
-
-     # --- 窓口（Slot）側の実装 ---
-
-    def on_analysis_progress(self, percent, message):
-        """解析の進捗をステータスバーやプログレスバーに表示"""
-        self.statusBar().showMessage(f"解析中: {percent}% - {message}")
-
-    def on_analysis_finished(self, results):
-        """解析が終わった時の処理"""
-        self.statusBar().showMessage("解析が正常に完了しました！", 5000)
-        self.refresh_voice_list() # 画面の音源リストを更新
-
-    def on_analysis_error(self, error_msg):
-        """エラーが起きた時の処理"""
-        QMessageBox.critical(self, "解析エラー", f"エラーが発生しました:\n{error_msg}")
+    def safe_to_f(self, val):
+        """[爆弾2修正] 空文字等を安全にfloatへ変換"""
+        try:
+            s_val = str(val).strip()
+            return float(s_val) if s_val else 0.0
+        except:
+            return 0.0
 
     # ==========================================================================
     # レンダリング
