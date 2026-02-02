@@ -2126,6 +2126,20 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "エラー", f"UST読み込み失敗: {e}")
 
 
+    def save_oto_ini(self, path, content):
+        """
+        UTF-8の文字が含まれていても、エラーで落ちずに書き出す
+        """
+        try:
+            # errors="replace" をつけると、書けない文字が自動で '?' になる
+            with open(path, "w", encoding="cp932", errors="replace") as f:
+                f.write(content)
+        except Exception as e:
+            QMessageBox.warning(self, "保存エラー", f"文字化けの可能性があります:\n{e}")
+ 
+
+
+
     def get_safe_installed_name(self, filename, zip_path):
         """
         パスをOSに合わせて綺麗にし、安全にフォルダ名を取り出す
