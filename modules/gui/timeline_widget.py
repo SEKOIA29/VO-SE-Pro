@@ -255,13 +255,17 @@ class TimelineWidget(QWidget):
             if self.get_note_rect(n).contains(event.position().toPoint()):
                 text, ok = QInputDialog.getText(self, "歌詞", "入力:", QLineEdit.Normal, n.lyrics)
                 if ok:
+                    # 入力した瞬間に解析して、読み(phoneme)を保存しておく
+                    n.lyrics = text
+                    n.phoneme = self.analyze_lyric_to_phoneme(text)
+                    
+                    # 1文字ずつ分割するロジック
                     chars = [t.surface for t in self.tokenizer.tokenize(text)]
-                    char_list = []
-                    for c in chars: char_list.extend(list(c))
-                    if len(char_list) > 1: self.split_note(n, char_list)
-                    else: n.lyrics = text
-                    self.notes_changed_signal.emit(); self.update()
-                return
+                    if len(chars) > 1:
+                        self.split_note(n, chars)
+                    
+                    self.notes_changed_signal.emit()
+                    self.update()
 
     def split_note(self, n, chars):
         dur = n.duration / len(chars)
