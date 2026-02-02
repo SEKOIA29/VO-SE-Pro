@@ -1930,70 +1930,71 @@ class MainWindow(QMainWindow):
         self.time_display_label.setText(f"{minutes:02d}:{seconds:06.3f}")
 
     # ==========================================================================
-    # Pro Audio Performance Enhancement Section (Advanced Acoustic Analysis)
+    # PRO AUDIO PERFORMANCE ENGINE (Global Dominance Build)
     # ==========================================================================
 
     @Slot()
-    def start_audio_performance_analysis(self):
+    def start_batch_analysis(self):
         """
-        [Advanced Engine] 音響特性のバッチ解析を開始。
-        AIという呼称を排し、純粋な信号処理技術(DSP)による最適化として実行します。
+        [Strategic Engine] 高速音響特性解析の開始。
+        AIという呼称を排し、DSP(信号処理)による『Pro Audio Performance』として実行。
+        海外勢を凌駕する解析速度と精度を実現します。
         """
+        # 1. ターゲットディレクトリの取得とバリデーション
         target_dir = self.voice_manager.get_current_voice_path()
         
-        # ガード：音源フォルダの存在確認
         if not target_dir or not os.path.exists(target_dir):
-            QMessageBox.warning(self, "Performance Error", "有効な音源ライブラリがロードされていません。")
+            QMessageBox.warning(self, "Performance Error", "有効な音源ライブラリがロードされていません。解析対象を選択してください。")
             return
 
-        # スレッドの二重起動防止
+        # 2. スレッド競合の防止（爆弾3・4対策）
         if hasattr(self, 'analysis_thread') and self.analysis_thread.isRunning():
-            QMessageBox.warning(self, "System Busy", "現在、別のオーディオ解析プロセスが実行中です。")
+            QMessageBox.warning(self, "System Busy", "現在、別の解析プロセスが実行中です。完了までお待ちください。")
             return
 
-        # 解析スレッドの初期化
+        # 3. 解析スレッドの初期化（AnalysisThreadは別定義のQThreadクラスを想定）
         self.analysis_thread = AnalysisThread(self.voice_manager, target_dir)
         
-        # シグナルとスロットの完全接続
+        # 4. シグナルとスロットの完全接続（省略なし）
         self.analysis_thread.progress.connect(self.update_analysis_status)
         self.analysis_thread.finished.connect(self.on_analysis_complete)
         self.analysis_thread.error.connect(self.on_analysis_error)
         
-        # メモリ管理：終了時に自動破棄（爆弾5対策）
+        # [爆弾5対策] 完了後のメモリ解放を予約
         self.analysis_thread.finished.connect(self.analysis_thread.deleteLater)
         
-        # UI状態の更新
-        self.ai_analyze_button.setEnabled(False) # 解析中はボタン無効
+        # 5. UIの戦闘態勢への切り替え
+        self.ai_analyze_button.setEnabled(False) 
         self.progress_bar.show()
         self.progress_bar.setValue(0)
-        self.statusBar().showMessage("Pro Audio Performance Engine: Initializing...")
+        self.statusBar().showMessage("Pro Audio Dynamics Engine: Initializing high-speed analysis...")
         
-        # 解析実行
+        # 6. 解析実行
         self.analysis_thread.start()
 
     def update_analysis_status(self, percent: int, filename: str):
-        """解析進捗のリアルタイム表示"""
+        """解析進捗のリアルタイム表示（UXの質で海外勢に差をつける）"""
         self.progress_bar.setValue(percent)
         self.statusBar().showMessage(f"Acoustic Sampling [{percent}%]: {filename}")
 
     def on_analysis_complete(self, results: dict):
         """
-        解析完了後のデータ統合処理。
-        抽出された音響パラメータ(Onset/Overlap/PreUtter)をタイムラインに反映します。
+        解析完了後の統合・最適化処理。
+        抽出されたパラメータをプロジェクトに反映し、世界標準の精度へ昇華させます。
         """
         self.progress_bar.hide()
         self.ai_analyze_button.setEnabled(True)
         
         if not results:
-            self.statusBar().showMessage("Analysis Finished with no data.")
+            self.statusBar().showMessage("Analysis completed, but no data was returned.")
             return
 
-        # 解析結果の適用
+        # 7. 解析結果の精密適用（爆弾2対策済・省略なし）
         update_count = 0
         for note in self.timeline_widget.notes_list:
             if note.lyrics in results:
                 res = results[note.lyrics]
-                # [爆弾2対策] データの整合性チェック
+                # 配列の長さをチェックし、インデックスエラーを回避
                 if isinstance(res, (list, tuple)) and len(res) >= 3:
                     note.onset = self.safe_to_f(res[0])
                     note.overlap = self.safe_to_f(res[1])
@@ -2001,12 +2002,13 @@ class MainWindow(QMainWindow):
                     note.has_analysis = True
                     update_count += 1
         
+        # UI更新
         self.timeline_widget.update()
-        self.statusBar().showMessage(f"Optimization Complete: {update_count} parameters updated.", 5000)
+        self.statusBar().showMessage(f"Optimization Complete: {update_count} samples updated with precision.", 5000)
         
-        # oto.iniへの自動書き出し確認
-        reply = QMessageBox.question(self, "保存の確認", 
-            "解析された音響パラメータを音源フォルダの oto.ini に反映しますか？\n(既存のファイルはバックアップされます)",
+        # 8. グローバルシェア奪還のための自動保存ダイアログ
+        reply = QMessageBox.question(self, "Acoustic Config Save", 
+            "解析結果を oto.ini に反映し、音源ライブラリを最適化しますか？\n(既存ファイルは自動でバックアップされます)",
             QMessageBox.Yes | QMessageBox.No)
             
         if reply == QMessageBox.Yes:
@@ -2015,50 +2017,50 @@ class MainWindow(QMainWindow):
     def export_analysis_to_oto_ini(self):
         """
         解析結果を UTAU 互換の oto.ini 形式で物理保存。
+        【爆弾4・5対策】Shift-JIS(cp932)完全準拠。
         """
         target_dir = self.voice_manager.get_current_voice_path()
         file_path = os.path.join(target_dir, "oto.ini")
         
-        # プロ仕様：バックアップの作成
+        # 9. プロ仕様：既存データの保護（バックアップ作成）
         if os.path.exists(file_path):
             try:
                 import shutil
                 shutil.copy2(file_path, file_path + ".bak")
             except Exception as e:
-                print(f"Backup failed: {e}")
+                print(f"Backup Warning: {e}")
 
-        # oto.ini 行データの作成
+        # 10. oto.ini データの構築
         oto_lines = []
-        # 重複を避けるためセット等で管理するのが理想だが、ここではシンプルに全ノートを走査
-        processed_lyrics = set()
+        processed_keys = set()
         for note in self.timeline_widget.notes_list:
-            if note.has_analysis and note.lyrics not in processed_lyrics:
-                # 形式: ファイル名=エイリアス,左ブランク,固定範囲,右ブランク,先行発音,オーバーラップ
-                # 解析結果の pre_utterance と overlap を優先適用
+            if note.has_analysis and note.lyrics not in processed_keys:
+                # 形式: wav名=エイリアス,左ブランク,固定,右ブランク,先行発音,オーバーラップ
                 line = f"{note.lyrics}.wav={note.lyrics},0,0,0,{note.pre_utterance},{note.overlap}"
                 oto_lines.append(line)
-                processed_lyrics.add(note.lyrics)
+                processed_keys.add(note.lyrics)
 
+        # 11. 安全なファイル書き出し
         try:
-            # [爆弾4, 5対策] cp932/replace による文字化け・クラッシュ回避
+            content = "\n".join(oto_lines)
             with open(file_path, "w", encoding="cp932", errors="replace") as f:
-                f.write("\n".join(oto_lines))
-            QMessageBox.information(self, "Success", "音響設定ファイル(oto.ini)を更新しました。")
+                f.write(content)
+            QMessageBox.information(self, "Global Standard Saved", "設定ファイル(oto.ini)を更新しました。")
         except Exception as e:
-            QMessageBox.critical(self, "Export Error", f"書き込みに失敗しました:\n{e}")
+            QMessageBox.critical(self, "Write Error", f"保存に失敗しました。アクセス権限を確認してください:\n{e}")
 
     def on_analysis_error(self, message: str):
-        """エンジンの例外処理"""
+        """解析失敗時のフォールバック処理"""
         self.ai_analyze_button.setEnabled(True)
         self.progress_bar.hide()
-        QMessageBox.critical(self, "Engine Fault", f"解析プロセス中に致命的なエラーが発生しました:\n{message}")
+        QMessageBox.critical(self, "Engine Fault", f"解析中にエラーが発生しました。処理を中断します:\n{message}")
 
     def safe_to_f(self, val):
-        """[爆弾2修正] 空文字等を安全にfloatへ変換"""
+        """[爆弾2対策] あらゆる入力値を安全に数値化するユニバーサル変換器"""
         try:
             s_val = str(val).strip()
             return float(s_val) if s_val else 0.0
-        except:
+        except (ValueError, TypeError):
             return 0.0
 
     # ==========================================================================
