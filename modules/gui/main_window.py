@@ -1967,6 +1967,40 @@ class MainWindow(QMainWindow):
         self.time_display_label.setText(f"{minutes:02d}:{seconds:06.3f}")
 
     # ==========================================================================
+    # REAL-TIME PREVIEW ENGINE (Low-Latency Response)
+    # ==========================================================================
+
+    @Slot(object)
+    def on_single_note_modified(self, note):
+        """
+        ノートが1つ変更された瞬間に呼ばれる（リアルタイム・プレビュー）。
+        軽量なDSPエンジンだからこそ、Core i3でも遅延なく鳴らせます。
+        """
+        if not self.perf_action.isChecked():
+            # 省電力モード（Core i3モード）の時は、負荷を考えてプレビューを
+            # 簡略化するか、タイマー待機にする
+            self.render_timer.start(100) 
+            return
+
+        # 1. 変更されたノートだけの「部分合成」をリクエスト
+        # 全体を計算し直さないのが「軽量」の極意
+        threading.Thread(
+            target=self.vo_se_engine.preview_single_note,
+            args=(note,),
+            daemon=True
+        ).start()
+
+    def setup_realtime_monitoring(self):
+        """
+        マウスの動きを監視し、『今まさにいじっている音』を
+        ダイレクトにオーディオデバイスへ送る設定。
+        """
+        if hasattr(self.vo_se_engine, 'enable_realtime_monitor'):
+            # C++側の低遅延モニタリングを有効化
+            self.vo_se_engine.enable_realtime_monitor(True)
+            self.statusBar().showMessage("Real-time Monitor: Active (Low Latency)")
+
+    # ==========================================================================
     # GLOBAL DOMINANCE: Pro Audio Performance Engine (Full Integration)
     # ==========================================================================
 
