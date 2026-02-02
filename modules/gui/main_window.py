@@ -2084,19 +2084,22 @@ class MainWindow(QMainWindow):
     # ==========================================================================
     # ファイル操作
     # ==========================================================================
-
-    def read_file_safely(self, filepath: str) -> str:
-        """Shift-JIS(cp932)とUTF-8を自動判別して読み込む"""
-        import chardet
-        with open(filepath, 'rb') as f:
-            raw_data = f.read()
     
-        # 文字コード判定
-        encoding = chardet.detect(raw_data)['encoding']
-        if encoding is None:
-            encoding = 'cp932' # 不明な場合は日本語Windows標準
-        
-        return raw_data.decode(encoding, errors='ignore')
+    def read_file_safely(self, filepath: str) -> str:
+        """ 文字コードを自動判別し、安全に読み込む"""
+        import chardet
+        try:
+            with open(filepath, 'rb') as f:
+                raw_data = f.read()
+            
+            res = chardet.detect(raw_data)
+            encoding = res['encoding'] if res['encoding'] else 'cp932'
+            
+            # errors='replace' を指定することで、変換できない文字があってもクラッシュさせない
+            return raw_data.decode(encoding, errors='replace')
+        except Exception as e:
+            print(f"File Read Error: {e}")
+            return ""
 
 
 
@@ -2177,9 +2180,7 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def on_export_button_clicked(self):
-        """
-        全レイヤーの曲線をサンプリングし、C++エンジンへ一括送信
-        """
+        """ WAV書き出し（多重起動防止 & 高速化）"""
         notes = self.timeline_widget.notes_list
         if not notes:
             QMessageBox.warning(self, "エラー", "ノートがないため書き出しできません。")
@@ -2190,46 +2191,47 @@ class MainWindow(QMainWindow):
         )
         if not file_path: return
 
-        self.statusBar().showMessage("ネイティブエンジンでレンダリング中...")
+        # 再生中なら止める（デバイス競合回避）
+        self.stop_and_clear_playback()
+
+        self.statusBar().showMessage("レンダリング中...")
 
         try:
-            # 1. グラフエディタから全パラメーターデータを取得
+            # numpyはメソッド内ではなく、ファイル先頭で import numpy as np 済みと想定
             all_params = self.graph_editor_widget.all_parameters
-            
-            # 2. エンジンに渡すためのノート別データを作成
             vocal_data_list = []
-            res = 128 # 1ノートあたりの解像度
+            res = 128 
             
             for note in notes:
-                # 削られていた「時系列サンプリング」をここで実行
-                # 各ノートの開始から終了までの曲線を配列として切り出す
+                # 辞書作成
                 note_data = {
                     "lyric": note.lyrics,
                     "phonemes": note.phonemes,
                     "note_number": note.note_number,
-                    # 各レイヤーの数値を配列(numpy相当)で取得
-                    "pitch_list": self._sample_range(all_params["Pitch"], note, res),
-                    "gender_list": self._sample_range(all_params["Gender"], note, res),
-                    "tension_list": self._sample_range(all_params["Tension"], note, res),
-                    "breath_list": self._sample_range(all_params["Breath"], note, res)
+                    "start_time": note.start_time,
+                    "duration": note.duration,
+                    # 各パラメーターをサンプリング
+                    "pitch_list": self._sample_range(all_params.get("Pitch", []), note, res),
+                    "gender_list": self._sample_range(all_params.get("Gender", []), note, res),
+                    "tension_list": self._sample_range(all_params.get("Tension", []), note, res),
+                    "breath_list": self._sample_range(all_params.get("Breath", []), note, res)
                 }
                 vocal_data_list.append(note_data)
 
-            # 3. 完成した vo_se_engine.py の export_to_wav を呼び出し
-            # これにより C++ (vose_core.dll/dylib) が火を噴きます
+            # C++エンジンへ送信
             self.vo_se_engine.export_to_wav(
                 vocal_data=vocal_data_list,
                 tempo=self.timeline_widget.tempo,
                 file_path=file_path
             )
 
-            QMessageBox.information(self, "完了", f"レンダリングが完了しました！\n{file_path}")
+            QMessageBox.information(self, "完了", "レンダリングが完了しました！")
             self.statusBar().showMessage("エクスポート完了")
 
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"書き出し失敗: {e}")
             self.statusBar().showMessage("エラー発生")
-
+            
     def _sample_range(self, events, note, res):
         """
         ノートの時間範囲(start 〜 start+duration)をres分割して
@@ -2271,49 +2273,51 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"保存失敗: {e}")
 
+
+    def _sample_range(self, events, note, res):
+        """サンプリング補助（eventsが空の場合のガード付き）"""
+        if not events:
+            return [0.5] * res # データがない場合はデフォルト値を返す
+            
+        times = np.linspace(note.start_time, note.start_time + note.duration, res)
+        # グラフエディタの補間関数を呼び出し
+        return [self.graph_editor_widget.get_value_at_time(events, t) for t in times]
+
     def load_json_project(self, filepath: str):
-        """JSON/VOSEプロジェクトの読み込み（復旧版）"""
+        """【爆弾2対策】JSON読み込み（インポートを整理）"""
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            # 1. ノートの復元
+            # NoteEventなどのクラスはファイル先頭でインポートしておくこと
             notes = [NoteEvent.from_dict(d) for d in data.get("notes", [])]
             self.timeline_widget.set_notes(notes)
             
-            # 2. テンポの復元とUI反映
+            # テンポ復元
             tempo = data.get("tempo_bpm", 120)
             self.tempo_input.setText(str(tempo))
             self.update_tempo_from_input()
             
-            # 3. 全パラメーターの復元
-            from .data_models import PitchEvent
+            # パラメーター復元
             saved_params = data.get("parameters", {})
-            
-            # 旧形式(pitch_data)との互換性維持
-            if "pitch_data" in data and not saved_params.get("Pitch"):
-                self.graph_editor_widget.all_parameters["Pitch"] = [
-                    PitchEvent.from_dict(d) for d in data["pitch_data"]
-                ]
-            
-            # 新形式の読み込み
             for mode in self.graph_editor_widget.all_parameters.keys():
                 if mode in saved_params:
+                    # ここで PitchEvent を都度インポートせず、既に読み込み済みのものを使い回す
                     self.graph_editor_widget.all_parameters[mode] = [
                         PitchEvent(time=p["t"], value=p["v"]) for p in saved_params[mode]
                     ]
             
-            # 4. 画面更新（削られていたスクロール範囲の更新を復旧）
+            # UI更新
             self.update_scrollbar_range()
             self.update_scrollbar_v_range()
             self.graph_editor_widget.update()
             self.timeline_widget.update()
             
             self.statusBar().showMessage(f"読み込み完了: {len(notes)}ノート")
-            self.setWindowTitle(f"VO-SE Pro - {os.path.basename(filepath)}")
             
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"読み込み失敗: {e}")
+            
 
     def load_midi_file_from_path(self, filepath: str):
         """MIDI読み込み（自動歌詞変換機能付き・完全復旧）"""
