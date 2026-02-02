@@ -2684,6 +2684,18 @@ class MainWindow(QMainWindow):
             pickle.dump(oto_data, f)
         return oto_data
 
+
+    def smart_cache_purge(self):
+        """
+        [Core i3救済] 
+        再生や解析に使用していない波形データをメモリから解放し、
+        PCが重くなるのを物理的に防ぎます。
+        """
+        if hasattr(self.voice_manager, 'clear_unused_cache'):
+            # 最後に使ってから一定時間経過したデータを消去
+            self.voice_manager.clear_unused_cache()
+            self.statusBar().showMessage("Memory Optimized.", 2000)
+
     # ==========================================================================
     # 歌詞・ノート操作
     # ==========================================================================
