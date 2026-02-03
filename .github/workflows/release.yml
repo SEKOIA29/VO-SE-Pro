@@ -1,4 +1,4 @@
-name: "🚀 Release VO-SE PRO (Official Edition)"
+name: "🚀 Release VO-SE  Pro (Official Edition)"
 
 on:
   push:
@@ -68,7 +68,7 @@ jobs:
               --add-data "modules;modules" \
               --name "VO-SE_PRO_Win" main.py
             
-            cp dist/VO-SE_PRO_Win.exe dist_out/
+            cp dist/VO-SE_Pro_Win.exe dist_out/
           else
             pyinstaller --noconsole --windowed --clean \
               --paths . \
@@ -81,7 +81,7 @@ jobs:
               --add-data "modules:modules" \
               --name "VO-SE_PRO_Mac" main.py
             
-            chmod +x dist/VO-SE_PRO_Mac.app/Contents/MacOS/VO-SE_PRO_Mac
+            chmod +x dist/VO-SE_Pro_Mac.app/Contents/MacOS/VO-SE_PRO_Mac
             cd dist && zip -ry ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
