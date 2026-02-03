@@ -1,50 +1,69 @@
 # main_window.py 
 
+# ==========================================================================
+# 1. 標準ライブラリ (Standard Libraries)
+# ==========================================================================
 import sys
 import os
 import time
 import json
 import wave
 import ctypes
-import librosa
-import librosa
 import pickle
 import zipfile
 import platform
 import threading
+import shutil
+from typing import List, Optional, Dict, Any
+
+# ==========================================================================
+# 2. 数値計算・信号処理 (Numerical & Audio Processing)
+# ==========================================================================
 import numpy as np
+import librosa
 import pyworld as pw
 import soundfile as sf
 import sounddevice as sd
-from typing import List
-from typing import List, Optional, Dict, Any
 from scipy.io.wavfile import write as wav_write
 
+# ==========================================================================
+# 3. 外部ライブラリ (External Libraries - NLP, MIDI, etc.)
+# ==========================================================================
+from janome.tokenizer import Tokenizer
+import mido
+import chardet
 
-
-import shutil
-
-from PySide6.QtWidgets import QMessageBox
-
-# Qt関連
+# ==========================================================================
+# 4. GUIライブラリ (PySide6 / Qt)
+# ==========================================================================
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QFileDialog, QScrollBar, QInputDialog, QLineEdit,
     QLabel, QSplitter, QComboBox, QProgressBar, QMessageBox, QToolBar,
     QGridLayout, QFrame
 )
-from PySide6.QtGui import QAction, QKeySequence, QKeyEvent, QPainter, QPen, QPixmap
-from PySide6.QtCore import Slot, Qt, QTimer, Signal, QThread, QUrl
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtGui import (
+    QAction, QKeySequence, QKeyEvent, QPainter, QPen, QPixmap
+)
+from PySide6.QtCore import (
+    Slot, Qt, QTimer, Signal, QThread, QUrl
+)
 
-# 外部ライブラリ
-from janome.tokenizer import Tokenizer
-import mido
-import numpy as np
-
+# ==========================================================================
+# 5. 自作モジュール (Custom VO-SE Modules)
+# ==========================================================================
+# ※ディレクトリ構造に合わせて適宜調整してください
 from .timeline_widget import TimelineWidget
+# ※MainWindow内で直接ロジックを書く場合は以下はMainWindowの外、
+# または専用クラスとしてインポート
 from audio.vo_se_engine import VO_SE_Engine
 from audio.voice_manager import VoiceManager
+
+# ==========================================================================
+# 6. グローバル設定（Core i3 負荷軽減 & メモリ管理）
+# ==========================================================================
+# NumPyのメモリ割り出しを最適化し、スワップを防ぐ設定（環境変数）
+os.environ["OMP_NUM_THREADS"] = "1"  # 並列処理によるCPU爆熱を防止
 
 
 # ==========================================================
