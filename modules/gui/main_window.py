@@ -1098,6 +1098,14 @@ class MainWindow(QMainWindow):
             
         return None
 
+    def on_notes_updated(self):
+        """タイムラインが変更された時の処理（オートセーブなど）"""
+        pass
+
+    def play_audio(self, path):
+        """再生の実装（実際はエンジン側のplay関数など）"""
+        pass
+
 
     # ==========================================================================
     #  Pro audio modeling の起動、呼び出し　　　　　　　　　　　
