@@ -32,6 +32,7 @@ from scipy.io.wavfile import write as wav_write
 from janome.tokenizer import Tokenizer
 import mido
 import chardet
+import onnxruntime as ort
 
 # ==========================================================================
 # 4. GUIライブラリ (PySide6 / Qt)
@@ -1045,6 +1046,37 @@ class MainWindow(QMainWindow):
         
         # 見つからなければデフォルト（既存の挙動）
         return os.path.join(voice_bank_path, f"{lyric}.wav")
+
+    # =============================================================
+    # 診断されたプロバイダーを使用してAIモデルをロードする                      
+    # =============================================================
+
+    def setup_aural_ai(self):
+        """診断されたプロバイダーを使用してAIモデルをロードする"""
+        model_path = "models/aural_dynamics.onnx"
+    
+        if not os.path.exists(model_path):
+            self.statusBar().showMessage("Error: Aural AI model not found.")
+            return
+
+        try:
+            # 1. 診断済みのプロバイダー（NPU等）をセッションに渡す
+            # セッションオプションの設定（スレッド数などをCore i3向けに最適化）
+            options = ort.SessionOptions()
+            options.intra_op_num_threads = 1  # 信号処理との競合を避けるため1に固定
+        
+            self.ai_session = ort.InferenceSession(
+                model_path, 
+                sess_options=options,
+                providers=[self.active_provider, 'CPUExecutionProvider'] # NPUがダメならCPU
+            )
+        
+            self.log_startup(f"Aural AI binding successful on {self.active_provider}")
+        
+        except Exception as e:
+            self.log_startup(f"AI Binding Failed: {e}")
+            # 最終防衛線としてCPUで再試行
+            self.ai_session = ort.InferenceSession(model_path, providers=['CPUExecutionProvider'])
 
     # =============================================================
     # DSP CONTROL: PRECISION EQUALIZER (No-Noise Logic)
