@@ -2289,7 +2289,7 @@ class MainWindow(QMainWindow):
         print(f"Node at {x}px added.")
 
     def on_analysis_error(self, message):
-        QMessageBox.critical(self, "AI解析エラー", message)
+        QMessageBox.critical(self, "解析エラー", message)
 
     # ==========================================================================
     # ファイル操作
