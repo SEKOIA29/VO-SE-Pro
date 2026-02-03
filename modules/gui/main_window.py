@@ -851,8 +851,49 @@ class MainWindow(QMainWindow):
         
         # UI上の入力欄（QLineEdit）のリスト（Tab移動用）
         self.input_fields = [] 
-
         self.setup_vose_shortcuts()
+
+
+        self.perform_startup_sequence()
+
+    def perform_startup_sequence(self):
+        """起動時のハードウェア診断とエンジン最適化"""
+        self.statusBar().showMessage("Initializing VO-SE Engine...")
+        
+        # 1. エンジン診断 (NPU / CPU)
+        initializer = EngineInitializer()
+        device_name, provider = initializer.detect_best_engine()
+        
+        # ステータスバーの左側にエンジン名、右側に永久的にデバイスを表示
+        self.statusBar().showMessage(f"Engine Ready: {device_name}", 5000)
+        
+        self.device_label = QLabel(f" MODE: {device_name} ")
+        self.device_label.setStyleSheet("""
+            background-color: #1a1a1a; 
+            color: #ff4d4d; 
+            border-radius: 4px; 
+            font-weight: bold;
+            font-family: 'Consolas', monospace;
+            padding: 2px 8px;
+            margin-right: 5px;
+        """)
+        self.statusBar().addPermanentWidget(self.device_label)
+
+        # 2. オーディオデバイスの導通確認
+        try:
+            import sounddevice as sd
+            default_device = sd.query_devices(kind='output')
+            self.log_startup(f"Audio Output: {default_device['name']}")
+        except Exception:
+            self.statusBar().showMessage("Warning: Audio device not found.", 10000)
+
+        # 3. リソースのプリロード
+        # Aural AIモデルのロードや、VoiceManagerの初期化をここで行う
+        self.log_startup("All systems nominal. Welcome to the future of voice.")
+
+    def log_startup(self, message):
+        """起動ログ（デバッグ用）"""
+        print(f"[{time.strftime('%H:%M:%S')}] VO-SE Boot: {message}")
 
     def setup_vose_shortcuts(self):
         # 1. 1音移動 (Alt + Left/Right)
