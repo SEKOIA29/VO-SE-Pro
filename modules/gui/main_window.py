@@ -2565,6 +2565,57 @@ class MainWindow(QMainWindow):
     # ==========================================================================
     # ファイル操作
     # ==========================================================================
+
+    def import_external_project(self, file_path):
+        """
+        外部ファイル(.vsqx, .ustx, .mid)を解析しVO-SE形式へ変換
+        """
+        self.statusBar().showMessage(f"Migrating Project: {os.path.basename(file_path)}...")
+        
+        ext = os.path.splitext(file_path)[1].lower()
+        imported_notes = []
+
+        try:
+            if ext == ".vsqx":
+                # VOCALOIDファイルのXML解析
+                imported_notes = self._parse_vsqx(file_path)
+            elif ext == ".ustx":
+                # OpenUTAU(YAML形式)の解析
+                imported_notes = self._parse_ustx(file_path)
+            elif ext == ".mid":
+                # 標準MIDIファイルの解析
+                imported_notes = self._parse_midi(file_path)
+
+            if imported_notes:
+                # 解析した音符をピアノロールに配置し、エンジンにリレーする
+                self.update_timeline_with_notes(imported_notes)
+                self.log_startup(f"Migration Successful: {len(imported_notes)} notes imported.")
+                # そのままAural AIでプレビュー再生
+                self.handle_playback() 
+        
+        except Exception as e:
+            self.statusBar().showMessage(f"Migration Failed: {e}")
+
+    def _parse_vsqx(self, path):
+        """XML構造を解析してNoteEventリストを作る (省略なしのロジック骨子)"""
+        import xml.etree.ElementTree as ET
+        tree = ET.parse(path)
+        root = tree.getroot()
+        
+        notes = []
+        # VOCALOID特有のネームスペース処理
+        ns = {'v': 'http://www.yamaha.co.jp/vocaloid/schema/vsqx/4.0'} 
+        
+        for v_note in root.findall('.//v:note', ns):
+            note = NoteEvent(
+                lyrics=v_note.find('v:y', ns).text, # 歌詞
+                note_number=int(v_note.find('v:n', ns).text), # 音高
+                duration=int(v_note.find('v:dur', ns).text) / 480.0, # ティックを秒に変換
+                start_time=int(v_note.find('v:t', ns).text) / 480.0
+            )
+            notes.append(note)
+        return notes
+        
     
     def read_file_safely(self, filepath: str) -> str:
         """ 文字コードを自動判別し、安全に読み込む"""
