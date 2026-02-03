@@ -65,6 +65,47 @@ from audio.voice_manager import VoiceManager
 # NumPyのメモリ割り出しを最適化し、スワップを防ぐ設定（環境変数）
 os.environ["OMP_NUM_THREADS"] = "1"  # 並列処理によるCPU爆熱を防止
 
+# ==========================================================================
+# ハイブリッド・エンジン自動判別システム
+# ==========================================================================
+
+class EngineInitializer:
+    def __init__(self):
+        self.device = "CPU"
+        self.provider = "CPUExecutionProvider"
+
+    def detect_best_engine(self):
+        """PCの性能をスキャンし、NPU/GPU/CPUから最適なものを選択する"""
+        try:
+            import onnxruntime as ort
+            available = ort.get_available_providers()
+
+            # 1. Mac (Apple Silicon) の NPU/GPU を優先
+            if 'CoreMLExecutionProvider' in available:
+                self.device = "NPU (Apple Silicon)"
+                self.provider = "CoreMLExecutionProvider"
+            
+            # 2. Windows (DirectML) の NPU/GPU を優先
+            elif 'DmlExecutionProvider' in available:
+                self.device = "NPU/GPU (DirectML)"
+                self.provider = "DmlExecutionProvider"
+
+            # 3. どちらもなければ CPU で堅実に行く
+            else:
+                self.device = "CPU (High Performance Mode)"
+                self.provider = "CPUExecutionProvider"
+
+        except Exception:
+            self.device = "CPU (Safe Mode)"
+            self.provider = "CPUExecutionProvider"
+
+        return self.device, self.provider
+
+# MainWindowの初期化時にこれを呼び出す
+# initializer = EngineInitializer()
+# device_name, provider = initializer.detect_best_engine()
+# self.statusBar().showMessage(f"Engine: {device_name} 起動完了")
+
 
 # ==========================================================
 # 1. CreditsDialog クラス about画面
