@@ -486,36 +486,24 @@ except ImportError:
         def stop(self): pass
 
 try:
-    from .data_models import NoteEvent, PitchEvent
+    from .data_models import NoteEvent
 except ImportError:
-    class NoteEvent:
+    class NoteEvent(ctypes.Structure):
+        _fields_ = [
+            ("wav_path", ctypes.c_char_p),
+            ("pitch_curve", ctypes.POINTER(ctypes.c_double)),
+            ("pitch_length", ctypes.c_int),
+            ("gender_curve", ctypes.POINTER(ctypes.c_double)),
+            ("tension_curve", ctypes.POINTER(ctypes.c_double)),
+            ("breath_curve", ctypes.POINTER(ctypes.c_double)),
+        ]
         def __init__(self, **kwargs):
+            super().__init__()
             self.lyrics = kwargs.get('lyrics', '')
-            self.start_time = kwargs.get('start_time', 0.0)
             self.duration = kwargs.get('duration', 0.5)
             self.note_number = kwargs.get('note_number', 60)
-            self.velocity = kwargs.get('velocity', 100)
-            self.pitch = kwargs.get('pitch', 440.0)
             self.phonemes = kwargs.get('phonemes', '')
-            self.pre_utterance = 0.0
-            self.overlap = 0.0
-            self.onset = 0.0
-            self.has_analysis = False
-        
-        def to_dict(self):
-            return {
-                'lyrics': self.lyrics,
-                'start_time': self.start_time,
-                'duration': self.duration,
-                'note_number': self.note_number,
-                'velocity': self.velocity,
-                'pitch': self.pitch,
-                'phonemes': self.phonemes
-            }
-        
-        @staticmethod
-        def from_dict(d):
-            return NoteEvent(**d)
+
     
     class PitchEvent:
         def __init__(self, time=0.0, pitch=0.0):
@@ -855,7 +843,15 @@ class MainWindow(QMainWindow):
         self.setup_vose_shortcuts()
 
 
-        self.perform_startup_sequence()
+        # 1. UIの組み立て
+        self.init_ui()
+
+
+        # エンジン周りの初期化を一気に叩く
+        self.init_vose_engine()       # DLLロード
+        self.perform_startup_sequence() # NPU/CPU診断
+        self.setup_aural_ai()         # AIロード
+        self.apply_dsp_equalizer()    # デフォルトのEQ設定
 
     def perform_startup_sequence(self):
         """起動時のハードウェア診断とエンジン最適化"""
@@ -1123,6 +1119,8 @@ class MainWindow(QMainWindow):
     def init_vose_engine(self):
         """C++エンジンのロードと初期設定"""
         dll_path = os.path.join(os.getcwd(), "vose_core.dll")
+        self.engine_dll.execute_render.argtypes = [ctypes.POINTER(NoteEvent), ctypes.c_int, ctypes.c_char_p]
+        self.engine_dll.execute_render.restype = ctypes.c_int
         if os.path.exists(dll_path):
             self.engine_dll = ctypes.CDLL(dll_path)
             # ここで C++関数の引数型を定義 (安全のため)
