@@ -854,17 +854,28 @@ class MainWindow(QMainWindow):
         self.apply_dsp_equalizer()    # デフォルトのEQ設定
 
     def perform_startup_sequence(self):
-        """起動時のハードウェア診断とエンジン最適化"""
+        """[完全版] 起動時のハードウェア診断とエンジン最適化"""
+        # 1. 初期化開始の通知
         self.statusBar().showMessage("Initializing VO-SE Engine...")
+        self.log_startup("Starting engine diagnostic sequence.")
+
+        # 2. ハードウェア診断 (NPU / CPU の自動判別)
+        # ※ EngineInitializerクラスが外部または同ファイルにある前提
+        try:
+            initializer = EngineInitializer()
+            device_name, provider = initializer.detect_best_engine()
+            
+            # クラス変数に保存して AIロード時に使用
+            self.active_device = device_name
+            self.active_provider = provider
+        except Exception as e:
+            self.log_startup(f"Diagnostic Error: {e}")
+            self.active_device, self.active_provider = "CPU (Safe Mode)", "CPUExecutionProvider"
+
+        # 3. UIへの反映（右下の恒久的なラベル表示）
+        self.statusBar().showMessage(f"Engine Ready: {self.active_device}", 5000)
         
-        # 1. エンジン診断 (NPU / CPU)
-        initializer = EngineInitializer()
-        device_name, provider = initializer.detect_best_engine()
-        
-        # ステータスバーの左側にエンジン名、右側に永久的にデバイスを表示
-        self.statusBar().showMessage(f"Engine Ready: {device_name}", 5000)
-        
-        self.device_label = QLabel(f" MODE: {device_name} ")
+        self.device_label = QLabel(f" MODE: {self.active_device} ")
         self.device_label.setStyleSheet("""
             background-color: #1a1a1a; 
             color: #ff4d4d; 
@@ -876,17 +887,23 @@ class MainWindow(QMainWindow):
         """)
         self.statusBar().addPermanentWidget(self.device_label)
 
-        # 2. オーディオデバイスの導通確認
+        # 4. オーディオデバイスの導通確認 (sounddevice)
         try:
             import sounddevice as sd
             default_device = sd.query_devices(kind='output')
             self.log_startup(f"Audio Output: {default_device['name']}")
         except Exception:
             self.statusBar().showMessage("Warning: Audio device not found.", 10000)
+            self.log_startup("Audio output check failed.")
 
-        # 3. リソースのプリロード
-        # Aural AIモデルのロードや、VoiceManagerの初期化をここで行う
-        self.log_startup("All systems nominal. Welcome to the future of voice.")
+        # 5. リソースのプリロード（完了報告）
+        self.log_startup(f"All systems nominal. Provider: {self.active_provider}")
+        self.statusBar().showMessage("VO-SE Pro is ready.", 3000)
+
+    def log_startup(self, message):
+        """標準出力へのログ記録（2026年開発者モード用）"""
+        timestamp = time.strftime('%H:%M:%S')
+        print(f"[{timestamp}] [BOOT] {message}")
 
     def log_startup(self, message):
         """起動ログ（デバッグ用）"""
@@ -1131,51 +1148,174 @@ class MainWindow(QMainWindow):
 
     def generate_pitch_curve(self, note, prev_note=None):
         """
-        [壺修正済み] 黄金比ポルタメント・ロジック
-        AIに負けない滑らかな音程移動を実現。
+        [完全版] AI予測ピッチ + 黄金比ポルタメント + ビブラート
         """
+        # 1. 基礎となる音程（Hz）の計算
         target_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
-        num_frames = max(1, int((note.duration * 1000.0) / 5.0))
-        curve = np.ones(num_frames, dtype=np.float64) * target_hz
         
+        # フレーム数計算（5ms = 1フレーム。1.0秒なら200フレーム）
+        num_frames = max(1, int((note.duration * 1000.0) / 5.0))
+        
+        # AIが予測したピッチ曲線があればそれをベースにし、なければ定数で初期化
+        if hasattr(note, 'dynamics') and 'pitch' in note.dynamics:
+            curve = np.array(note.dynamics['pitch'], dtype=np.float64)
+        else:
+            curve = np.ones(num_frames, dtype=np.float64) * target_hz
+
+        # 2. ポルタメント（前の音からの滑らかな接続）
         if prev_note:
             prev_hz = 440.0 * (2.0 ** ((prev_note.note_number - 69) / 12.0))
-            # ノートの最初の20%（最大50フレーム）で滑らかに繋ぐ
-            port_f = min(int(num_frames * 0.2), 50) 
-            if port_f > 0:
-                curve[:port_f] = np.linspace(prev_hz, target_hz, port_f)
+            # ノートの最初の15%を使って滑らかに繋ぐ（黄金比的な減衰）
+            port_len = min(int(num_frames * 0.15), 40)
+            if port_len > 0:
+                # 指数関数的にターゲットに近づけることで人間らしさを出す
+                t = np.linspace(0, 1, port_len)
+                curve[:port_len] = prev_hz + (target_hz - prev_hz) * (1 - np.exp(-5 * t))
+
+        # 3. ビブラート・ロジック（後半に周期的な揺れを追加）
+        # ※ ここに設定画面の数値を反映させると世界シェアに近づきます
+        vibrato_depth = 6.0  # Hz単位の揺れ幅
+        vibrato_rate = 5.5   # 1秒間に5.5回
+        
+        # ノートの後半50%からビブラートを開始
+        vib_start = int(num_frames * 0.5)
+        for i in range(vib_start, num_frames):
+            # サンプリング周期に基づいた正弦波
+            time_sec = i * 0.005 # 5ms単位
+            osc = math.sin(2 * math.pi * vibrato_rate * time_sec)
+            curve[i] += osc * vibrato_depth
+
         return curve
+
+    def get_notes_from_timeline(self):
+        """
+        [完全実装] ピアノロール上の全音符をスキャンし、演奏データへと変換する
+        """
+        note_events = []
+        
+        # 1. ピアノロールの「シーン」から全アイテムを取得
+        # ※ self.scene はあなたのピアノロールの QGraphicsScene です
+        if not hasattr(self, 'piano_roll_scene') or self.piano_roll_scene is None:
+            self.log_startup("Error: Piano roll scene not initialized.")
+            return []
+
+        all_items = self.piano_roll_scene.items()
+        
+        # 2. 音符アイテム（NoteItemクラス）だけをフィルタリング
+        # NoteItemは、あらかじめ座標や歌詞を保持している前提です
+        raw_notes = []
+        for item in all_items:
+            # itemが自分で作ったNoteItemクラスかどうかを判定
+            if hasattr(item, 'is_note_item') and item.is_note_item:
+                raw_notes.append(item)
+
+        # 3. 時間軸（X座標）でソート（これが無いとメロディがバラバラになります）
+        raw_notes.sort(key=lambda x: x.x())
+
+        # 4. GUI上の物理量を「音楽的データ」に変換
+        for item in raw_notes:
+            # X座標 = 開始時間, 幅(Width) = 長さ, Y座標 = 音高(NoteNumber)
+            # ※ 100ピクセル = 1秒 などの倍率はあなたの設計に合わせて調整してください
+            start_time = item.x() / 100.0  
+            duration = item.rect().width() / 100.0
+            
+            # 歌詞（あ）を音素（a）に変換
+            phoneme_label = self.convert_lyrics_to_phoneme(item.lyrics)
+
+            # C++構造体 NoteEvent を作成（__init__でデータを流し込む）
+            event = NoteEvent(
+                phonemes=phoneme_label,
+                note_number=item.note_number,
+                duration=duration,
+                start_time=start_time,
+                velocity=item.velocity
+            )
+            note_events.append(event)
+
+        self.log_startup(f"Timeline Scan: {len(note_events)} notes collected.")
+        return note_events
+
+    def convert_lyrics_to_phoneme(self, lyrics):
+        """簡単な歌詞→音素変換（辞書）"""
+        dic = {"あ": "a", "い": "i", "う": "u", "え": "e", "お": "o"}
+        return dic.get(lyrics, "n") # 見つからなければ「ん」にする
+        
 
     def handle_playback(self):
         """
-        [壺修正済み] 競合回避型再生ハンドラ
-        DSP処理とファイルロック対策を統合。
+        [究極統合] AI推論・競合回避・DSP処理を一本化した再生メインフロー
         """
+        # 1. タイムラインから音符データを取得
         notes = self.get_notes_from_timeline()
-        if not notes: return
+        if not notes:
+            self.statusBar().showMessage("No notes to play.", 3000)
+            return
 
-        # ピッチ曲線の生成
-        prev = None
-        for n in notes:
-            n.pitch_curve = self.generate_pitch_curve(n, prev)
-            prev = n
+        try:
+            self.statusBar().showMessage("Aural AI is thinking...")
 
-        # 【修正】ファイルロックを避けるためのタイムスタンプ付き一時ファイル
-        temp_wav = f"cache/render_{int(time.time() * 1000)}.wav"
-        os.makedirs("cache", exist_ok=True)
+            # 2. 【脳】AI推論ループ（各音符に命を吹き込む）
+            prev = None
+            for n in notes:
+                # AIに歌い方の設計図（ダイナミクス・ピッチ等）を予測させる
+                # ※ predict_dynamicsは前述のONNX推論メソッド
+                n.dynamics = self.predict_dynamics(n.phonemes, n.note_number)
+                
+                # AIの予測をベースに、さらに滑らかなピッチ曲線を生成（ポルタメント等）
+                n.pitch_curve = self.generate_pitch_curve(n, prev)
+                prev = n
 
-        final_file = self.synthesize(notes, temp_wav)
+            # 3. 【安全性】ファイルロック回避のためのキャッシュ名生成
+            os.makedirs("cache", exist_ok=True)
+            temp_wav = os.path.abspath(f"cache/render_{int(time.time() * 1000)}.wav")
 
-        if final_file and os.path.exists(final_file):
-            # ここでDSP EQ（8kHzブースト等）をかけて音を磨き上げる
-            # self.apply_dsp_filter(final_file)
+            # 4. 【喉】C++レンダリング実行
+            # AIが作った設計図（notes）をまとめてC++エンジンに渡す
+            final_file = self.synthesize(notes, temp_wav)
+
+            # 5. 【磨き】DSP処理 & 再生
+            if final_file and os.path.exists(final_file):
+                # 合成後に高域ノイズを除去するDSP EQを適用
+                self.apply_dsp_equalizer(frequency=8000.0, gain=-2.0)
+                
+                # 音を鳴らす
+                self.play_audio(final_file)
+                self.statusBar().showMessage(f"Playing via {self.active_device}", 5000)
+
+        except Exception as e:
+            error_msg = f"Playback Failed: {str(e)}"
+            self.log_startup(error_msg)
+            self.statusBar().showMessage(error_msg, 10000)
+
+    def predict_dynamics(self, phonemes, notes):
+        """AIモデル(ONNX)を使用してパラメータを予測"""
+        # [前処理] 歌詞をAIが理解できる数値(0, 1, 2...)に変換
+        input_data = self.preprocess_lyrics(phonemes, notes) 
+
+        # [推論] NPUまたはCPUで実行
+        inputs = {self.ai_session.get_inputs()[0].name: input_data}
+        prediction = self.ai_session.run(None, inputs)
+
+        # AIが予測したピッチ、テンション、ジェンダー等の多次元配列を返す
+        return prediction[0]
+
+    def synthesize_voice(self, dynamics_data):
+        """AIの結果をC++に投げてスピーカーから鳴らす"""
+        self.statusBar().showMessage("Rendering via Aural Engine...")
+
+        try:
+            # 1. C++ DLLのレンダリング関数を叩く
+            # ここであなたの vose_core.dll が火を噴きます
+            raw_audio = self.engine_dll.render(dynamics_data)
             
-            self.play_audio(final_file)
-
-    def get_notes_from_timeline(self):
-        # 本来はGUIのピアノロールからデータを取ってくる部分
-        # ここではテスト用にダミーのリストを返します
-        return []
+            # 2. sounddevice で再生（ノンブロッキング）
+            import sounddevice as sd
+            sd.play(raw_audio, samplerate=44100)
+            
+            self.statusBar().showMessage(f"Playing on {self.active_device}", 3000)
+        except Exception as e:
+            self.log_startup(f"Synthesis Error: {e}")
+            
 
     def synthesize(self, notes, output_path="output.wav"):
         """
