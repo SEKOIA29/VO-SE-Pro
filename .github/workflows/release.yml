@@ -29,11 +29,12 @@ jobs:
         with:
           python-version: '3.10'
           cache: 'pip'
-
+          
       - name: Lint with Ruff
         run: |
           pip install ruff
-          # オプションを先に、対象（.）を最後に置くスタイル
+          # エラーが残っているとここで止まる（＝高品質なコードの証明）
+          ruff check . --select E,F --ignore E501
           ruff check --select E,F --ignore E501 .
           
       - name: Type Check with Pyright (インポート・型チェック)
