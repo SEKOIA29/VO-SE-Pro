@@ -25,6 +25,6 @@ class AppInitializer:
                 missing.append(os.path.basename(f))
 
         if missing:
-            return False, f"以下の必須ファイルが見つかりません:\n" + "\n".join(missing)
+            return False, "以下の必須ファイルが見つかりません:\n" + "\n".join(missing)
         
         return True, "All clear"
