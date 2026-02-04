@@ -30,6 +30,18 @@ jobs:
           python-version: '3.10'
           cache: 'pip'
 
+      - name: Lint with Ruff (高速な構文・記述エラーチェック)
+        run: |
+          pip install ruff
+          ruff check . --select E,F,W,C90 --ignore E501 
+          # E,F,W,C90は文法エラーや未使用インポート、複雑度をチェック
+
+      - name: Type Check with Pyright (インポート・型チェック)
+        run: |
+          pip install pyright
+          # Pythonのパスを通し、インポートミスがないか確認
+          pyright . --lib
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
