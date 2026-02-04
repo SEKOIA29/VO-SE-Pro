@@ -43,7 +43,7 @@ def pack_all_voices():
                         if (i + 1) % 15 == 0:
                             h.write("\n    ")
                     
-                    h.write(f"\n}};\n")
+                    h.write("\n}};\n")
                     h.write(f"const int {var_name}_LEN = {len(data)};\n\n")
                     
                     voice_entries.append((entry_name, var_name))
