@@ -33,8 +33,8 @@ jobs:
       - name: Lint with Ruff
         run: |
           pip install ruff
-          # 引数の順番を整理： [check] [対象] [オプション]
-          ruff check . --select E,F --ignore E501 --format github
+          # オプションを先に、対象（.）を最後に置くスタイル
+          ruff check --select E,F --ignore E501 .
           
       - name: Type Check with Pyright (インポート・型チェック)
         run: |
