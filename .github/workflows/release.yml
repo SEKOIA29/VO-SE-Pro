@@ -33,9 +33,9 @@ jobs:
       - name: Lint with Ruff
         run: |
           pip install ruff
-          # --fix をつけて自動修正を試み、致命的なエラー(E, F)以外は無視する設定
-          ruff check . --select E,F --ignore E501 --format=github
-
+          # 引数の順番を整理： [check] [対象] [オプション]
+          ruff check . --select E,F --ignore E501 --format github
+          
       - name: Type Check with Pyright (インポート・型チェック)
         run: |
           pip install pyright
