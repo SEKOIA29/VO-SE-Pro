@@ -1,6 +1,6 @@
 import ctypes
 import os
-import numpy as np
+
 
 def test_engine():
     engine_path = os.environ.get('ENGINE_PATH', 'bin/vose_core.dll')
