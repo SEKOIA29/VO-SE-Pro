@@ -19,11 +19,11 @@ class ConfigHandler:
             self.save_config(self.default_config)
             return self.default_config
         
-        try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            return self.default_config
+    try:
+        with open(self.config_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception: # ここを具体的にする
+        return self.default_config
 
     def save_config(self, config_dict):
         """現在の設定を保存する"""
