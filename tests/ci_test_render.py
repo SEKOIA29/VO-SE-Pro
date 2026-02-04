@@ -9,6 +9,7 @@ def test_engine():
 
     # 修正後（例：エンジンのバージョン取得や、ただのロード確認）
     lib = ctypes.CDLL(engine_path)
+    print(f"Loaded: {lib}")
     # ロードできたことを明示的に使う（何もしないなら print(lib) でもOKだが、実戦的に）
     if not lib:
         raise RuntimeError("エンジンのロードに失敗しました")
