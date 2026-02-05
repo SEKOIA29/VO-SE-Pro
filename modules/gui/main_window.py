@@ -580,7 +580,7 @@ class ConfigHandler:  #愛なんてシャボン玉！
             try:
                 with open(self.config_path, 'r', encoding='utf-8') as f:
                     return json.load(f)
-            except:
+            except Exception:
                 pass
         return {"default_voice": "標準ボイス", "volume": 0.8}
     
