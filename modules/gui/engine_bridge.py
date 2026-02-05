@@ -45,4 +45,5 @@ if __name__ == "__main__":
         #engine.play_voice("kanase_あ")
         
     except Exception as e:
+        pass
        # print(f"❌ Error: {e}")
