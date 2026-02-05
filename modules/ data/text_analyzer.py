@@ -1,7 +1,6 @@
 #GUI/text_analyzer.py
 
 import pyopenjtalk
-import numpy as np
 from .data_models import NoteEvent
 
 class TextAnalyzer:
