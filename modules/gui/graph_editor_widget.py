@@ -1,6 +1,6 @@
 #graph_editor_widget.py
 
-import numpy as np
+
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt, Signal, Slot, QRect, QPointF
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QPaintEvent, QMouseEvent
@@ -158,8 +158,10 @@ class GraphEditorWidget(QWidget):
 
         # 1. (オプション) 他のパラメーターを薄くガイド表示
         for mode, events in self.all_parameters.items():
-            if mode == self.current_mode: continue
-            if not events: continue
+            if mode == self.current_mode:
+                continue
+            if not events:
+                continue
             color = self.colors[mode]
             color.setAlpha(40) # 非常に薄く
             painter.setPen(QPen(color, 1))
