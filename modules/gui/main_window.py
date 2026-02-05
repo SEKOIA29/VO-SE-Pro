@@ -939,7 +939,8 @@ class MainWindow(QMainWindow):
 
     def focus_next_note_input(self):
         """Tabキーで次の入力欄へ。Pro Audio的な爆速入力を実現"""
-        if not self.input_fields: return
+        if not self.input_fields:
+            return
         
         # 現在フォーカスされているウィジェットを確認
         current = self.focusWidget()
