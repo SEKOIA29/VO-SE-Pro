@@ -6,7 +6,7 @@ import ctypes
 import logging
 
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt
+
 
 # --- 自作モジュールのインポート ---
 # フォルダ構成に合わせてパスを調整（絶対インポートを推奨）
