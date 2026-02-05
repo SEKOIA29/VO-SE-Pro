@@ -3330,7 +3330,7 @@ class MainWindow(QMainWindow):
     def execute_async_render(self):
         """
         タイマー満了時に一度だけ実行される「重い」計算処理。
-        ここで初めてスレッドを立てる。
+        UIを止めないように別スレッドでレンダリング（合成）を行います。
         """
         self.statusBar().showMessage("音声をレンダリング中...", 1000)
         
@@ -3338,18 +3338,29 @@ class MainWindow(QMainWindow):
         if not updated_notes:
             return
 
-        # エンジンに最新データを渡す
+        # 1. エンジンに最新データを渡す
         if hasattr(self.vo_se_engine, 'update_notes_data'):
             self.vo_se_engine.update_notes_data(updated_notes)
 
-        # 【爆弾4対策】もし既に前の計算スレッドが動いていたら、
-        # 競合しないようにエンジン側で停止処理をしてから新しいスレッドを開始
-        threading.Thread(
-            target=self.vo_se_engine.synthesize_track,
-            args=(updated_notes, self.pitch_data),
-            kwargs={'preview_mode': True},
-            daemon=True
-        ).start()
+        # 2. レンダリングスレッドの起動
+        # synthesize_track（合成）と prepare_cache（準備）を両方こなすように設定
+        def rendering_task():
+            try:
+                # キャッシュの準備
+                if hasattr(self.vo_se_engine, 'prepare_cache'):
+                    self.vo_se_engine.prepare_cache(updated_notes)
+                
+                # プレビュー用の合成
+                self.vo_se_engine.synthesize_track(
+                    updated_notes, 
+                    self.pitch_data, 
+                    preview_mode=True
+                )
+            except Exception as e:
+                print(f"Async Render Error: {e}")
+
+        render_thread = threading.Thread(target=rendering_task, daemon=True)
+        render_thread.start())
 
 
 
@@ -3406,11 +3417,7 @@ class MainWindow(QMainWindow):
         self.keyboard_sidebar.set_key_height_pixels(key_h)
 
 
-    def execute_async_render(self):
-        """タイマー満了で実際にスレッドを起動"""
-        threading.Thread(target=self.vo_se_engine.prepare_cache, 
-                         args=(self.timeline_widget.notes_list,), 
-                         daemon=True).start()
+
 
     # ==========================================================================
     # ヘルパーメソッド
