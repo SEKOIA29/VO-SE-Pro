@@ -180,7 +180,7 @@ class TimelineWidget(QWidget):
         ctrl = event.modifiers() & Qt.ControlModifier
         if event.key() == Qt.Key_1:
             self.change_layer("Dynamics")
-　　　　　elif event.key() == Qt.Key_2:
+        elif event.key() == Qt.Key_2:
             self.change_layer("Pitch")
         elif event.key() == Qt.Key_3: self.change_layer("Vibrato")
         elif event.key() == Qt.Key_4: self.change_layer("Formant")
