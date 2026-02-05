@@ -3360,7 +3360,7 @@ class MainWindow(QMainWindow):
                 print(f"Async Render Error: {e}")
 
         render_thread = threading.Thread(target=rendering_task, daemon=True)
-        render_thread.start())
+        render_thread.start()
 
 
 
