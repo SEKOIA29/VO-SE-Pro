@@ -33,15 +33,15 @@ class IntonationAnalyzer:
         except Exception as e:
             return f"Error: {e}"
         finally:
-            # 掃除
+            # 掃除（E701修正：改行して4スペース下げる）
             for t in [temp_input, temp_trace]:
-                if os.path.exists(t): os.remove(t)
-
+                if os.path.exists(t):
+                    os.remove(t)
 
 
 class TalkManager:
     def __init__(self):
-        # 実行パスの解決（既存のロジックを維持）
+        # 実行パスの解決
         if getattr(sys, 'frozen', False):
             self.base_bin = os.path.join(sys._MEIPASS, "bin", "open_jtalk")
         else:
@@ -54,35 +54,14 @@ class TalkManager:
         self.current_voice_path = os.path.join(self.base_bin, "voice", "mei_normal.htsvoice")
 
     def set_voice(self, htsvoice_path):
-        """外部からボイスモデルを切り替える（MainWindowから呼ばれる）"""
+        """外部からボイスモデルを切り替える"""
         if os.path.exists(htsvoice_path):
             self.current_voice_path = htsvoice_path
             return True
         return False
 
     def synthesize(self, text, output_path):
-        """選択中のボイスモデルでWAVを生成"""
-        if not os.path.exists(self.exe):
-            return False, "Open JTalk本体が見つかりません。"
-
-        command = [
-            self.exe,
-            "-x", self.dic,
-            "-m", self.current_voice_path, # ここを動的に
-            "-ow", output_path
-        ]
-        # 実行環境に合わせたパスの取得
-        if getattr(sys, 'frozen', False):
-            self.base_bin = os.path.join(sys._MEIPASS, "bin", "open_jtalk")
-        else:
-            self.base_bin = os.path.join(os.path.dirname(__file__), "../../bin/open_jtalk")
-
-        self.exe = os.path.join(self.base_bin, "open_jtalk.exe")
-        self.dic = os.path.join(self.base_bin, "dic")
-        self.voice = os.path.join(self.base_bin, "voice", "mei_normal.htsvoice")
-
-    def synthesize(self, text, output_path):
-        """テキストをWAVに変換して保存する"""
+        """選択中のボイスモデルでWAVを生成（F811修正：重複した定義を1つに統合）"""
         if not os.path.exists(self.exe):
             return False, "Open JTalk本体が見つかりません。"
 
@@ -90,7 +69,7 @@ class TalkManager:
         command = [
             self.exe,
             "-x", self.dic,
-            "-m", self.voice,
+            "-m", self.current_voice_path,
             "-ow", output_path
         ]
 
