@@ -1,10 +1,11 @@
 import os
-from PyQt6.QtCore import QUrl, pyqtSignal, QObject
-from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+# PyQt6 から PySide6 に変更
+from PySide6.QtCore import QUrl, Signal, QObject
+from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 class AudioPlayer(QObject):
-    # 再生位置が動いた時にタイムラインのバーを動かすための信号
-    position_changed = pyqtSignal(int) 
+    # PySide6 では pyqtSignal ではなく Signal を使います
+    position_changed = Signal(int) 
     
     def __init__(self, volume=0.8):
         super().__init__()
@@ -20,6 +21,7 @@ class AudioPlayer(QObject):
     def play_file(self, file_path):
         """指定したWavファイルを再生"""
         if os.path.exists(file_path):
+            # 絶対パスを確実に渡す
             self.player.setSource(QUrl.fromLocalFile(os.path.abspath(file_path)))
             self.player.play()
 
