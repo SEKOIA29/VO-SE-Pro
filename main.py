@@ -6,7 +6,7 @@ import pyopenjtalk
 import numpy as np
 import json
 
-# GUIライブラリをPySide6に統一しつつ、QMessageBoxなどは維持
+# GUIライブラリをPySide6に統一
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QIcon
 
@@ -38,8 +38,8 @@ class ConfigHandler:
         try:
             with open(self.config_path, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:  # except: から修正
-           return self.default_config
+        except Exception:  # E722 修正: bare except を Exception に変更
+            return self.default_config
 
     def save_config(self, config_dict):
         try:
@@ -56,7 +56,6 @@ class VoSeEngine:
         self._load_c_engine()
 
     def _load_c_engine(self):
-        # 以前のコードの命名規則「libvo_se.dll」を維持
         lib_name = "libvo_se.dll" if self.os_name == "Windows" else "libvo_se.dylib"
         dll_path = get_resource_path(os.path.join("bin", lib_name))
         
@@ -72,18 +71,19 @@ class VoSeEngine:
     def analyze_intonation(self, text):
         print(f"\n--- 解析実行: '{text}' ---")
         try:
-            # pyopenjtalkの解析処理（元のロジックを維持）
             labels = pyopenjtalk.extract_fullcontext(text)
             return labels
         except Exception as e:
             return [f"Analysis failed: {str(e)}"]
 
     def process_with_c(self, data_array):
-        if not self.c_engine: return data_array
+        # E701 修正: 1行書きを改行
+        if not self.c_engine:
+            return data_array
+            
         data_float = np.array(data_array, dtype=np.float32)
         ptr = data_float.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
         try:
-            # 元の関数名 process_voice を維持
             self.c_engine.process_voice(ptr, len(data_float))
             return data_float
         except Exception as e:
@@ -94,30 +94,25 @@ class VoSeEngine:
 def main():
     app = QApplication(sys.argv)
     
-    # 【追加】アイコン設定（ここだけ新機能として融合）
     icon_path = get_resource_path(os.path.join("assets", "icon.png"))
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
     
-    # 【維持】環境チェックと警告表示
     lib_name = "libvo_se.dll" if platform.system() == "Windows" else "libvo_se.dylib"
     dll_path = get_resource_path(os.path.join("bin", lib_name))
     if not os.path.exists(dll_path):
         QMessageBox.warning(None, "準備不足", f"DLLが見つかりません。一部機能が制限されます。\n場所: {dll_path}")
 
-    # 【維持】設定とエンジンの準備
     config_handler = ConfigHandler()
     config = config_handler.load_config()
     engine = VoSeEngine()
 
-    # 【維持】GUIの起動とデータの注入
     window = MainWindow()
-    window.vo_se_engine = engine # エンジンを注入
-    window.config = config       # 設定を注入
+    window.vo_se_engine = engine
+    window.config = config
     
     window.show()
     
-    # 【維持】終了時に設定を保存
     result = app.exec()
     config_handler.save_config(config)
     sys.exit(result)
