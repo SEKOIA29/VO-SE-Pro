@@ -1961,7 +1961,7 @@ class MainWindow(QMainWindow):
 
         # 3. ユーザーへのフィードバック
         status = "【High-Mode】レンダリング優先" if mode == 1 else "【Power-Save】Core i3最適化モード"
-        color = "#ff4444" if mode == 1 else "#44ff44" # ステータスバーの色を変える演出もアリ
+        _ = "#ff4444" if mode == 1 else "#44ff44"
         
         self.statusBar().showMessage(f"System: {status} に切り替えました")
         
@@ -2040,7 +2040,7 @@ class MainWindow(QMainWindow):
                     # Macで作られたZIPの日本語名化けを修正 (cp437 -> cp932)
                     try:
                         filename = info.filename.encode('cp437').decode('cp932')
-                    except:
+                    except Exception:
                         filename = info.filename
                     
                     # 不要なゴミファイル（Mac由来など）をスキップ
@@ -2211,7 +2211,7 @@ class MainWindow(QMainWindow):
                 start_time, end_time = self.timeline_widget.get_selected_notes_range()
             else:
                 start_time = 0
-                end_time = max(n.start_time + n.duration for n in notes)
+                _ = max(n.start_time + n.duration for n in notes)
 
             # 再生フラグを立てる
             self.is_playing = True
