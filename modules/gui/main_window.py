@@ -1015,9 +1015,7 @@ class MainWindow(QMainWindow):
             # 今回の歌詞を保存
             prev_lyric = note.lyric
 
-    def start_vocal_analysis(self, audio_data):
-        """解析ボタンが押された時などに呼ぶ"""
-        self.ai_manager.analyze_async(audio_data)
+
 
 
     def init_vcv_logic(self):
@@ -2527,9 +2525,19 @@ class MainWindow(QMainWindow):
 
 
     def start_vocal_analysis(self, audio_data):
-        """解析開始"""
-        self.statusBar().showMessage("解析中...")
-        self.ai_manager.analyze_async(audio_data)
+        """AIによるボーカル解析を開始する"""
+        if not audio_data:
+            self.statusBar().showMessage("解析エラー: オーディオデータがありません")
+            return
+
+        self.statusBar().showMessage("AI解析中... しばらくお待ちください")
+        
+        # 解析処理を非同期（バックグラウンド）で実行
+        try:
+            self.ai_manager.analyze_async(audio_data)
+        except Exception as e:
+            self.statusBar().showMessage(f"解析開始失敗: {e}")
+            print(f"Analysis Error: {e}")
 
     def on_analysis_finished(self, results):
         """
