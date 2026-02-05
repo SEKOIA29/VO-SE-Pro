@@ -71,7 +71,8 @@ class AIManager(QObject):
             try:
                 # セッションがなければ初期化
                 if self.session is None:
-                    if not self.init_model(): return
+                    if not self.init_model():
+                        return
                 
                 # 推論実行
                 result = self.predict_onset(audio_data)
