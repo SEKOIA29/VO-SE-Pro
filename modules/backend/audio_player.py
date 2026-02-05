@@ -1,3 +1,5 @@
+import os
+from PySide6.QtCore import QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtCore import QUrl, pyqtSignal, QObject
 
