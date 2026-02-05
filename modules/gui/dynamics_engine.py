@@ -1,6 +1,5 @@
 import ctypes
 import numpy as np
-import os
 import _ctypes
 import platform
 from audio_types import SynthesisRequest, CNoteEvent, CPitchEvent # 前に定義した構造体
