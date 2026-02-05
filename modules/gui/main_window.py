@@ -3002,8 +3002,10 @@ class MainWindow(QMainWindow):
         return oto_map
 
     def safe_to_float(self, val):
-        try: return float(val.strip())
-        except: return 0.0
+        try: 
+            return float(val.strip())
+        except Exception:
+            return 0.0
 
     def refresh_voice_ui_with_scan(self):
         """スキャンを実行してUIを最新状態にする"""
