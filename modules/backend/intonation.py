@@ -45,7 +45,8 @@ class IntonationAnalyzer:
             return ""
         finally:
             for t in [temp_input, temp_trace]:
-                if os.path.exists(t): os.remove(t)
+                if os.path.exists(t): 
+                    os.remove(t)
 
     def parse_trace_to_notes(self, trace_data):
         """
@@ -53,7 +54,8 @@ class IntonationAnalyzer:
         タイムライン用の辞書リストに変換する
         """
         notes = []
-        if not trace_data: return notes
+        if not trace_data: 
+            return notes
 
         # [粗い解析] トレースデータ内の「Label indicating state transitions」セクションを探す
         # フォーマット例: 0-10000 xx^xx-pau+sh@xx...
