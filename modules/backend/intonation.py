@@ -60,7 +60,7 @@ class IntonationAnalyzer:
         pattern = re.compile(r'(\d+)-(\d+)\s+([^\s]+)')
         lines = trace_data.split('\n')
         
-        current_time_ms = 0
+       # current_time_ms = 0
         
         for line in lines:
             line = line.strip()
