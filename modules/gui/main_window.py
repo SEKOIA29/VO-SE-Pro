@@ -4,8 +4,13 @@
 # 1. 標準ライブラリ (Standard Libraries)
 # ==========================================================================
 import os
+import sys         # app起動や引数処理に必要
 import time
 import json
+import ctypes      # DLL(エンジン)の読み込みに必要
+import pickle      # キャッシュ保存に必要
+import zipfile     # 音源ZIPのインストールに必要
+import shutil      # フォルダ削除やコピーに必要
 import platform
 import threading
 from typing import List, Optional, Dict, Any
@@ -17,7 +22,7 @@ import numpy as np
 import mido
 
 # ==========================================================================
-# 3. GUIライブラリ (PySide6 / Qt) - 不足していたクラスを追加
+# 3. GUIライブラリ (PySide6 / Qt)
 # ==========================================================================
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -39,9 +44,14 @@ from PySide6.QtCore import (
 from .timeline_widget import TimelineWidget
 from .vo_se_engine import VO_SE_Engine
 from .voice_manager import VoiceManager
-# AIManager, AuralAIEngine が別ファイルにある場合はここに追加
 from .ai_manager import AIManager
 from .aural_engine import AuralAIEngine
+
+# もし VoiceCardWidget が modules.gui.widgets にあるなら以下も追加
+try:
+    from .widgets import VoiceCardWidget
+except ImportError:
+    pass
 
 # ==========================================================================
 # 5. グローバル設定（Core i3 負荷軽減 & メモリ管理）
