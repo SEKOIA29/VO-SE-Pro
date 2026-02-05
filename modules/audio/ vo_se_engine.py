@@ -4,11 +4,9 @@
 import ctypes
 import os
 import platform
-import sys
 import numpy as np
 import sounddevice as sd
 import soundfile as sf
-import mido
 import chardet
 
 # ==========================================================================
