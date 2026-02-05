@@ -38,8 +38,8 @@ class ConfigHandler:
         try:
             with open(self.config_path, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except:
-            return self.default_config
+        except Exception:  # except: から修正
+           return self.default_config
 
     def save_config(self, config_dict):
         try:
