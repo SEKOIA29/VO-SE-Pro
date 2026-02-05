@@ -3,69 +3,50 @@
 # ==========================================================================
 # 1. 標準ライブラリ (Standard Libraries)
 # ==========================================================================
-import sys
 import os
 import time
 import json
-import wave
-import ctypes
-import pickle
-import zipfile
 import platform
 import threading
-import shutil
 from typing import List, Optional, Dict, Any
 
 # ==========================================================================
-# 2. 数値計算・信号処理 (Numerical & Audio Processing)
+# 2. 数値計算・信号処理 (Numerical Processing)
 # ==========================================================================
 import numpy as np
-import librosa
-import math  
-import pyworld as pw
-import soundfile as sf
-import sounddevice as sd
-from scipy.io.wavfile import write as wav_write
-
-# ==========================================================================
-# 3. 外部ライブラリ (External Libraries - NLP, MIDI, etc.)
-# ==========================================================================
-from janome.tokenizer import Tokenizer
 import mido
-import chardet
-import onnxruntime as ort
 
 # ==========================================================================
-# 4. GUIライブラリ (PySide6 / Qt)
+# 3. GUIライブラリ (PySide6 / Qt) - 不足していたクラスを追加
 # ==========================================================================
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QFileDialog, QScrollBar, QInputDialog, QLineEdit,
     QLabel, QSplitter, QComboBox, QProgressBar, QMessageBox, QToolBar,
-    QGridLayout, QFrame
+    QGridLayout, QFrame, QDialog, QScrollArea, QSizePolicy, QButtonGroup
 )
 from PySide6.QtGui import (
-    QAction, QKeySequence, QKeyEvent, QPainter, QPen, QPixmap
+    QAction, QKeySequence, QKeyEvent, QPainter, QPen, QPixmap, 
+    QFont, QShortcut, QColor
 )
 from PySide6.QtCore import (
     Slot, Qt, QTimer, Signal, QThread, QUrl
 )
 
 # ==========================================================================
-# 5. 自作モジュール (Custom VO-SE Modules)
+# 4. 自作モジュール (Custom VO-SE Modules)
 # ==========================================================================
-# ※ディレクトリ構造に合わせて適宜調整してください
 from .timeline_widget import TimelineWidget
-# ※MainWindow内で直接ロジックを書く場合は以下はMainWindowの外、
-# または専用クラスとしてインポート
-from audio.vo_se_engine import VO_SE_Engine
-from audio.voice_manager import VoiceManager
-from modules.gui.widgets import VoiceCardWidget
+from .vo_se_engine import VO_SE_Engine
+from .voice_manager import VoiceManager
+# AIManager, AuralAIEngine が別ファイルにある場合はここに追加
+from .ai_manager import AIManager
+from .aural_engine import AuralAIEngine
+
 # ==========================================================================
-# 6. グローバル設定（Core i3 負荷軽減 & メモリ管理）
+# 5. グローバル設定（Core i3 負荷軽減 & メモリ管理）
 # ==========================================================================
-# NumPyのメモリ割り出しを最適化し、スワップを防ぐ設定（環境変数）
-os.environ["OMP_NUM_THREADS"] = "1"  # 並列処理によるCPU爆熱を防止
+os.environ["OMP_NUM_THREADS"] = "1"
 
 # ==========================================================================
 # ハイブリッド・エンジン自動判別システム
