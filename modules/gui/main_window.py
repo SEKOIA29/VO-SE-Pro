@@ -2776,14 +2776,14 @@ class MainWindow(QMainWindow):
         ノートの時間範囲(start 〜 start+duration)をres分割して
         グラフの値をサンプリングする補助関数
         """
-        # numpy を使って時間を均等に分割
+        # numpy を使って時間を均等に分割# 1. 時間軸を生成
         times = np.linspace(note.start_time, note.start_time + note.duration, res)
         
-        # 1. データがない場合はデフォルト値を返す
+        # 2. データがない場合の安全策
         if not events:
             return [0.5] * res
             
-        # 2. グラフエディタの補間関数を使用して値をリスト化
+        # 3. グラフエディタの補間関数を呼び出し
         return [self.graph_editor_widget.get_value_at_time(events, t) for t in times]
 
     def load_oto_ini_special(self, path):
