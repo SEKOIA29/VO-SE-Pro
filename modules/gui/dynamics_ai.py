@@ -43,7 +43,7 @@ class DynamicsMemoryManager:
             print("DLL memory fully unloaded.")
             
 
-class DynamicsAIEngine:
+class AuralAIEngine:
     def __init__(self, model_path="models/pitch_dynamics.onnx"):
         self.model_path = model_path
         self.session = None
