@@ -244,22 +244,28 @@ class TimelineWidget(QWidget):
 
     def smooth_param(self):
         data = self.parameters[self.current_param_layer]
-        if len(data) < 5: return
-        sorted_ts = sorted(data.keys()); new_data = {}
+        if len(data) < 5:
+            return
+        sorted_ts = sorted(data.keys())
+        new_data = {}
         for i, t in enumerate(sorted_ts):
             subset = [data[sorted_ts[j]] for j in range(max(0, i-2), min(len(sorted_ts), i+3))]
             new_data[t] = sum(subset)/len(subset)
-        self.parameters[self.current_param_layer] = new_data; self.notes_changed_signal.emit()
+        self.parameters[self.current_param_layer] = new_data
+        self.notes_changed_signal.emit()
 
     def duplicate_notes(self):
         sel = [n for n in self.notes_list if n.is_selected]
-        if not sel: return
+        if not sel:
+            return
         offset = max(n.start_time + n.duration for n in sel) - min(n.start_time for n in sel)
         self.deselect_all()
         for n in sel:
             clone = NoteEvent(n.start_time + offset, n.duration, n.note_number, n.lyrics)
-            clone.is_selected = True; self.notes_list.append(clone)
-        self.notes_changed_signal.emit(); self.update()
+            clone.is_selected = True
+            self.notes_list.append(clone)
+        self.notes_changed_signal.emit()
+        self.update()
 
     def mouseDoubleClickEvent(self, event):
         for n in self.notes_list:
