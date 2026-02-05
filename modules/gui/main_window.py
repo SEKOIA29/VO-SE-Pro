@@ -60,7 +60,7 @@ from .timeline_widget import TimelineWidget
 # または専用クラスとしてインポート
 from audio.vo_se_engine import VO_SE_Engine
 from audio.voice_manager import VoiceManager
-
+from modules.gui.widgets import VoiceCardWidget
 # ==========================================================================
 # 6. グローバル設定（Core i3 負荷軽減 & メモリ管理）
 # ==========================================================================
