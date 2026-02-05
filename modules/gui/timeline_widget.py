@@ -281,30 +281,39 @@ class TimelineWidget(QWidget):
     def split_note(self, n, chars):
         dur = n.duration / len(chars)
         if n in self.notes_list: self.notes_list.remove(n)
-        for i, c in enumerate(chars): self.notes_list.append(NoteEvent(n.start_time + i*dur, dur, n.note_number, c))
+        for i, c in enumerate(chars): 
+            self.notes_list.append(NoteEvent(n.start_time + i*dur, dur, n.note_number, c))
 
     def copy_notes(self):
         sel = [n for n in self.notes_list if n.is_selected]
-        if not sel: return
+        if not sel:
+            return
         base = min(n.start_time for n in sel)
         data = [{"l": n.lyrics, "n": n.note_number, "o": n.start_time - base, "d": n.duration} for n in sel]
         QApplication.clipboard().setText(json.dumps(data))
 
     def paste_notes(self):
         try:
-            data = json.loads(QApplication.clipboard().text()); self.deselect_all()
+            data = json.loads(QApplication.clipboard().text());
+            self.deselect_all()
             for d in data:
                 nn = NoteEvent(self._current_playback_time + d["o"], d["d"], d["n"], d["l"])
-                nn.is_selected = True; self.notes_list.append(nn)
+                nn.is_selected = True; 
+                self.notes_list.append(nn)
             self.notes_changed_signal.emit(); self.update()
         except: pass
 
-    def delete_selected(self): self.notes_list = [n for n in self.notes_list if not n.is_selected]; self.notes_changed_signal.emit(); self.update()
+    def delete_selected(self): 
+        self.notes_list = [n for n in self.notes_list if not n.is_selected];
+        self.notes_changed_signal.emit();
+        self.update()
     def select_all(self):
-        for n in self.notes_list: n.is_selected = True
+        for n in self.notes_list:
+            n.is_selected = True
         self.update()
     def deselect_all(self):
-        for n in self.notes_list: n.is_selected = False
+        for n in self.notes_list:
+            n.is_selected = False
         self.update()
     @Slot(int)
     def set_vertical_offset(self, val): self.scroll_y_offset = val; self.update()
