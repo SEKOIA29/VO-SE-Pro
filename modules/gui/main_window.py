@@ -2028,13 +2028,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Failed to write oto.ini: {e}")
             
-
-    def dragEnterEvent(self, event):
-        """ファイルドラッグ時の処理"""
-        if event.mimeData().hasUrls():
-            event.accept()
-        else:
-            event.ignore()
+)
 
     def dropEvent(self, event):
         """ファイルドロップ時の処理"""
@@ -2150,10 +2144,12 @@ class MainWindow(QMainWindow):
             
 
     def dragEnterEvent(self, event):
+        """ファイルドラッグ時の処理"""
         if event.mimeData().hasUrls():
             event.accept()
         else:
             event.ignore()
+            
 
     def dropEvent(self, event):
         files = [u.toLocalFile() for u in event.mimeData().urls()]
