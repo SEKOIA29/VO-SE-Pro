@@ -1,8 +1,6 @@
 # audio_output.py
 
 import sounddevice as sd
-import numpy as np
-import ctypes
 import platform
 
 class AudioOutput:
