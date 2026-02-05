@@ -100,7 +100,8 @@ class TimelineWidget(QWidget):
     @Slot(float)
     def update_audio_level(self, level):
         """C言語側からの音量通知を受けて発光演出"""
-        self.audio_level = level; self.update()
+        self.audio_level = level
+        self.update()        
 
     # --- 描画ロジック ---
     def paintEvent(self, event):
@@ -119,7 +120,9 @@ class TimelineWidget(QWidget):
             cx = int(self.seconds_to_beats(self._current_playback_time) * self.pixels_per_beat - self.scroll_x_offset)
             glow_w = int(self.audio_level * 100)
             grad = QLinearGradient(cx - glow_w, 0, cx + glow_w, 0)
-            grad.setColorAt(0, QColor(255, 45, 85, 0)); grad.setColorAt(0.5, QColor(255, 45, 85, int(self.audio_level * 120))); grad.setColorAt(1, QColor(255, 45, 85, 0))
+            grad.setColorAt(0, QColor(255, 45, 85, 0))
+            grad.setColorAt(0.5, QColor(255, 45, 85, int(self.audio_level * 120)))
+            grad.setColorAt(1, QColor(255, 45, 85, 0))
             p.fillRect(self.rect(), QBrush(grad))
 
         # パラメータ表示 (ゴースト対応)
