@@ -1,9 +1,9 @@
 #GUI/widgets.py
 
 import os
-from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel, QGraphicsDropShadowEffect
-from PyQt6.QtCore import pyqtSignal, Qt, QSize
-from PyQt6.QtGui import QPixmap, QColor, QIcon
+from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel
+from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtGui import QPixmap
 
 class VoiceCardWidget(QFrame):
     clicked = pyqtSignal(str)
