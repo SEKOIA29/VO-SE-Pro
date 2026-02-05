@@ -886,8 +886,6 @@ class MainWindow(QMainWindow):
         """標準出力へのログ記録（2026年開発者モード用）"""
         timestamp = time.strftime('%H:%M:%S')
         print(f"[{timestamp}] [BOOT] {message}")
-
-    def log_startup(self, message):
         """起動ログ（デバッグ用）"""
         print(f"[{time.strftime('%H:%M:%S')}] VO-SE Boot: {message}")
 
