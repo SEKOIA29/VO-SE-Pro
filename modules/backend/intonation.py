@@ -67,8 +67,8 @@ class IntonationAnalyzer:
             # 音素ラベル行を特定 (例: 50000-150000 a^b-k+i@...)
             match = pattern.match(line)
             if match:
-                # 使わない変数の代入を消し、labelを正しく扱う
-                start_tick = int(match.group(1))
-                end_tick = int(match.group(2))
-                label_text = match.group(3) if match.lastindex >= 3 else ""
+                # 使わない変数の代入を消し、labelを正しく扱う(未使用)
+                _start_tick = int(match.group(1))
+                _end_tick = int(match.group(2))
+                _label_text = match.group(3) if match.lastindex >= 3 else ""
                 # ここで label_text を使った処理を書くか、なければ pass
