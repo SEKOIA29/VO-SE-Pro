@@ -1,7 +1,6 @@
 import os
-from PySide6.QtCore import QUrl
-from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtCore import QUrl, pyqtSignal, QObject
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 class AudioPlayer(QObject):
     # 再生位置が動いた時にタイムラインのバーを動かすための信号
