@@ -40,9 +40,6 @@ from PySide6.QtGui import (
 from PySide6.QtCore import (
     Slot, Qt, QTimer, Signal, QThread
 )
-from PySide6.QtCore import (
-    Slot, Qt, QTimer, Signal, QThread, QUrl
-)
 
 # ==========================================================================
 # 4. 自作モジュール (Custom VO-SE Modules)
