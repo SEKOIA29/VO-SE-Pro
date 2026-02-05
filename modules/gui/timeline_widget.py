@@ -200,7 +200,10 @@ class TimelineWidget(QWidget):
     # --- マウス操作 (描き込み & スムージング) ---
     def mousePressEvent(self, event):
         self.drag_start_pos = event.position()
-        if event.modifiers() & Qt.AltModifier: self.edit_mode = "draw_parameter"; self.add_param_pt(event.position()); return
+        if event.modifiers() & Qt.AltModifier:
+            self.edit_mode = "draw_parameter"
+            self.add_param_pt(event.position())
+            return
         for n in reversed(self.notes_list):
             if self.get_note_rect(n).contains(event.position().toPoint()):
                 if not n.is_selected:
