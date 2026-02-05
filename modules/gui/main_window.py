@@ -2962,7 +2962,7 @@ class MainWindow(QMainWindow):
         return found_voices
 
 
-  def parse_oto_ini(self, voice_path: str) -> dict:
+    def parse_oto_ini(self, voice_path: str) -> dict:
         """
         oto.iniを解析して辞書に格納する
         戻り値: { "あ": {"wav": "a.wav", "offset": 50, "consonant": 100, ...}, ... }
