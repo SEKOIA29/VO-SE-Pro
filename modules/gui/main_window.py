@@ -2028,20 +2028,9 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Failed to write oto.ini: {e}")
             
-)
 
-    def dropEvent(self, event):
-        """ファイルドロップ時の処理"""
-        for url in event.mimeData().urls():
-            file_path = url.toLocalFile()
-            
-            # 拡張子によって処理を振り分け
-            if file_path.lower().endswith('.zip'):
-                self.import_voice_bank(file_path)  
-            elif file_path.lower().endswith(('.mid', '.midi')):
-                self.load_file_from_path(file_path)
-            elif file_path.lower().endswith('.json'):
-                self.load_file_from_path(file_path)
+
+
 
     def import_voice_bank(self, zip_path: str):
         """
@@ -2152,16 +2141,39 @@ class MainWindow(QMainWindow):
             
 
     def dropEvent(self, event):
+        """ファイルドロップ時の処理：ZIP（音源）、MIDI/JSON（プロジェクト）を自動判別"""
         files = [u.toLocalFile() for u in event.mimeData().urls()]
-        for f in files:
-            if f.lower().endswith(".zip"):
-                self.statusBar().showMessage(f"音源を導入中: {os.path.basename(f)}")
-                # ここでVoiceManagerのインストール機能を呼ぶ
-                new_voice = self.voice_manager.install_voice_from_zip(f)
-                # 成功したらSEを鳴らす！
-                self.audio_output.play_se(get_resource_path("assets/install_success.wav"))
-                QMessageBox.information(self, "導入完了", f"音源 '{new_voice}' をインストールしました！")
-                self.scan_utau_voices() # リスト更新
+        
+        for file_path in files:
+            file_lower = file_path.lower()
+            
+            # 1. 音源ライブラリ(ZIP)の場合
+            if file_lower.endswith(".zip"):
+                self.statusBar().showMessage(f"音源を導入中: {os.path.basename(file_path)}")
+                try:
+                    # VoiceManagerのインストール機能を実行
+                    new_voice = self.voice_manager.install_voice_from_zip(file_path)
+                    
+                    # 成功演出：SEを鳴らして通知
+                    # ※ audio_output.play_se が実装されている前提
+                    if hasattr(self, 'audio_output'):
+                        self.audio_output.play_se(get_resource_path("assets/install_success.wav"))
+                        
+                    QMessageBox.information(self, "導入完了", f"音源 '{new_voice}' をインストールしました！")
+                    self.scan_utau_voices() # リストを最新の状態に更新
+                except Exception as e:
+                    QMessageBox.critical(self, "導入失敗", f"インストール中にエラーが発生しました:\n{e}")
+
+            # 2. 楽曲データ(MIDI)の場合
+            elif file_lower.endswith(('.mid', '.midi')):
+                self.load_file_from_path(file_path)
+                self.statusBar().showMessage(f"MIDIファイルを読み込みました: {os.path.basename(file_path)}")
+
+            # 3. プロジェクトデータ(JSON)の場合
+            elif file_lower.endswith('.json'):
+                self.load_file_from_path(file_path)
+                self.statusBar().showMessage(f"プロジェクトを読み込みました: {os.path.basename(file_path)}")
+
 
     # ==========================================================================
     # 再生・録音制御
