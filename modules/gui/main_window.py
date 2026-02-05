@@ -2187,58 +2187,66 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def on_play_pause_toggled(self):
-        """再生/停止ボタンのハンドラ"""
+        """再生/停止を切り替えるハンドラ（トグル機能）"""
+        # --- 1. すでに再生中の場合 → 停止させる ---
         if self.is_playing:
-            # 停止処理
             self.is_playing = False
             self.playback_timer.stop()
             
             if hasattr(self.vo_se_engine, 'stop_playback'):
                 self.vo_se_engine.stop_playback()
             
+            if self.playback_thread and self.playback_thread.is_alive():
+                self.playback_thread.join(timeout=0.2) 
+
             self.play_button.setText("▶ 再生")
             self.status_label.setText("停止しました")
             self.playing_notes = {}
             return
 
-        # 再生開始
-        if self.is_recording:
+        # --- 2. 停止中の場合 → 再生を開始する ---
+        # 録音中なら止める（安全策）
+        if getattr(self, 'is_recording', False):
             self.on_record_toggled()
 
-        start_time, end_time = self.timeline_widget.get_selected_notes_range()
         notes = self.timeline_widget.notes_list
-
-        if not notes or start_time >= end_time:
+        if not notes:
             self.status_label.setText("ノートが存在しません")
             return
 
         try:
             self.status_label.setText("音声生成中...")
+            # GUIをフリーズさせないための処理
             QApplication.processEvents()
 
-            audio_track = self.vo_se_engine.synthesize_track(
-                notes, self.pitch_data, start_time, end_time
-            )
-            
-            self.current_playback_time = start_time
+            # ノートの範囲を取得（実装されている場合）
+            if hasattr(self.timeline_widget, 'get_selected_notes_range'):
+                start_time, end_time = self.timeline_widget.get_selected_notes_range()
+            else:
+                start_time = 0
+                end_time = max(n.start_time + n.duration for n in notes)
+
+            # 再生フラグを立てる
             self.is_playing = True
-            
-            # 別スレッドで再生
-            playback_thread = threading.Thread(
-                target=self.vo_se_engine.play_audio,
-                args=(audio_track,),
+            self.current_playback_time = start_time
+            self.play_button.setText("■ 停止")
+            self.status_label.setText(f"再生中: {start_time:.2f}s -")
+
+            # 別スレッドで再生を開始
+            # 注: play_audioに引数が必要な場合は args=(audio_track,) 等を追加
+            self.playback_thread = threading.Thread(
+                target=self.vo_se_engine.play_audio, 
                 daemon=True
             )
-            playback_thread.start()
+            self.playback_thread.start()
             
-            self.playback_timer.start()
-            self.play_button.setText("■ 停止")
-            self.status_label.setText(f"再生中: {start_time:.2f}s - {end_time:.2f}s")
+            # UI更新タイマー開始
+            self.playback_timer.start(20)
 
         except Exception as e:
             self.status_label.setText(f"再生エラー: {e}")
-            print(f"再生エラーの詳細: {e}")
             self.is_playing = False
+            self.play_button.setText("▶ 再生")
 
     @Slot()
     def on_record_toggled(self):
@@ -2270,18 +2278,7 @@ class MainWindow(QMainWindow):
             self.loop_button.setText("ループ: OFF")
             self.status_label.setText("ループ再生を無効にしました")
 
-    def on_play_pause_toggled(self):
-        # 1. もし既に鳴っていたら止める
-        if self.playback_thread and self.playback_thread.is_alive():
-            self.vo_se_engine.stop_playback()
-            self.playback_thread.join(timeout=0.5) # 終わるのを少し待つ
 
-        # 2. 新しく再生を開始
-        self.playback_thread = threading.Thread(
-            target=self.vo_se_engine.play_audio, 
-            daemon=True
-        )
-        self.playback_thread.start()
 
     @Slot()
     def update_playback_cursor(self):
