@@ -2552,8 +2552,7 @@ class MainWindow(QMainWindow):
         # ここに代表のVO-SE Proのノード追加ロジックを書く
         print(f"Node at {x}px added.")
 
-    def on_analysis_error(self, message):
-        QMessageBox.critical(self, "解析エラー", message)
+  
 
     # ==========================================================================
     # ファイル操作
