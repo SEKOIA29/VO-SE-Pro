@@ -1,6 +1,5 @@
-
-
 # data_models.py
+
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Optional, Any
 import json
@@ -22,10 +21,11 @@ class PitchEvent:
 @dataclass
 class NoteEvent:
     """音符および読み上げユニットのデータ構造"""
-    note_number: int            # MIDIノート番号 (69 = A4)
+    # 基本パラメータ
+    note_number: int            # MIDIノート番号 (60=C4, 69=A4)
     start_time: float           # 開始時間（秒）
     duration: float             # 長さ（秒）
-    lyric: str = ""             # 歌詞
+    lyric: str = "あ"            # 歌詞
     phonemes: List[str] = field(default_factory=list) # 解析済み音素
     velocity: int = 100         # 音の強さ (0-127)
     
@@ -38,7 +38,7 @@ class NoteEvent:
     # 数値が入っている場合は抑揚スライド。Noneは歌唱固定ピッチ。
     pitch_end: Optional[float] = None 
     
-    # --- AI/エンジン解析結果 (原音設定の3要素) ---
+    # --- AI/エンジン解析結果 (原音設定の要素) ---
     onset: float = 0.0          # 立ち上がり(物理開始)
     pre_utterance: float = 0.0  # 先行発声
     overlap: float = 0.0        # 前の音との重なり
@@ -48,33 +48,6 @@ class NoteEvent:
     is_selected: bool = field(default=False, repr=False)
     is_playing: bool = field(default=False, repr=False)
 
-
-    def __init__(self, lyrics, start_time, duration, note_number, onset=0.0):
-        self.lyrics = lyrics
-        self.start_time = start_time    # 開始秒
-        self.duration = duration        # 長さ秒
-        self.note_number = note_number  # MIDI番号 (60=C4)
-        self.onset = onset              # 発音位置オフセット（AI赤線）
-
-    def to_dict(self):
-        return {
-            "start": self.start_time,
-            "duration": self.duration,
-            "note_num": self.note_number,
-            "lyrics": self.lyrics,
-            "onset": getattr(self, 'onset', 0.0)
-        }
-
-    @staticmethod
-    def from_dict(d):
-        return NoteEvent(
-            start_time=d["start"],
-            duration=d["duration"],
-            note_number=d["note_num"],
-            lyrics=d["lyrics"]
-        )
-
-    
     def __repr__(self):
         mode = "Talk" if self.pitch_end is not None else "Sing"
         return f"Note({mode}, pitch={self.note_number}, lyric='{self.lyric}', start={self.start_time:.2f}s)"
@@ -82,6 +55,7 @@ class NoteEvent:
     def to_dict(self) -> Dict[str, Any]:
         """保存用に辞書化（GUI用フラグは除外）"""
         d = asdict(self)
+        # 不要な内部状態を削除
         d.pop('is_selected', None)
         d.pop('is_playing', None)
         return d
@@ -89,10 +63,23 @@ class NoteEvent:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'NoteEvent':
         """辞書データから復元（不要なキーを無視）"""
-        # クラスのフィールドに存在しないキーを除去して初期化
+        # クラスのフィールドに存在しないキーを除去して初期化（後方互換性のため）
         valid_keys = cls.__dataclass_fields__.keys()
-        filtered_data = {k: v for k, v in data.items() if k in valid_keys}
-        return cls(**filtered_data)
+        
+        # 古い保存データ形式（start, note_num等）を現在のフィールド名にマッピング
+        mapping = {
+            "start": "start_time",
+            "note_num": "note_number",
+            "lyrics": "lyric"
+        }
+        
+        normalized_data = {}
+        for k, v in data.items():
+            new_key = mapping.get(k, k)
+            if new_key in valid_keys:
+                normalized_data[new_key] = v
+                
+        return cls(**normalized_data)
 
 
 @dataclass
