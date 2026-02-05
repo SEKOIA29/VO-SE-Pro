@@ -1,4 +1,4 @@
-
+import os
 from PyQt6.QtCore import QUrl, pyqtSignal, QObject
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
