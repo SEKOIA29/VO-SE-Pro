@@ -13,6 +13,7 @@ import zipfile     # 音源ZIPのインストールに必要
 import shutil      # フォルダ削除やコピーに必要
 import platform
 import threading
+import onnxruntime as ort
 from typing import List, Optional, Dict, Any
 
 # ==========================================================================
@@ -20,6 +21,7 @@ from typing import List, Optional, Dict, Any
 # ==========================================================================
 import numpy as np
 import mido
+import math
 
 # ==========================================================================
 # 3. GUIライブラリ (PySide6 / Qt)
