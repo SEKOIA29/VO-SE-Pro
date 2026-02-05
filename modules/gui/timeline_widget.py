@@ -178,8 +178,10 @@ class TimelineWidget(QWidget):
     # --- インタラクション (1〜4キー切替 & Ctrl+S エクスポート) ---
     def keyPressEvent(self, event):
         ctrl = event.modifiers() & Qt.ControlModifier
-        if event.key() == Qt.Key_1: self.change_layer("Dynamics")
-        elif event.key() == Qt.Key_2: self.change_layer("Pitch")
+        if event.key() == Qt.Key_1:
+            self.change_layer("Dynamics")
+　　　　　elif event.key() == Qt.Key_2:
+            self.change_layer("Pitch")
         elif event.key() == Qt.Key_3: self.change_layer("Vibrato")
         elif event.key() == Qt.Key_4: self.change_layer("Formant")
         elif ctrl and event.key() == Qt.Key_S: self.export_all_data() # Ctrl+SでC向けに出力
