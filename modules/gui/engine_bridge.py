@@ -1,6 +1,5 @@
 import ctypes
 import os
-import numpy as np
 
 class VoseEngine:
     def __init__(self, dll_path="../../bin/vose_core.dll"):
