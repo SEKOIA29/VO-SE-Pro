@@ -213,7 +213,9 @@ class TimelineWidget(QWidget):
             dt, dn = self.beats_to_seconds(dx), -int(round(dy))
             if abs(dt) > 0.001 or dn != 0:
                 for n in self.notes_list:
-                    if n.is_selected: n.start_time += dt; n.note_number = max(0, min(127, n.note_number+dn))
+                    if n.is_selected:
+                        n.start_time += dt
+                        n.note_number = max(0, min(127, n.note_number + dn))
                 self.drag_start_pos = event.position(); self.update()
         elif self.edit_mode == "select_box":
             self.selection_rect = QRect(self.drag_start_pos.toPoint(), event.position().toPoint()).normalized()
