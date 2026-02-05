@@ -35,8 +35,10 @@ from PySide6.QtWidgets import (
     QGridLayout, QFrame, QDialog, QScrollArea, QSizePolicy, QButtonGroup
 )
 from PySide6.QtGui import (
-    QAction, QKeySequence, QKeyEvent, QPainter, QPen, QPixmap, 
-    QFont, QShortcut, QColor
+    QAction, QKeySequence, QKeyEvent, QFont, QShortcut
+)
+from PySide6.QtCore import (
+    Slot, Qt, QTimer, Signal, QThread
 )
 from PySide6.QtCore import (
     Slot, Qt, QTimer, Signal, QThread, QUrl
