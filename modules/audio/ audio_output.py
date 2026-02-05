@@ -9,7 +9,7 @@ class AudioOutput:
         self.block_size = block_size
         self.stream = None
         self.is_playing = False
-        self.engine_callback = None # C言語エンジンへの橋渡し用
+        self.engine_callback = None  # C言語エンジンへの橋渡し用
         
         # OSに合わせた最適なデバイス設定
         self._initialize_device()
@@ -20,19 +20,27 @@ class AudioOutput:
             best_idx = self._get_best_device_for_windows()
             if best_idx is not None:
                 sd.default.device = best_idx
-                print(f"VO-SE: Windows高速出力デバイス選択 -> {sd.query_devices(best_idx)['name']}")
-        elif platform.system() == "Darwin": # macOS
-            # M3 Macは標準のCore Audioで十分低遅延
+                # デバイス情報の取得と表示
+                dev_info = sd.query_devices(best_idx)
+                print(f"VO-SE: Windows高速出力デバイス選択 -> {dev_info['name']}")
+        elif platform.system() == "Darwin":  # macOS
+            # Apple Silicon (M1/M2/M3) は Core Audio で極めて低遅延
             print("VO-SE: macOS Core Audioで初期化 (Apple Silicon Optimized)")
 
     def _get_best_device_for_windows(self):
+        """Windows環境で低遅延なドライバ(ASIO > WASAPI)を優先的に探す"""
         devices = sd.query_devices()
-        # 1. ASIO (最強)
+        
+        # 1. ASIO (DAWなどで使われる最強の低遅延ドライバ)
         for i, dev in enumerate(devices):
-            if "ASIO" in dev['name']: return i
-        # 2. WASAPI (次点)
+            if "ASIO" in dev['name']:
+                return i
+                
+        # 2. WASAPI (Windows標準の低遅延モード)
         for i, dev in enumerate(devices):
-            if "WASAPI" in dev['name'] and dev['max_output_channels'] > 0: return i
+            if "WASAPI" in dev['name'] and dev['max_output_channels'] > 0:
+                return i
+                
         return None
 
     def start(self, engine_callback=None):
@@ -60,7 +68,6 @@ class AudioOutput:
     def _audio_callback(self, outdata, frames, time_info, status):
         """
         サウンドカードからの要求に応じる高プライオリティ・コールバック。
-        ここでは重い処理（ファイルI/Oや複雑なAI推論）は厳禁。
         """
         if status:
             print(f"Audio Output Status: {status}")
@@ -69,18 +76,15 @@ class AudioOutput:
             outdata.fill(0)
             return
 
-        # 出力用バッファ（ゼロクリア）
-        # エンジンがデータを書き込まなかった時のために無音で初期化
+        # 出力用バッファを無音で初期化
         outdata.fill(0)
 
-        # C言語エンジンとの連携（実装予定）
+        # エンジン側で outdata に直接 float32 データを書き込ませる
         if self.engine_callback:
-            # エンジン側で outdata に直接 float32 データを書き込ませる
-            # 例: self.engine_callback(outdata.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), frames)
             self.engine_callback(outdata, frames)
 
     def get_latency(self):
-        """現在の実測遅延（秒）を取得。M3 Macなら 0.005 (5ms) 程度が理想"""
+        """現在の実測遅延（秒）を取得"""
         if self.stream:
             return self.stream.latency
         return 0
