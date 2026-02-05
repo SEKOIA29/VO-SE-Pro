@@ -43,6 +43,6 @@ if __name__ == "__main__":
         # 奏瀬（kanase）の「あ」を鳴らしてみる
         #engine.play_voice("kanase_あ")
         
-    except Exception as e:
+    except Exception:
         pass
        # print(f"❌ Error: {e}")
