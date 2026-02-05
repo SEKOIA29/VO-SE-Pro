@@ -2962,7 +2962,7 @@ class MainWindow(QMainWindow):
         return found_voices
 
 
-    def parse_oto_ini(self, voice_path: str) -> dict:
+  def parse_oto_ini(self, voice_path: str) -> dict:
         """
         oto.iniを解析して辞書に格納する
         戻り値: { "あ": {"wav": "a.wav", "offset": 50, "consonant": 100, ...}, ... }
@@ -2994,7 +2994,7 @@ class MainWindow(QMainWindow):
                     "consonant": float(p[2]) if len(p) > 2 else 0.0,   # 固定範囲
                     "blank": float(p[3]) if len(p) > 3 else 0.0,       # 右ブランク
                     "preutterance": float(p[4]) if len(p) > 4 else 0.0, # 先行発声
-                    "overlap": float(p[5]) if len(p) > 5 else 0.0      # オーバーラップ
+                    "overlap": float(p[5]) if len(p) > 5 else 0.0       # オーバーラップ
                 }
             except (ValueError, IndexError):
                 continue
@@ -3002,6 +3002,7 @@ class MainWindow(QMainWindow):
         return oto_map
 
     def safe_to_float(self, val):
+        """文字列を安全に浮動小数点数に変換（E701修正済み）"""
         try: 
             return float(val.strip())
         except Exception:
@@ -3032,6 +3033,7 @@ class MainWindow(QMainWindow):
             icon_path = data.get("icon", os.path.join(path, "icon.png"))
             color = self.voice_manager.get_character_color(path)
             
+            # 注: VoiceCardWidgetが別ファイルにある場合はインポートが必要です
             card = VoiceCardWidget(name, icon_path, color)
             card.clicked.connect(self.on_voice_selected)
             self.voice_grid.addWidget(card, index // 3, index % 3)
@@ -3060,11 +3062,9 @@ class MainWindow(QMainWindow):
 
         try:
             # 3. 歌唱用データのロード (oto.iniの解析)
-            # 先ほど作成した parse_oto_ini メソッドを呼び出す
             self.current_oto_data = self.parse_oto_ini(path)
             
             # 4. 合成エンジン (VO_SE_Engine) の更新
-            # ライブラリパスと解析したOTOデータを渡す
             self.vo_se_engine.set_voice_library(path)
             if hasattr(self.vo_se_engine, 'set_oto_data'):
                 self.vo_se_engine.set_oto_data(self.current_oto_data)
@@ -3072,20 +3072,17 @@ class MainWindow(QMainWindow):
             self.current_voice = character_name
 
             # 5. Talkエンジン（会話用）の更新
-            # UTAUフォルダ内に talk.htsvoice があれば自動適用
             talk_model = os.path.join(path, "talk.htsvoice")
             if os.path.exists(talk_model) and hasattr(self, 'talk_manager'):
                 self.talk_manager.set_voice(talk_model)
 
-            # 6. UIへのフィードバック（ステータスバーと色設定）
+            # 6. UIへのフィードバック（F841修正：変数を利用）
             char_color = self.voice_manager.get_character_color(path)
-            self.statusBar().showMessage(
-                f"【{character_name}】に切り替え完了 ({len(self.current_oto_data)} 音素ロード)", 
-                5000
-            )
+            msg = f"【{character_name}】に切り替え完了 ({len(self.current_oto_data)} 音素ロード)"
+            self.statusBar().showMessage(msg, 5000)
             
             # ログ出力（デバッグ用）
-            print(f"Selected voice: {character_name} at {path}")
+            print(f"Selected voice: {character_name} at {path} (Color: {char_color})")
 
         except Exception as e:
             QMessageBox.critical(self, "音源ロードエラー", f"音源の読み込み中にエラーが発生しました:\n{e}")
@@ -3103,8 +3100,6 @@ class MainWindow(QMainWindow):
         if voice_path.startswith("__INTERNAL__"):
             # 内蔵音源モード
             char_id = voice_path.split(":")[1] # "kanase" など
-            # 合成したい文字と組み合わせて呼び出し
-            # 例: "kanase_あ"
             internal_key = f"{char_id}_{note_text}"
             self.vose_engine.play_voice(internal_key)
 
@@ -3124,15 +3119,9 @@ class MainWindow(QMainWindow):
             pickle.dump(oto_data, f)
         return oto_data
 
-
     def smart_cache_purge(self):
-        """
-        [Core i3救済] 
-        再生や解析に使用していない波形データをメモリから解放し、
-        PCが重くなるのを物理的に防ぎます。
-        """
+        """[Core i3救済] メモリ最適化"""
         if hasattr(self.voice_manager, 'clear_unused_cache'):
-            # 最後に使ってから一定時間経過したデータを消去
             self.voice_manager.clear_unused_cache()
             self.statusBar().showMessage("Memory Optimized.", 2000)
 
@@ -3170,16 +3159,11 @@ class MainWindow(QMainWindow):
         self.pro_monitoring.sync_notes(self.timeline_widget.notes_list)
 
     def update_timeline_style(self):
-        """タイムライン全体の見た目を Apple Pro 仕様のダークモードに固定"""
+        """タイムラインの見た目を Apple Pro 仕様に固定"""
         self.timeline_widget.setStyleSheet("background-color: #121212; border: none;")
-        
-        # Appleオレンジ (#FF9F0A) をメインに
         self.timeline_widget.note_color = "#FF9F0A"
-        # 枠線は少し明るいオレンジにすると、ノートが立体的に見えます
         self.timeline_widget.note_border_color = "#FFD60A" 
         self.timeline_widget.text_color = "#FFFFFF"
-
-    
 
     def apply_lyrics_to_notes(self, text: str):
         """歌詞を既存ノートに割り当て"""
@@ -3194,82 +3178,55 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def on_click_apply_lyrics_bulk(self):
-        """歌詞の一括流し込み（強化版）"""
-        # 先ほど紹介したコードをここに書く
+        """歌詞の一括流し込み（E701修正済み）"""
         text, ok = QInputDialog.getMultiLineText(self, "歌詞の一括入力", "歌詞を入力:")
-        if not (ok and text): return
+        if not (ok and text):
+            return
         
-        # 1文字ずつにバラす
         lyric_list = [char for char in text if char.strip() and char not in "、。！？"]
-        
-        # タイムライン上のノートを取得
         notes = sorted(self.timeline_widget.notes_list, key=lambda n: n.start_time)
         
-        # ノートに順番にセット
         for i in range(min(len(lyric_list), len(notes))):
             notes[i].lyrics = lyric_list[i]
             
         self.timeline_widget.update()
         self.pro_monitoring.sync_notes(self.timeline_widget.notes_list)
 
-
     def parse_ust_dict_to_note(self, d: dict, current_time_sec: float, tempo: float = 120.0):
-        """
-        USTのLength(480分音符単位)を秒数に正確に変換
-        秒数 = (Length / 480) * (60 / Tempo)
-        """
+        """USTのLengthを秒数に正確に変換"""
         length_ticks = int(d.get('Length', 480))
         note_num = int(d.get('NoteNum', 64))
         lyric = d.get('Lyric', 'あ')
         
-        # --- 時間計算ロジック ---
-        # 480 ticks = 1拍 (4分音符)
         duration_sec = (length_ticks / 480.0) * (60.0 / tempo)
         
         note = NoteEvent(
             lyrics=lyric, 
             note_number=note_num, 
-            start_time=current_time_sec, # 累積時間を使用
+            start_time=current_time_sec,
             duration=duration_sec
         )
-        
-        # 次のノートのために、このノートの長さを足した時間を返す
         return note, current_time_sec + duration_sec
    
     # =========================================================================
-    # スクロールバー制御（2つを1つに統合
+    # スクロールバー制御
     # ==========================================================================
 
     @Slot()
     def update_scrollbar_range(self):
-        """
-        ノートの長さに合わせて、水平スクロールバーの範囲とステップを更新。
-        秒数ではなく『拍数(Beat)』を基準にすることで、音楽的な管理を容易にします。
-        """
-        # 1. ノートがない場合はリセット
+        """水平スクロールバーの範囲更新"""
         if not self.timeline_widget.notes_list:
             self.h_scrollbar.setRange(0, 0)
             return
         
-        # 2. 最大範囲の計算（拍数 × 1拍あたりのピクセル数）
         max_beats = self.timeline_widget.get_max_beat_position()
-        # 少し余裕を持たせるために +4拍（1小節分）足すのがプロの工夫
         max_x_position = (max_beats + 4) * self.timeline_widget.pixels_per_beat
-        
-        # 3. 可視範囲（表示されている幅）の取得
         viewport_width = self.timeline_widget.width()
         
-        # 4. スクロール可能な最大値を設定
-        # (全体の長さ - 今見えている長さ) がスクロールできる限界値
         max_scroll_value = max(0, int(max_x_position - viewport_width))
         self.h_scrollbar.setRange(0, max_scroll_value)
-        
-        # 5. ページステップ（スクロールバーのつまみをクリックした時の移動量）を設定
-        # これを設定すると、一気に1画面分移動できるようになります
         self.h_scrollbar.setPageStep(viewport_width)
-        
-        # デバッグ出力（必要に応じて）
-        # print(f"Scroll range updated: max_beats={max_beats}, max_value={max_scroll_value}")
+
     # ==========================================================================
     # その他のスロット
     # ==========================================================================
@@ -3291,7 +3248,6 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "エラー", str(e))
             self.tempo_input.setText(str(self.timeline_widget.tempo))
 
-    # --- レイヤー切り替え用公開メソッド ---
     @Slot(str)
     def set_current_parameter_layer(self, layer_name: str):
         if layer_name in self.parameters:
@@ -3300,7 +3256,6 @@ class MainWindow(QMainWindow):
             print(f"Parameter layer switched to: {layer_name}")
         else:
             print(f"Error: Parameter layer '{layer_name}' not found.")
-
 
     @Slot()
     def on_timeline_updated(self):
@@ -3316,43 +3271,27 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def on_notes_modified(self):
-        """
-        ノートやパラメータに変更があった際に呼ばれる。
-        直接 Thread を立てず、タイマーを介すことでPCのパンク（爆弾3）を防ぐ。
-        """
-        # 1. 既存のタイマーを止めてリセット（連打防止）
+        """変更検知（連打防止タイマー）"""
         self.render_timer.stop()
-        
-        # 2. 300ms（0.3秒）後に execute_async_render を実行するように予約
-        # ユーザーがマウスを動かしている間はここが何度も呼ばれ、タイマーが更新され続ける
         self.render_timer.start(300)
-        
         self.statusBar().showMessage("変更を検知しました...", 500)
 
     def execute_async_render(self):
-        """
-        タイマー満了時に一度だけ実行される「重い」計算処理。
-        UIを止めないように別スレッドでレンダリング（合成）を行います。
-        """
+        """非同期レンダリング実行（E701修正済み）"""
         self.statusBar().showMessage("音声をレンダリング中...", 1000)
         
         updated_notes = self.timeline_widget.notes_list
         if not updated_notes:
             return
 
-        # 1. エンジンに最新データを渡す
         if hasattr(self.vo_se_engine, 'update_notes_data'):
             self.vo_se_engine.update_notes_data(updated_notes)
 
-        # 2. レンダリングスレッドの起動
-        # synthesize_track（合成）と prepare_cache（準備）を両方こなすように設定
         def rendering_task():
             try:
-                # キャッシュの準備
                 if hasattr(self.vo_se_engine, 'prepare_cache'):
                     self.vo_se_engine.prepare_cache(updated_notes)
                 
-                # プレビュー用の合成
                 self.vo_se_engine.synthesize_track(
                     updated_notes, 
                     self.pitch_data, 
@@ -3364,19 +3303,13 @@ class MainWindow(QMainWindow):
         render_thread = threading.Thread(target=rendering_task, daemon=True)
         render_thread.start()
 
-
-
     @Slot(list)
     def on_pitch_data_updated(self, new_pitch_events: List[PitchEvent]):
-        """ピッチデータ更新"""
         self.pitch_data = new_pitch_events
-        print(f"ピッチデータ更新: {len(self.pitch_data)}ポイント")
 
     @Slot()
     def on_midi_port_changed(self):
-        """MIDIポート変更"""
         selected_port = self.midi_port_selector.currentData()
-        
         if self.midi_manager:
             self.midi_manager.stop()
             self.midi_manager = None
@@ -3388,14 +3321,12 @@ class MainWindow(QMainWindow):
 
     @Slot(int, int, str)
     def update_gui_with_midi(self, note_number: int, velocity: int, event_type: str):
-        """MIDI入力信号受信"""
         if event_type == 'on':
             self.status_label.setText(f"ノートオン: {note_number} (Velocity: {velocity})")
         elif event_type == 'off':
             self.status_label.setText(f"ノートオフ: {note_number}")
 
     def handle_midi_realtime(self, note_number: int, velocity: int, event_type: str):
-        """MIDIリアルタイム入力処理"""
         if event_type == 'on':
             self.vo_se_engine.play_realtime_note(note_number)
             if self.is_recording:
@@ -3403,10 +3334,8 @@ class MainWindow(QMainWindow):
         elif event_type == 'off':
             self.vo_se_engine.stop_realtime_note(note_number)
 
-
     @Slot()
     def update_scrollbar_v_range(self):
-        """垂直スクロールバー範囲更新"""
         key_h = self.timeline_widget.key_height_pixels
         full_height = 128 * key_h
         viewport_height = self.timeline_widget.height()
@@ -3415,30 +3344,22 @@ class MainWindow(QMainWindow):
 
         max_scroll_value = max(0, int(full_height - viewport_height + key_h))
         self.v_scrollbar.setRange(0, max_scroll_value)
-
         self.keyboard_sidebar.set_key_height_pixels(key_h)
-
-
-
 
     # ==========================================================================
     # ヘルパーメソッド
     # ==========================================================================
 
     def _get_yomi_from_lyrics(self, lyrics: str) -> str:
-        """歌詞を読み（ひらがな/ローマ字）に変換する（PyKakasi等を利用）"""
         try:
             import pykakasi
             kks = pykakasi.kakasi()
             result = kks.convert(lyrics)
-            # UTAU等で一般的な「ひらがな」をデフォルトとして返す
             return "".join([item['hira'] for item in result])
         except ImportError:
-            # ライブラリがない場合はそのまま返す
             return lyrics
 
     def midi_to_hz(self, midi_note: int) -> float:
-        """MIDI音番号を周波数(Hz)に変換"""
         return 440.0 * (2.0 ** ((midi_note - 69) / 12.0))
 
     # ==========================================================================
@@ -3446,7 +3367,6 @@ class MainWindow(QMainWindow):
     # ==========================================================================
 
     def keyPressEvent(self, event: QKeyEvent):
-        """キーボードショートカット"""
         if event.key() == Qt.Key_Space:
             self.on_play_pause_toggled()
             event.accept()
@@ -3462,14 +3382,7 @@ class MainWindow(QMainWindow):
         else:
             super().keyPressEvent(event)
 
-    def paintEvent(self, event):
-        """AI解析結果の可視化（オプション）"""
-        super().paintEvent(event)
-        # タイムラインウィジェットが独自に描画するため、ここでは何もしない
-
     def closeEvent(self, event):
-        """ウィンドウを閉じる時に未保存の確認をする"""
-        # 確認用のダイアログを表示
         reply = QMessageBox.question(
             self, 
             '確認', 
@@ -3479,25 +3392,21 @@ class MainWindow(QMainWindow):
         )
 
         if reply == QMessageBox.Save:
-            # 保存を選んだら保存処理を実行
             self.on_save_project_clicked()
-            event.accept() # 保存後に閉じる
+            event.accept()
         elif reply == QMessageBox.Discard:
-            # 保存せずに終了を選んだらそのまま閉じる
             event.accept()
         else:
-            # キャンセルを選んだら閉じるのを止める
             event.ignore()
+            return # キャンセルの場合はここで抜ける
         
-        """終了処理"""
-        # 設定保存
+        # 終了時処理
         config = {
             "default_voice": self.current_voice,
             "volume": self.volume
         }
         self.config_manager.save_config(config)
         
-        # クリーンアップ
         if self.midi_manager:
             self.midi_manager.stop()
         
@@ -3505,7 +3414,6 @@ class MainWindow(QMainWindow):
             self.vo_se_engine.close()
         
         print("Application closing...")
-        event.accept()
 
 
 # ==============================================================================
@@ -3515,8 +3423,6 @@ class MainWindow(QMainWindow):
 def main():
     """アプリケーション起動"""
     app = QApplication(sys.argv)
-    
-    # スタイルシート適用（オプション）
     app.setStyle("Fusion")
     
     window = MainWindow()
