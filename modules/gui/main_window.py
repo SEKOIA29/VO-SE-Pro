@@ -265,8 +265,10 @@ class ProMonitoringUI:
         
         # 音量に応じた色変更（Apple風：緑→黄→赤）
         color = "#34C759"
-        if rms > 0.7: color = "#FFCC00"
-        if rms > 0.9: color = "#FF3B30"
+        if rms > 0.7:
+            color = "#FFCC00"
+        if rms > 0.9:
+            color = "#FF3B30"
         self.canvas.itemconfig(self.meter_l, fill=color)
         self.canvas.itemconfig(self.meter_r, fill=color)
 
