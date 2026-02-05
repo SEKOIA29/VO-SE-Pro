@@ -2785,7 +2785,7 @@ class MainWindow(QMainWindow):
             # 迷わず cp932 (Shift-JIS) を指定
             with open(path, "r", encoding="cp932", errors="ignore") as f:
                 return f.read()
-        except:
+        except Exception:
             return ""
 
     
