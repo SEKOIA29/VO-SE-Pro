@@ -2416,7 +2416,8 @@ class MainWindow(QMainWindow):
         【爆弾4・5対策】Shift-JIS(cp932)完全準拠。
         """
         target_dir = self.voice_manager.get_current_voice_path()
-        if not target_dir: return
+        if not target_dir: 
+            return
         
         file_path = os.path.join(target_dir, "oto.ini")
         
@@ -2713,7 +2714,8 @@ class MainWindow(QMainWindow):
         file_path, _ = QFileDialog.getSaveFileName(
             self, "音声ファイルを保存", "output.wav", "WAV Files (*.wav)"
         )
-        if not file_path: return
+        if not file_path: 
+            return
 
         # 再生中なら止める（デバイス競合回避）
         self.stop_and_clear_playback()
@@ -2781,7 +2783,8 @@ class MainWindow(QMainWindow):
         filepath, _ = QFileDialog.getSaveFileName(
             self, "プロジェクトを保存", "", "VO-SE Project (*.vose);;JSON Files (*.json)"
         )
-        if not filepath: return
+        if not filepath:
+            return
 
         # 全パラメーターレイヤーを取得
         all_params = self.graph_editor_widget.all_parameters
