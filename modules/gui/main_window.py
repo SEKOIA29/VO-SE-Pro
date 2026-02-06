@@ -2151,7 +2151,7 @@ def setup_vose_shortcuts(self):
 
   
 
-    # ==========================================================================
+# ==========================================================================
     # ファイル操作
     # ==========================================================================
 
@@ -2196,16 +2196,20 @@ def setup_vose_shortcuts(self):
         ns = {'v': 'http://www.yamaha.co.jp/vocaloid/schema/vsqx/4.0'} 
         
         for v_note in root.findall('.//v:note', ns):
+            lyric_node = v_note.find('v:y', ns)
+            note_num_node = v_note.find('v:n', ns)
+            dur_node = v_note.find('v:dur', ns)
+            start_node = v_note.find('v:t', ns)
+
             note = NoteEvent(
-                lyrics=v_note.find('v:y', ns).text, # 歌詞
-                note_number=int(v_note.find('v:n', ns).text), # 音高
-                duration=int(v_note.find('v:dur', ns).text) / 480.0, # ティックを秒に変換
-                start_time=int(v_note.find('v:t', ns).text) / 480.0
+                lyrics=lyric_node.text if lyric_node is not None else "あ", # 歌詞
+                note_number=int(note_num_node.text) if note_num_node is not None else 60, # 音高
+                duration=int(dur_node.text) / 480.0 if dur_node is not None else 0.5, # ティックを秒に変換
+                start_time=int(start_node.text) / 480.0 if start_node is not None else 0.0
             )
             notes.append(note)
         return notes
         
-    
     def read_file_safely(self, filepath: str) -> str:
         """ 文字コードを自動判別し、安全に読み込む"""
         import chardet
@@ -2222,9 +2226,7 @@ def setup_vose_shortcuts(self):
             print(f"File Read Error: {e}")
             return ""
 
-
-
-# --- ファイル読み書き・インポート関連 ---
+    # --- ファイル読み書き・インポート関連 ---
 
     def load_ust_file(self, filepath: str):
         """UTAUの .ust ファイルを読み込んでタイムラインに配置"""
@@ -2233,16 +2235,20 @@ def setup_vose_shortcuts(self):
             lines = content.splitlines()
             notes = []
             current_note = {}
+            current_time = 0.0
             for line in lines:
                 if line.startswith('[#'): 
                     if current_note:
-                        notes.append(self.parse_ust_dict_to_note(current_note))
+                        note, next_time = self.parse_ust_dict_to_note(current_note, current_time)
+                        notes.append(note)
+                        current_time = next_time
                     current_note = {}
                 elif '=' in line:
                     key, val = line.split('=', 1)
                     current_note[key] = val
             if current_note:
-                notes.append(self.parse_ust_dict_to_note(current_note))
+                note, _ = self.parse_ust_dict_to_note(current_note, current_time)
+                notes.append(note)
             self.timeline_widget.set_notes(notes)
             self.statusBar().showMessage(f"UST読み込み完了: {len(notes)}ノート")
         except Exception as e:
@@ -2392,8 +2398,6 @@ def setup_vose_shortcuts(self):
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"MIDI読み込み失敗: {e}")
 
-
-
     # ==========================================================================
     # 音源管理
     # ==========================================================================
@@ -2406,14 +2410,11 @@ def setup_vose_shortcuts(self):
             return {}
 
         found_voices = {}
-        
         for dir_name in os.listdir(voice_root):
             dir_path = os.path.join(voice_root, dir_name)
-            
             if os.path.isdir(dir_path):
                 oto_path = os.path.join(dir_path, "oto.ini")
                 char_txt_path = os.path.join(dir_path, "character.txt")
-                
                 if os.path.exists(oto_path) or os.path.exists(char_txt_path):
                     char_name = dir_name
                     if os.path.exists(char_txt_path):
@@ -2435,63 +2436,49 @@ def setup_vose_shortcuts(self):
         
         self.voice_manager.voices = found_voices
         
-        # 3. 【追加】公式音源フォルダ内をスキャンして全員登録
+        # 公式音源フォルダ内をスキャンして全員登録
         official_base = os.path.join(self.base_path, "assets", "official_voices")
         if os.path.exists(official_base):
-            # フォルダ（kanase, characters_b, etc...）をすべて取得
             for char_dir in os.listdir(official_base):
                 full_dir = os.path.join(official_base, char_dir)
                 if os.path.isdir(full_dir):
-                    # 「[Official] 奏瀬」のような表示名で登録
                     display_name = f"[Official] {char_dir}"
-                    # 内部パスとして "__INTERNAL__:{フォルダ名}" としておくと後で判別しやすい
-                    self.voices[display_name] = f"__INTERNAL__:{char_dir}"
-        
-        return self.voices
-        return found_voices
-
+                    self.voice_manager.voices[display_name] = {
+                        "path": full_dir,
+                        "icon": os.path.join(full_dir, "icon.png"),
+                        "id": f"__INTERNAL__:{char_dir}"
+                    }
+        return self.voice_manager.voices
 
     def parse_oto_ini(self, voice_path: str) -> dict:
-        """
-        oto.iniを解析して辞書に格納する
-        戻り値: { "あ": {"wav": "a.wav", "offset": 50, "consonant": 100, ...}, ... }
-        """
+        """oto.iniを解析して辞書に格納する"""
         oto_map = {}
         oto_path = os.path.join(voice_path, "oto.ini")
-        
         if not os.path.exists(oto_path):
             return oto_map
 
-        # 先ほど作成した「安全な読み込み」を使用
         content = self.read_file_safely(oto_path)
-        
         for line in content.splitlines():
             if not line.strip() or "=" not in line:
                 continue
-            
             try:
-                # 形式: wav_filename=alias,offset,consonant,blank,preutterance,overlap
                 wav_file, params = line.split("=", 1)
                 p = params.split(",")
-                
                 alias = p[0] if p[0] else os.path.splitext(wav_file)[0]
-                
-                # パラメータを辞書化（数値はfloatに変換）
                 oto_map[alias] = {
                     "wav_path": os.path.join(voice_path, wav_file),
-                    "offset": float(p[1]) if len(p) > 1 else 0.0,      # 左ブランク
-                    "consonant": float(p[2]) if len(p) > 2 else 0.0,   # 固定範囲
-                    "blank": float(p[3]) if len(p) > 3 else 0.0,       # 右ブランク
-                    "preutterance": float(p[4]) if len(p) > 4 else 0.0, # 先行発声
-                    "overlap": float(p[5]) if len(p) > 5 else 0.0       # オーバーラップ
+                    "offset": float(p[1]) if len(p) > 1 else 0.0,
+                    "consonant": float(p[2]) if len(p) > 2 else 0.0,
+                    "blank": float(p[3]) if len(p) > 3 else 0.0,
+                    "preutterance": float(p[4]) if len(p) > 4 else 0.0,
+                    "overlap": float(p[5]) if len(p) > 5 else 0.0
                 }
             except (ValueError, IndexError):
                 continue
-                
         return oto_map
 
     def safe_to_float(self, val):
-        """文字列を安全に浮動小数点数に変換（E701修正済み）"""
+        """文字列を安全に浮動小数点数に変換"""
         try: 
             return float(val.strip())
         except Exception:
@@ -2502,46 +2489,35 @@ def setup_vose_shortcuts(self):
         self.statusBar().showMessage("音源フォルダをスキャン中...")
         self.scan_utau_voices()
         self.update_voice_list()
-        self.statusBar().showMessage(
-            f"スキャン完了: {len(self.voice_manager.voices)} 個の音源",
-            3000
-        )
+        self.statusBar().showMessage(f"スキャン完了: {len(self.voice_manager.voices)} 個の音源", 3000)
 
     def update_voice_list(self):
         """VoiceManagerと同期してUI（カード一覧）を再構築"""
-        # 既存カードクリア
         self.voice_cards.clear()
         for i in reversed(range(self.voice_grid.count())): 
             item = self.voice_grid.itemAt(i)
             if item and item.widget():
                 item.widget().deleteLater()
 
-        # カード生成
         for index, (name, data) in enumerate(self.voice_manager.voices.items()):
             path = data.get("path", "")
             icon_path = data.get("icon", os.path.join(path, "icon.png"))
             color = self.voice_manager.get_character_color(path)
             
-            # 注: VoiceCardWidgetが別ファイルにある場合はインポートが必要です
             card = VoiceCardWidget(name, icon_path, color)
             card.clicked.connect(self.on_voice_selected)
             self.voice_grid.addWidget(card, index // 3, index % 3)
             self.voice_cards.append(card)
         
-        # コンボボックス更新
         self.character_selector.clear()
         self.character_selector.addItems(self.voice_manager.voices.keys())
 
     @Slot(str)
     def on_voice_selected(self, character_name: str):
-        """
-        ボイスカード選択時の処理：音源データのロードと各エンジンへの適用
-        """
-        # 1. UIの選択状態（枠線など）を更新
+        """ボイスカード選択時の処理"""
         for card in self.voice_cards:
             card.set_selected(card.name == character_name)
         
-        # 2. 音源データの存在チェック
         if character_name not in self.voice_manager.voices:
             self.statusBar().showMessage(f"エラー: {character_name} のデータが見つかりません")
             return
@@ -2550,63 +2526,16 @@ def setup_vose_shortcuts(self):
         path = voice_data["path"]
 
         try:
-            # 3. 歌唱用データのロード (oto.iniの解析)
             self.current_oto_data = self.parse_oto_ini(path)
-            
-            # 4. 合成エンジン (VO_SE_Engine) の更新
             self.vo_se_engine.set_voice_library(path)
             if hasattr(self.vo_se_engine, 'set_oto_data'):
                 self.vo_se_engine.set_oto_data(self.current_oto_data)
             
             self.current_voice = character_name
-
-            # 5. Talkエンジン（会話用）の更新
-            talk_model = os.path.join(path, "talk.htsvoice")
-            if os.path.exists(talk_model) and hasattr(self, 'talk_manager'):
-                self.talk_manager.set_voice(talk_model)
-
-            # 6. UIへのフィードバック（F841修正：変数を利用）
             char_color = self.voice_manager.get_character_color(path)
-            msg = f"【{character_name}】に切り替え完了 ({len(self.current_oto_data)} 音素ロード)"
-            self.statusBar().showMessage(msg, 5000)
-            
-            # ログ出力（デバッグ用）
-            print(f"Selected voice: {character_name} at {path} (Color: {char_color})")
-
+            self.statusBar().showMessage(f"【{character_name}】に切り替え完了", 5000)
         except Exception as e:
-            QMessageBox.critical(self, "音源ロードエラー", f"音源の読み込み中にエラーが発生しました:\n{e}")
-
-    def refresh_voice_list(self):
-        """voice_banksフォルダを再スキャン"""
-        self.scan_utau_voices()
-        self.update_voice_list()
-        print("ボイスリストを更新しました")
-
-    def play_selected_voice(self, note_text):
-        selected_name = self.character_selector.currentText()
-        voice_path = self.voices.get(selected_name, "")
-
-        if voice_path.startswith("__INTERNAL__"):
-            # 内蔵音源モード
-            char_id = voice_path.split(":")[1] # "kanase" など
-            internal_key = f"{char_id}_{note_text}"
-            self.vose_engine.play_voice(internal_key)
-
-    def get_cached_oto(self, voice_path):
-        cache_path = os.path.join(voice_path, "oto_cache.vose")
-        ini_path = os.path.join(voice_path, "oto.ini")
-    
-        # oto.iniが更新されていなければキャッシュを読み込む
-        if os.path.exists(cache_path):
-            if os.path.getmtime(cache_path) > os.path.getmtime(ini_path):
-                with open(cache_path, 'rb') as f:
-                    return pickle.load(f)
-    
-        # キャッシュがない、または古い場合はパースして保存
-        oto_data = self.parse_oto_ini(voice_path)
-        with open(cache_path, 'wb') as f:
-            pickle.dump(oto_data, f)
-        return oto_data
+            QMessageBox.critical(self, "音源ロードエラー", f"エラー: {e}")
 
     def smart_cache_purge(self):
         """[Core i3救済] メモリ最適化"""
@@ -2622,62 +2551,29 @@ def setup_vose_shortcuts(self):
     def on_click_auto_lyrics(self):
         """AI自動歌詞配置"""
         text, ok = QInputDialog.getText(self, "自動歌詞配置", "文章を入力:")
-        if not (ok and text):
-            return
+        if not (ok and text): return
 
         try:
             trace_data = self.analyzer.analyze(text)
             parsed_notes = self.analyzer.parse_trace_to_notes(trace_data)
-
-            new_notes = []
-            for d in parsed_notes:
-                note = NoteEvent(
-                    lyrics=d.get("lyric", ""),
-                    start_time=d.get("start", 0.0),
-                    duration=d.get("duration", 0.5),
-                    note_number=d.get("pitch", 60)
-                )
-                new_notes.append(note)
-
+            new_notes = [NoteEvent(lyrics=d["lyric"], start_time=d["start"], duration=d["duration"], note_number=d["pitch"]) for d in parsed_notes]
             if new_notes:
                 self.timeline_widget.set_notes(new_notes)
-                self.timeline_widget.update()
                 self.statusBar().showMessage(f"{len(new_notes)}個の音素を配置しました")
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"歌詞解析エラー: {e}")
         self.pro_monitoring.sync_notes(self.timeline_widget.notes_list)
 
-    def update_timeline_style(self):
-        """タイムラインの見た目を Apple Pro 仕様に固定"""
-        self.timeline_widget.setStyleSheet("background-color: #121212; border: none;")
-        self.timeline_widget.note_color = "#FF9F0A"
-        self.timeline_widget.note_border_color = "#FFD60A" 
-        self.timeline_widget.text_color = "#FFFFFF"
-
-    def apply_lyrics_to_notes(self, text: str):
-        """歌詞を既存ノートに割り当て"""
-        lyrics = [char for char in text if char.strip()]
-        notes = self.timeline_widget.notes_list
-        
-        for i, note in enumerate(notes):
-            if i < len(lyrics):
-                note.lyrics = lyrics[i]
-        
-        self.timeline_widget.update()
-
     @Slot()
     def on_click_apply_lyrics_bulk(self):
-        """歌詞の一括流し込み（E701修正済み）"""
+        """歌詞の一括流し込み"""
         text, ok = QInputDialog.getMultiLineText(self, "歌詞の一括入力", "歌詞を入力:")
-        if not (ok and text):
-            return
+        if not (ok and text): return
         
         lyric_list = [char for char in text if char.strip() and char not in "、。！？"]
         notes = sorted(self.timeline_widget.notes_list, key=lambda n: n.start_time)
-        
         for i in range(min(len(lyric_list), len(notes))):
             notes[i].lyrics = lyric_list[i]
-            
         self.timeline_widget.update()
         self.pro_monitoring.sync_notes(self.timeline_widget.notes_list)
 
@@ -2686,239 +2582,58 @@ def setup_vose_shortcuts(self):
         length_ticks = int(d.get('Length', 480))
         note_num = int(d.get('NoteNum', 64))
         lyric = d.get('Lyric', 'あ')
-        
         duration_sec = (length_ticks / 480.0) * (60.0 / tempo)
-        
-        note = NoteEvent(
-            lyrics=lyric, 
-            note_number=note_num, 
-            start_time=current_time_sec,
-            duration=duration_sec
-        )
+        note = NoteEvent(lyrics=lyric, note_number=note_num, start_time=current_time_sec, duration=duration_sec)
         return note, current_time_sec + duration_sec
-   
-    # =========================================================================
-    # スクロールバー制御
+
+    # ==========================================================================
+    # スクロール・GUI更新
     # ==========================================================================
 
     @Slot()
     def update_scrollbar_range(self):
-        """水平スクロールバーの範囲更新"""
-        if not self.timeline_widget.notes_list:
-            self.h_scrollbar.setRange(0, 0)
-            return
-        
         max_beats = self.timeline_widget.get_max_beat_position()
-        max_x_position = (max_beats + 4) * self.timeline_widget.pixels_per_beat
-        viewport_width = self.timeline_widget.width()
-        
-        max_scroll_value = max(0, int(max_x_position - viewport_width))
-        self.h_scrollbar.setRange(0, max_scroll_value)
-        self.h_scrollbar.setPageStep(viewport_width)
-
-    # ==========================================================================
-    # その他のスロット
-    # ==========================================================================
+        max_x = (max_beats + 4) * self.timeline_widget.pixels_per_beat
+        self.h_scrollbar.setRange(0, max(0, int(max_x - self.timeline_widget.width())))
 
     @Slot()
     def update_tempo_from_input(self):
-        """テンポ入力の反映"""
         try:
             new_tempo = float(self.tempo_input.text())
-            if not (30.0 <= new_tempo <= 300.0):
-                raise ValueError("テンポは30-300の範囲で入力してください")
-            
+            if not (30.0 <= new_tempo <= 300.0): raise ValueError("Range Error")
             self.timeline_widget.tempo = int(new_tempo)
             self.vo_se_engine.set_tempo(new_tempo)
-            self.graph_editor_widget.tempo = new_tempo
-            self.update_scrollbar_range()
             self.status_label.setText(f"テンポ: {new_tempo} BPM")
-        except ValueError as e:
-            QMessageBox.warning(self, "エラー", str(e))
+        except ValueError:
             self.tempo_input.setText(str(self.timeline_widget.tempo))
 
-    @Slot(str)
-    def set_current_parameter_layer(self, layer_name: str):
-        if layer_name in self.parameters:
-            self.current_param_layer = layer_name
-            self.update()
-            print(f"Parameter layer switched to: {layer_name}")
-        else:
-            print(f"Error: Parameter layer '{layer_name}' not found.")
-
-    @Slot()
-    def on_timeline_updated(self):
-        """タイムライン更新時の処理"""
-        self.statusBar().showMessage("更新中...", 1000)
-        updated_notes = self.timeline_widget.notes_list
-        
-        threading.Thread(
-            target=self.vo_se_engine.prepare_cache,
-            args=(updated_notes,),
-            daemon=True
-        ).start()
-
-    @Slot()
-    def on_notes_modified(self):
-        """変更検知（連打防止タイマー）"""
-        self.render_timer.stop()
-        self.render_timer.start(300)
-        self.statusBar().showMessage("変更を検知しました...", 500)
-
-    def execute_async_render(self):
-        """非同期レンダリング実行（E701修正済み）"""
-        self.statusBar().showMessage("音声をレンダリング中...", 1000)
-        
-        updated_notes = self.timeline_widget.notes_list
-        if not updated_notes:
-            return
-
-        if hasattr(self.vo_se_engine, 'update_notes_data'):
-            self.vo_se_engine.update_notes_data(updated_notes)
-
-        def rendering_task():
-            try:
-                if hasattr(self.vo_se_engine, 'prepare_cache'):
-                    self.vo_se_engine.prepare_cache(updated_notes)
-                
-                self.vo_se_engine.synthesize_track(
-                    updated_notes, 
-                    self.pitch_data, 
-                    preview_mode=True
-                )
-            except Exception as e:
-                print(f"Async Render Error: {e}")
-
-        render_thread = threading.Thread(target=rendering_task, daemon=True)
-        render_thread.start()
-
-    @Slot(list)
-    def on_pitch_data_updated(self, new_pitch_events: List[PitchEvent]):
-        self.pitch_data = new_pitch_events
-
-    @Slot()
-    def on_midi_port_changed(self):
-        selected_port = self.midi_port_selector.currentData()
-        if self.midi_manager:
-            self.midi_manager.stop()
-            self.midi_manager = None
-
-        if selected_port and selected_port != "ポートなし":
-            self.midi_manager = MidiInputManager(selected_port)
-            self.midi_manager.start()
-            self.status_label.setText(f"MIDI: {selected_port}")
-
-    @Slot(int, int, str)
-    def update_gui_with_midi(self, note_number: int, velocity: int, event_type: str):
-        if event_type == 'on':
-            self.status_label.setText(f"ノートオン: {note_number} (Velocity: {velocity})")
-        elif event_type == 'off':
-            self.status_label.setText(f"ノートオフ: {note_number}")
-
-    def handle_midi_realtime(self, note_number: int, velocity: int, event_type: str):
-        if event_type == 'on':
-            self.vo_se_engine.play_realtime_note(note_number)
-            if self.is_recording:
-                self.timeline_widget.add_note_from_midi(note_number, velocity)
-        elif event_type == 'off':
-            self.vo_se_engine.stop_realtime_note(note_number)
-
-    @Slot()
     def update_scrollbar_v_range(self):
-        key_h = self.timeline_widget.key_height_pixels
-        full_height = 128 * key_h
-        viewport_height = self.timeline_widget.height()
-        max_v = 128 * self.timeline_widget.note_height
-        self.vertical_scroll.setRange(0, max_v)
+        full_h = 128 * self.timeline_widget.key_height_pixels
+        self.v_scrollbar.setRange(0, max(0, int(full_h - self.timeline_widget.height())))
 
-        max_scroll_value = max(0, int(full_height - viewport_height + key_h))
-        self.v_scrollbar.setRange(0, max_scroll_value)
-        self.keyboard_sidebar.set_key_height_pixels(key_h)
-
-    # ==========================================================================
-    # ヘルパーメソッド
-    # ==========================================================================
-
-    def _get_yomi_from_lyrics(self, lyrics: str) -> str:
-        try:
-            import pykakasi
-            kks = pykakasi.kakasi()
-            result = kks.convert(lyrics)
-            return "".join([item['hira'] for item in result])
-        except ImportError:
-            return lyrics
-
-    def midi_to_hz(self, midi_note: int) -> float:
-        return 440.0 * (2.0 ** ((midi_note - 69) / 12.0))
-
-    # ==========================================================================
-    # イベントハンドラ
-    # ==========================================================================
-
-    def keyPressEvent(self, event: QKeyEvent):
+    def keyPressEvent(self, event):
         if event.key() == Qt.Key_Space:
-            self.on_play_pause_toggled()
-            event.accept()
-        elif event.key() == Qt.Key_R and event.modifiers() == Qt.ControlModifier:
-            self.on_record_toggled()
-            event.accept()
-        elif event.key() == Qt.Key_L and event.modifiers() == Qt.ControlModifier:
-            self.on_loop_button_toggled()
-            event.accept()
+            self.toggle_playback()
         elif event.key() in (Qt.Key_Delete, Qt.Key_Backspace):
             self.timeline_widget.delete_selected_notes()
-            event.accept()
         else:
             super().keyPressEvent(event)
 
     def closeEvent(self, event):
-        reply = QMessageBox.question(
-            self, 
-            '確認', 
-            "作業内容が失われる可能性があります。終了してもよろしいですか？",
-            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel, 
-            QMessageBox.Save
-        )
-
-        if reply == QMessageBox.Save:
-            self.on_save_project_clicked()
-            event.accept()
-        elif reply == QMessageBox.Discard:
+        reply = QMessageBox.question(self, '確認', "終了しますか？", QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            if self.vo_se_engine: self.vo_se_engine.close()
             event.accept()
         else:
             event.ignore()
-            return # キャンセルの場合はここで抜ける
-        
-        # 終了時処理
-        config = {
-            "default_voice": self.current_voice,
-            "volume": self.volume
-        }
-        self.config_manager.save_config(config)
-        
-        if self.midi_manager:
-            self.midi_manager.stop()
-        
-        if self.vo_se_engine:
-            self.vo_se_engine.close()
-        
-        print("Application closing...")
 
-
-# ==============================================================================
-# アプリケーションエントリーポイント
-# ==============================================================================
-
+# --- エントリーポイント ---
 def main():
-    """アプリケーション起動"""
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    
     window = MainWindow()
     window.show()
-    
     sys.exit(app.exec())
-
 
 if __name__ == "__main__":
     main()
