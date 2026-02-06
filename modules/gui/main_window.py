@@ -1701,26 +1701,52 @@ class MainWindow(QMainWindow):
         self.toolbar.addWidget(self.tempo_input)
 
     def setup_main_editor_area(self):
-        """中央エリア：QSplitterで左右に分割"""
+        """メインエディタエリア（トラックリスト + タイムライン）"""
+        from PySide6.QtWidgets import QSplitter, QFrame
+        from PySide6.QtCore import Qt
+
+        # 左右に分割できるスプリッター
         self.editor_splitter = QSplitter(Qt.Horizontal)
+        
+        # --- 左側：トラック管理パネル ---
+        self.track_panel = QFrame()
+        self.track_panel.setFrameShape(QFrame.StyledPanel)
+        self.track_panel.setMinimumWidth(200)
+        self.track_panel.setMaximumWidth(400)
+        
+        track_layout = QVBoxLayout(self.track_panel)
+        track_layout.setContentsMargins(5, 5, 5, 5)
 
-        # --- 左：タイムライン ---
-        self.timeline_widget = TimelineWidget() # 仮定：自作ウィジェット
+        # トラックリスト表示
+        self.track_list_widget = QListWidget()
+        self.track_list_widget.setObjectName("TrackList")
+        self.track_list_widget.currentRowChanged.connect(self.switch_track)
+        
+        # トラック操作ボタン
+        btn_layout = QHBoxLayout()
+        self.btn_add_vocal = QPushButton("+ Vocal")
+        self.btn_add_wave = QPushButton("+ Audio")
+        self.btn_add_vocal.clicked.connect(lambda: self.add_track("vocal"))
+        self.btn_add_wave.clicked.connect(lambda: self.add_track("wave"))
+        btn_layout.addWidget(self.btn_add_vocal)
+        btn_layout.addWidget(self.btn_add_wave)
+
+        track_layout.addWidget(QLabel("TRACKS"))
+        track_layout.addWidget(self.track_list_widget)
+        track_layout.addLayout(btn_layout)
+
+        # --- 右側：タイムライン（既存） ---
+        # self.timeline_widget は事前に生成されている前提
+        
+        # スプリッターに配置
+        self.editor_splitter.addWidget(self.track_panel)
         self.editor_splitter.addWidget(self.timeline_widget)
-
-        # --- 右：音源リスト（スクロール可能） ---
-        self.voice_scroll = QScrollArea()
-        self.voice_scroll.setWidgetResizable(True)
-        self.voice_scroll.setFixedWidth(280)
         
-        self.voice_container = QWidget()
-        self.voice_grid = QGridLayout(self.voice_container) # ここにカードを追加していく
-        self.voice_scroll.setWidget(self.voice_container)
-        
-        self.editor_splitter.addWidget(self.voice_scroll)
-        self.editor_splitter.setStretchFactor(0, 8) # タイムライン優先
-
+        # メインレイアウト（QVBoxLayout）に追加
         self.main_layout.addWidget(self.editor_splitter)
+        
+        # 初期リスト更新
+        self.refresh_track_list_ui()
 
     def setup_bottom_panel(self):
         """下部：歌詞入力などのツール"""
