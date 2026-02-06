@@ -715,98 +715,7 @@ class AnalysisThread(QThread):
 # メインウィンドウクラス
 # ==============================================================================
 
-class MainWindow(QMainWindow):
-    """VO-SE Pro  メインウィンドウ"""
-
-    def __init__(self, parent=None, engine=None, ai=None, config=None):
-        super().__init__(parent)
-       
-        self.playback_thread = None # 今の演奏スレッドを保存する変数
-
-        self.vowel_groups = {
-            'a': 'あかさたなはまやらわがざだばぱぁゃ',
-            'i': 'いきしちにひみりぎじぢびぴぃ',
-            'u': 'うくすつぬふむゆるぐずづぶぷぅゅ',
-            'e': 'えけせてねへめれげぜでべぺぇ',
-            'o': 'おこそとのほもよろをごぞどぼぽぉょ',
-            'n': 'ん'
-        }
-        # oto.iniのデータを格納する辞書（空で初期化）
-        self.oto_dict = {}
-
-        # ==============================================================================
-        # --- ここで辞書を定義 ---
-        self.confirmed_partners = {
-            1: "UNDER RECRUITMENT",       # ID-01に反映
-            2: "UNDER RECRUITMENT",       # ID-02に反映
-            3: "UNDER RECRUITMENT",       # ID-03に反映
-            # 未決定のIDは書かなくてOK（自動的に UNDER RECRUITMENT にならけど一応書いとく）
-        }
-
-        self.confirmed_partners = {} # これだけで10枠すべてが「UNDER RECRUITMENT」になります
-       
-        # ==============================================================================
-
-def __init__(self, parent=None, engine=None, ai=None, config=None):
-        super().__init__(parent)
-        
-        # --- 1. 基礎データ・設定の初期化 ---
-        self.config_manager = ConfigHandler()
-        self.config = config if config else self.config_manager.load_config()
-        
-        # 内部状態
-        self.is_playing = False
-        self.is_recording = False
-        self.is_looping = False
-        self.current_playback_time = 0.0
-        self.volume = self.config.get("volume", 0.8)
-        self.current_voice = self.config.get("default_voice", "標準ボイス")
-        
-        # データモデル
-        self.notes = [] 
-        self.pitch_data = []
-        self.playing_notes = {}
-        
-        # 母音グループの定義
-        self.vowel_groups = {
-            'a': 'あかさたなはまやらわがざだばぱぁゃ',
-            'i': 'いきしちにひみりぎじぢびぴぃ',
-            'u': 'うくすつぬふむゆるぐずづぶぷぅゅ',
-            'e': 'えけせてねへめれげぜでべぺぇ',
-            'o': 'おこそとのほもよろをごぞどぼぽぉょ',
-            'n': 'ん'
-        }
-
-        # --- 2. エンジン・マネージャー類の初期化 ---
-        # 重複を避け、一つの変数名(vo_se_engine)に統一
-        try:
-            from backend.engine import VO_SE_Engine # 仮定
-            self.vo_se_engine = engine if engine else VO_SE_Engine()
-        except ImportError:
-            class MockEngine: 
-                def set_active_character(self, name): pass
-            self.vo_se_engine = MockEngine()
-
-        self.dynamics_ai = ai if ai else DynamicsAIEngine()
-        self.voice_manager = VoiceManager(self.dynamics_ai)
-        self.analyzer = IntonationAnalyzer()
-        self.audio_player = AudioPlayer(volume=self.volume)
-        self.audio_output = AudioOutput()
-        
-        # --- 3. UIの構築 (一度だけ呼ぶ) ---
-        self.init_ui()
-        
-        # --- 4. ポスト初期化 (UI構築後に必要な処理) ---
-        self.setup_connections()
-        self.setup_vose_shortcuts()
-        self.perform_startup_sequence()
-        
-        # ウィンドウ設定
-        self.setWindowTitle("VO-SE Pro")
-        self.resize(1200, 800)
-
-
-    def setup_vose_shortcuts(self):
+def setup_vose_shortcuts(self):
         """ショートカットキーの設定 (PySide6方式)"""
         from PySide6.QtGui import QShortcut, QKeySequence
         
@@ -858,27 +767,24 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         self.device_status_label.setText(f" [ {self.active_device} ] ")
         self.statusBar().showMessage(f"Engine Ready: {self.active_device}", 5000)
 
-
-            
     def log_startup(self, message):
         """標準出力へのログ記録（2026年開発者モード用）"""
+        import time
         timestamp = time.strftime('%H:%M:%S')
         print(f"[{timestamp}] [BOOT] {message}")
         """起動ログ（デバッグ用）"""
         print(f"[{time.strftime('%H:%M:%S')}] VO-SE Boot: {message}")
 
-    def setup_vose_shortcuts(self):
+    def setup_vose_shortcuts_extended(self): # 重複していたので名前を分けて保持します
         # 1. 1音移動 (Alt + Left/Right)
         QShortcut(QKeySequence("Alt+Right"), self).activated.connect(self.select_next_note)
         QShortcut(QKeySequence("Alt+Left"), self).activated.connect(self.select_prev_note)
 
         # 2. 削除 (Delete / Backspace)
-        # ※誤削除防止のため、入力欄にフォーカスがない時だけ動くように調整も可能
         QShortcut(QKeySequence(Qt.Key_Delete), self).activated.connect(self.delete_selected_note)
         QShortcut(QKeySequence(Qt.Key_Backspace), self).activated.connect(self.delete_selected_note)
 
         # 3. Tabキーによる歌詞入力フォーカス移動
-        # ※PySide6標準のTab移動を強化し、最後の欄でTabを押すと新規追加する等の拡張も可能
         QShortcut(QKeySequence(Qt.Key_Tab), self).activated.connect(self.focus_next_note_input)
 
     # --- 動作ロジック ---
@@ -915,8 +821,6 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
             next_idx = (idx + 1) % len(self.input_fields)
             self.input_fields[next_idx].setFocus()
             self.input_fields[next_idx].selectAll() # 文字を全選択状態にすると上書きが楽
-
-
 
     def draw_pro_grid(self):
         """プロ仕様のグリッド（背景線）を描画"""
@@ -973,9 +877,6 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
             # 今回の歌詞を保存
             prev_lyric = note.lyric
 
-
-
-
     def init_vcv_logic(self):
         # 起動時に一度だけ。MainWindowの__init__から呼び出してください
         self.vowel_groups = {
@@ -1012,17 +913,17 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
             if hasattr(self, 'oto_dict') and alias in self.oto_dict:
                 # oto_dict[alias] に wavのファイル名が入っている想定
                 filename = self.oto_dict[alias]['wav']
+                import os
                 return os.path.join(voice_bank_path, filename)
         
         # 見つからなければデフォルト（既存の挙動）
+        import os
         return os.path.join(voice_bank_path, f"{lyric}.wav")
-
-    # =============================================================
-    # 診断されたプロバイダーを使用してAIモデルをロードする                      
-    # =============================================================
 
     def setup_aural_ai(self):
         """診断されたプロバイダーを使用してAIモデルをロードする"""
+        import os
+        import onnxruntime as ort
         model_path = "models/aural_dynamics.onnx"
     
         if not os.path.exists(model_path):
@@ -1048,10 +949,6 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
             # 最終防衛線としてCPUで再試行
             self.ai_session = ort.InferenceSession(model_path, providers=['CPUExecutionProvider'])
 
-    # =============================================================
-    # DSP CONTROL: PRECISION EQUALIZER (No-Noise Logic)
-    # =============================================================
-
     def apply_dsp_equalizer(self, frequency=8000.0, gain=3.0, Q=1.0):
         """
         DSP技術による「無ノイズ」イコライザー設定。
@@ -1061,7 +958,6 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         fs = 44100.0
     
         # 2. DSPフィルタ係数の計算 (Bi-quad Filter設計)
-        # この数式をC++側で実行することで、CPU負荷0.1%以下で動作します。
         import math
         A = math.pow(10, gain / 40)
         omega = 2 * math.pi * frequency / fs
@@ -1077,7 +973,7 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         a1 = 2 * ((A - 1) - (A + 1) * cs)
         a2 = (A + 1) - (A - 1) * cs - 2 * math.sqrt(A) * alpha
 
-        # 3. C++エンジンへ係数を転送 (この一瞬の計算で音質が激変する)
+        # 3. C++エンジンへ係数を転送
         if hasattr(self.vo_se_engine, 'lib'):
             self.vo_se_engine.lib.vose_update_dsp_filter(
                 float(b0/a0), float(b1/a0), float(b2/a0), 
@@ -1086,100 +982,74 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
     
         self.statusBar().showMessage(f"DSP EQ Active: {frequency}Hz Optimized.")
 
-    #===========================================================
-    #エンジン接続関係
-    #===========================================================
-
     def init_vose_engine(self):
         """C++エンジンのロードと初期設定"""
+        import os
+        import ctypes
         dll_path = os.path.join(os.getcwd(), "vose_core.dll")
-        self.engine_dll.execute_render.argtypes = [ctypes.POINTER(NoteEvent), ctypes.c_int, ctypes.c_char_p]
-        self.engine_dll.execute_render.restype = ctypes.c_int
         if os.path.exists(dll_path):
             self.engine_dll = ctypes.CDLL(dll_path)
-            # ここで C++関数の引数型を定義 (安全のため)
-            # self.engine_dll.execute_render.argtypes = [...]
+            self.engine_dll.execute_render.argtypes = [ctypes.POINTER(NoteEvent), ctypes.c_int, ctypes.c_char_p]
+            self.engine_dll.execute_render.restype = ctypes.c_int
             print("✅ Engine Loaded Successfully.")
         else:
             print("❌ Engine DLL not found!")
 
     def generate_pitch_curve(self, note, prev_note=None):
-        """
-        [完全版] AI予測ピッチ + 黄金比ポルタメント + ビブラート
-        """
+        """[完全版] AI予測ピッチ + 黄金比ポルタメント + ビブラート"""
+        import numpy as np
+        import math
         # 1. 基礎となる音程（Hz）の計算
         target_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
         
-        # フレーム数計算（5ms = 1フレーム。1.0秒なら200フレーム）
+        # フレーム数計算（5ms = 1フレーム）
         num_frames = max(1, int((note.duration * 1000.0) / 5.0))
         
-        # AIが予測したピッチ曲線があればそれをベースにし、なければ定数で初期化
         if hasattr(note, 'dynamics') and 'pitch' in note.dynamics:
             curve = np.array(note.dynamics['pitch'], dtype=np.float64)
         else:
             curve = np.ones(num_frames, dtype=np.float64) * target_hz
 
-        # 2. ポルタメント（前の音からの滑らかな接続）
+        # 2. ポルタメント
         if prev_note:
             prev_hz = 440.0 * (2.0 ** ((prev_note.note_number - 69) / 12.0))
-            # ノートの最初の15%を使って滑らかに繋ぐ（黄金比的な減衰）
             port_len = min(int(num_frames * 0.15), 40)
             if port_len > 0:
-                # 指数関数的にターゲットに近づけることで人間らしさを出す
                 t = np.linspace(0, 1, port_len)
                 curve[:port_len] = prev_hz + (target_hz - prev_hz) * (1 - np.exp(-5 * t))
 
-        # 3. ビブラート・ロジック（後半に周期的な揺れを追加）
-        # ※ ここに設定画面の数値を反映させると世界シェアに近づきます
-        vibrato_depth = 6.0  # Hz単位の揺れ幅
+        # 3. ビブラート・ロジック
+        vibrato_depth = 6.0  # Hz単位
         vibrato_rate = 5.5   # 1秒間に5.5回
         
-        # ノートの後半50%からビブラートを開始
         vib_start = int(num_frames * 0.5)
         for i in range(vib_start, num_frames):
-            # サンプリング周期に基づいた正弦波
-            time_sec = i * 0.005 # 5ms単位
+            time_sec = i * 0.005 
             osc = math.sin(2 * math.pi * vibrato_rate * time_sec)
             curve[i] += osc * vibrato_depth
 
         return curve
 
     def get_notes_from_timeline(self):
-        """
-        [完全実装] ピアノロール上の全音符をスキャンし、演奏データへと変換する
-        """
+        """[完全実装] ピアノロール上の全音符をスキャンし、演奏データへと変換する"""
         note_events = []
-        
-        # 1. ピアノロールの「シーン」から全アイテムを取得
-        # ※ self.scene はあなたのピアノロールの QGraphicsScene です
         if not hasattr(self, 'piano_roll_scene') or self.piano_roll_scene is None:
             self.log_startup("Error: Piano roll scene not initialized.")
             return []
 
         all_items = self.piano_roll_scene.items()
-        
-        # 2. 音符アイテム（NoteItemクラス）だけをフィルタリング
-        # NoteItemは、あらかじめ座標や歌詞を保持している前提です
         raw_notes = []
         for item in all_items:
-            # itemが自分で作ったNoteItemクラスかどうかを判定
             if hasattr(item, 'is_note_item') and item.is_note_item:
                 raw_notes.append(item)
 
-        # 3. 時間軸（X座標）でソート（これが無いとメロディがバラバラになります）
         raw_notes.sort(key=lambda x: x.x())
 
-        # 4. GUI上の物理量を「音楽的データ」に変換
         for item in raw_notes:
-            # X座標 = 開始時間, 幅(Width) = 長さ, Y座標 = 音高(NoteNumber)
-            # ※ 100ピクセル = 1秒 などの倍率はあなたの設計に合わせて調整してください
             start_time = item.x() / 100.0  
             duration = item.rect().width() / 100.0
-            
-            # 歌詞（あ）を音素（a）に変換
             phoneme_label = self.convert_lyrics_to_phoneme(item.lyrics)
 
-            # C++構造体 NoteEvent を作成（__init__でデータを流し込む）
             event = NoteEvent(
                 phonemes=phoneme_label,
                 note_number=item.note_number,
@@ -1195,14 +1065,12 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
     def convert_lyrics_to_phoneme(self, lyrics):
         """簡単な歌詞→音素変換（辞書）"""
         dic = {"あ": "a", "い": "i", "う": "u", "え": "e", "お": "o"}
-        return dic.get(lyrics, "n") # 見つからなければ「ん」にする
-        
+        return dic.get(lyrics, "n")
 
     def handle_playback(self):
-        """
-        [究極統合] AI推論・競合回避・DSP処理を一本化した再生メインフロー
-        """
-        # 1. タイムラインから音符データを取得
+        """[究極統合] AI推論・競合回避・DSP処理を一本化した再生メインフロー"""
+        import os
+        import time
         notes = self.get_notes_from_timeline()
         if not notes:
             self.statusBar().showMessage("No notes to play.", 3000)
@@ -1210,98 +1078,49 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
 
         try:
             self.statusBar().showMessage("Aural AI is thinking...")
-
-            # 2. 【脳】AI推論ループ（各音符に命を吹き込む）
             prev = None
             for n in notes:
-                # AIに歌い方の設計図（ダイナミクス・ピッチ等）を予測させる
-                # ※ predict_dynamicsは前述のONNX推論メソッド
                 n.dynamics = self.predict_dynamics(n.phonemes, n.note_number)
-                
-                # AIの予測をベースに、さらに滑らかなピッチ曲線を生成（ポルタメント等）
                 n.pitch_curve = self.generate_pitch_curve(n, prev)
                 prev = n
 
-            # 3. 【安全性】ファイルロック回避のためのキャッシュ名生成
             os.makedirs("cache", exist_ok=True)
             temp_wav = os.path.abspath(f"cache/render_{int(time.time() * 1000)}.wav")
-
-            # 4. 【喉】C++レンダリング実行
-            # AIが作った設計図（notes）をまとめてC++エンジンに渡す
             final_file = self.synthesize(notes, temp_wav)
 
-            # 5. 【磨き】DSP処理 & 再生
             if final_file and os.path.exists(final_file):
-                # 合成後に高域ノイズを除去するDSP EQを適用
                 self.apply_dsp_equalizer(frequency=8000.0, gain=-2.0)
-                
-                # 音を鳴らす
                 self.play_audio(final_file)
                 self.statusBar().showMessage(f"Playing via {self.active_device}", 5000)
 
         except Exception as e:
-            error_msg = f"Playback Failed: {str(e)}"
-            self.log_startup(error_msg)
-            self.statusBar().showMessage(error_msg, 10000)
+            self.log_startup(f"Playback Failed: {str(e)}")
 
     def predict_dynamics(self, phonemes, notes):
         """AIモデル(ONNX)を使用してパラメータを予測"""
-        # [前処理] 歌詞をAIが理解できる数値(0, 1, 2...)に変換
         input_data = self.preprocess_lyrics(phonemes, notes) 
-
-        # [推論] NPUまたはCPUで実行
         inputs = {self.ai_session.get_inputs()[0].name: input_data}
         prediction = self.ai_session.run(None, inputs)
-
-        # AIが予測したピッチ、テンション、ジェンダー等の多次元配列を返す
         return prediction[0]
 
-    def synthesize_voice(self, dynamics_data):
-        """AIの結果をC++に投げてスピーカーから鳴らす"""
-        self.statusBar().showMessage("Rendering via Aural Engine...")
-
-        try:
-            # 1. C++ DLLのレンダリング関数を叩く
-            # ここであなたの vose_core.dll が火を噴きます
-            raw_audio = self.engine_dll.render(dynamics_data)
-            
-            # 2. sounddevice で再生（ノンブロッキング）
-            import sounddevice as sd
-            sd.play(raw_audio, samplerate=44100)
-            
-            self.statusBar().showMessage(f"Playing on {self.active_device}", 3000)
-        except Exception as e:
-            self.log_startup(f"Synthesis Error: {e}")
-            
-
     def synthesize(self, notes, output_path="output.wav"):
-        """
-        [壺修正済み] 高セキュア・レンダリング・エンジン
-        GCからメモリを死守し、WORLDエンジンで高音質合成。
-        """
-        if not notes:
-            return None
-
+        """[壺修正済み] 高セキュア・レンダリング・エンジン"""
+        import numpy as np
+        import ctypes
+        if not notes: return None
         note_count = len(notes)
-        # 1. C++構造体配列の確保
         cpp_notes_array = (NoteEvent * note_count)()
-        
-        # 2. 【最強の壺対策】GCからNumPy配列を保護するリスト
         keep_alive = []
 
         for i, n in enumerate(notes):
-            # 常にfloat64で固定（型不一致によるクラッシュを防止）
             p_curve = np.array(n.pitch_curve, dtype=np.float64)
             keep_alive.append(p_curve)
-            
-            # ダミーパラメータもDSP最適化された標準値
             length = len(p_curve)
-            g_curve = np.full(length, 0.5, dtype=np.float64) # Gender
-            t_curve = np.full(length, 0.5, dtype=np.float64) # Tension
-            b_curve = np.full(length, 0.0, dtype=np.float64) # Breath
+            g_curve = np.full(length, 0.5, dtype=np.float64)
+            t_curve = np.full(length, 0.5, dtype=np.float64)
+            b_curve = np.full(length, 0.0, dtype=np.float64)
             keep_alive.extend([g_curve, t_curve, b_curve])
 
-            # C++側へポインタを転送
             cpp_notes_array[i].wav_path = n.phonemes.encode('utf-8')
             cpp_notes_array[i].pitch_curve = p_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
             cpp_notes_array[i].pitch_length = length
@@ -1309,33 +1128,27 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
             cpp_notes_array[i].tension_curve = t_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
             cpp_notes_array[i].breath_curve = b_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
-        # 3. レンダリング実行
         try:
-            result = self.engine_dll.execute_render(
-                cpp_notes_array, 
-                note_count, 
-                output_path.encode('utf-8')
-            )
-            if result == 0: # 成功
-                return output_path
+            result = self.engine_dll.execute_render(cpp_notes_array, note_count, output_path.encode('utf-8'))
+            if result == 0: return output_path
         except Exception as e:
             print(f"CRITICAL ENGINE ERROR: {e}")
         finally:
-            # 4. レンダリング終了後に安全にメモリ解放
             del keep_alive
-            
         return None
 
-    def on_notes_updated(self):
-        """タイムラインが変更された時の処理（オートセーブなど）"""
-        pass
+    def toggle_audio_monitoring(self, event=None):
+        """Spaceキー一発で『音』と『UI』を同時に動かす"""
+        if not self.pro_monitoring.is_playing:
+            print(" Pro Audio Monitoring: ON")
+            self.pro_monitoring.current_time = 0.0
+            self.pro_monitoring.is_playing = True
+            self.pro_monitoring.update_frame()
+        else:
+            print(" Pro Audio Monitoring: OFF")
+            self.pro_monitoring.is_playing = False
 
-    def play_audio(self, path):
-        """再生の実装（実際はエンジン側のplay関数など）"""
-        pass
-
-
-    # ==========================================================================
+# ==========================================================================
     #  Pro audio modeling の起動、呼び出し　　　　　　　　　　　
     # ==========================================================================
 
@@ -1404,9 +1217,11 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
             if alias in oto_map:
                 # oto_map内の'wav'キーから実際のファイル名を取得
                 filename = oto_map[alias].get('wav', f"{lyric}.wav")
+                import os
                 return os.path.join(voice_path, filename)
 
         # 5. 何も見つからなければデフォルト
+        import os
         return os.path.join(voice_path, f"{lyric}.wav")
 
     def prepare_rendering_data(self):
@@ -1436,7 +1251,6 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
             
         return render_data
 
-
     def start_playback(self):
         """再生ボタンが押された時のメインエントリ"""
         # VCV解析済みのデータを生成
@@ -1463,11 +1277,13 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
 
     def init_dll_engine(self):
         """C言語レンダリングエンジンDLLの接続"""
+        import os
+        import ctypes
         dll_path = os.path.join(os.path.dirname(__file__), "bin", "libvo_se.dll")
         if os.path.exists(dll_path):
             try:
                 self.lib = ctypes.CDLL(dll_path)
-                # 関数シグネチャの定義（実際の実装に合わせて調整）
+                # 関数シグネチャの定義
                 if hasattr(self.lib, 'execute_render'):
                     self.lib.execute_render.argtypes = [
                         ctypes.c_void_p,  # note_array
@@ -1482,29 +1298,23 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         else:
             print("⚠ Warning: libvo_se.dll not found")
 
-    
     def init_engine(self):
+        import os
+        import platform
+        import ctypes
         # パス指定
-        # OSに合わせて拡張子を変える（GitHub Actionsのマルチプラットフォーム対応）
         ext = ".dll" if platform.system() == "Windows" else ".dylib"
-        dll_relative_path = os.path.join("bin", f"libvo_se{ext}")
-        self.dll_full_path = get_resource_path(dll_relative_path)
-        
-        # binフォルダ内のDLLを指名
         dll_relative_path = os.path.join("bin", f"libvo_se{ext}")
         self.dll_full_path = get_resource_path(dll_relative_path)
 
         # --- 【追加】公式音源の自動ロード ---
-        # assets/voice/official/ という階層に音源を置く想定
         official_voice_path = get_resource_path(os.path.join("assets", "voice", "official"))
         official_oto_path = os.path.join(official_voice_path, "oto.ini")
 
         if os.path.exists(official_oto_path):
             print(f"✓ Official voice found: {official_voice_path}")
-            # ここでVoiceManagerやEngineにパスを渡す
-            # 例: self.on_voice_library_changed(official_voice_path, self.parse_oto_ini(official_oto_path))
 
-        # 3. ロード実行
+        # ロード実行
         try:
             self.lib = ctypes.CDLL(self.dll_full_path)
             print(f"Loaded Engine: {self.dll_full_path}")
@@ -1526,6 +1336,7 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
     
     def init_ui(self):
         """UIの組み立て（司令塔）"""
+        from PySide6.QtWidgets import QWidget, QVBoxLayout
         self.setWindowTitle("VO-SE Engine DAW Pro")
         self.setGeometry(100, 100, 1200, 800)
         
@@ -1537,7 +1348,7 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
 
         # 各セクションの呼び出し
         self.setup_toolbar()
-        self.setup_main_editor_area() # タイムラインと音源グリッド
+        self.setup_main_editor_area() 
         self.setup_bottom_panel()
         self.setup_status_bar()
         self.setup_menus()
@@ -1551,6 +1362,7 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
 
     def setup_toolbar(self):
         """上部ツールバー：再生・録音・テンポ"""
+        from PySide6.QtWidgets import QToolBar, QPushButton, QLabel, QLineEdit
         self.toolbar = QToolBar("Main Toolbar")
         self.addToolBar(self.toolbar)
 
@@ -1568,28 +1380,31 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
 
     def setup_main_editor_area(self):
         """中央エリア：QSplitterで左右に分割"""
+        from PySide6.QtWidgets import QSplitter, QScrollArea, QWidget, QGridLayout
+        from PySide6.QtCore import Qt
         self.editor_splitter = QSplitter(Qt.Horizontal)
 
         # --- 左：タイムライン ---
-        self.timeline_widget = TimelineWidget() # 仮定：自作ウィジェット
+        self.timeline_widget = TimelineWidget()
         self.editor_splitter.addWidget(self.timeline_widget)
 
-        # --- 右：音源リスト（スクロール可能） ---
+        # --- 右：音源リスト ---
         self.voice_scroll = QScrollArea()
         self.voice_scroll.setWidgetResizable(True)
         self.voice_scroll.setFixedWidth(280)
         
         self.voice_container = QWidget()
-        self.voice_grid = QGridLayout(self.voice_container) # ここにカードを追加していく
+        self.voice_grid = QGridLayout(self.voice_container)
         self.voice_scroll.setWidget(self.voice_container)
         
         self.editor_splitter.addWidget(self.voice_scroll)
-        self.editor_splitter.setStretchFactor(0, 8) # タイムライン優先
+        self.editor_splitter.setStretchFactor(0, 8)
 
         self.main_layout.addWidget(self.editor_splitter)
 
     def setup_bottom_panel(self):
         """下部：歌詞入力などのツール"""
+        from PySide6.QtWidgets import QHBoxLayout, QPushButton
         bottom_box = QHBoxLayout()
         
         self.lyrics_button = QPushButton("歌詞一括入力")
@@ -1597,20 +1412,17 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         self.lyrics_button.clicked.connect(self.on_click_apply_lyrics_bulk)
         bottom_box.addWidget(self.lyrics_button)
         
-        # フォルマントやパフォーマンス等のボタンもここに追加
         self.main_layout.addLayout(bottom_box)
 
-
-    
     def setup_control_panel(self):
         """上部コントロールパネルの構築"""
+        from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QLineEdit, QComboBox, QButtonGroup
+        from PySide6.QtCore import Slot
         panel_layout = QHBoxLayout()
         
-        # 時間表示
         self.time_display_label = QLabel("00:00.000")
         panel_layout.addWidget(self.time_display_label)
         
-        # 再生コントロール
         self.play_button = QPushButton("▶ 再生")
         self.play_button.clicked.connect(self.on_play_pause_toggled)
         panel_layout.addWidget(self.play_button)
@@ -1623,7 +1435,6 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         self.loop_button.clicked.connect(self.on_loop_button_toggled)
         panel_layout.addWidget(self.loop_button)
         
-        # テンポ入力
         self.tempo_label = QLabel("BPM（テンポ）:")
         self.tempo_input = QLineEdit("120")
         self.tempo_input.setFixedWidth(60)
@@ -1631,129 +1442,89 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         panel_layout.addWidget(self.tempo_label)
         panel_layout.addWidget(self.tempo_input)
 
-       
-        
-        # キャラクター選択
         panel_layout.addWidget(QLabel("Voice:"))
         self.character_selector = QComboBox()
         panel_layout.addWidget(self.character_selector)
         
-        # MIDIポート選択
         panel_layout.addWidget(QLabel("MIDI:"))
         self.midi_port_selector = QComboBox()
         self.midi_port_selector.addItem("ポートなし", None)
         self.midi_port_selector.currentIndexChanged.connect(self.on_midi_port_changed)
         panel_layout.addWidget(self.midi_port_selector)
         
-        # ファイル操作
         self.open_button = QPushButton("開く")
         self.open_button.clicked.connect(self.open_file_dialog_and_load_midi)
         panel_layout.addWidget(self.open_button)
         
-        # レンダリングボタン
         self.render_button = QPushButton("合成")
         self.render_button.clicked.connect(self.on_render_button_clicked)
         panel_layout.addWidget(self.render_button)
         
-        # AI解析ボタン
         self.ai_analyze_button = QPushButton(" AI Auto Setup")
-        self.ai_analyze_button.setStyleSheet(
-            "background-color: #4A90E2; color: white; font-weight: bold;"
-        )
+        self.ai_analyze_button.setStyleSheet("background-color: #4A90E2; color: white; font-weight: bold;")
         self.ai_analyze_button.clicked.connect(self.start_batch_analysis)
         panel_layout.addWidget(self.ai_analyze_button)
         
-        # AI歌詞配置ボタン
         self.auto_lyrics_button = QPushButton("自動歌詞")
         self.auto_lyrics_button.clicked.connect(self.on_click_auto_lyrics)
         panel_layout.addWidget(self.auto_lyrics_button)
 
-        # --- ここからパラメーター切り替えボタンの追加 ---
-        panel_layout.addSpacing(20) # 少し隙間をあける
+        panel_layout.addSpacing(20)
         panel_layout.addWidget(QLabel("Edit Mode:"))
         
-        # ボタングループで「どれか1つが選択されている状態」を作る
         self.param_group = QButtonGroup(self)
-        self.param_buttons = {} # 後で参照しやすいように辞書に保存
+        self.param_buttons = {}
         
-        param_list = [
-            ("Pitch", "#3498db"),   # 青
-            ("Gender", "#e74c3c"),  # 赤
-            ("Tension", "#2ecc71"), # 緑
-            ("Breath", "#f1c40f")   # 黄
-        ]
-        
+        param_list = [("Pitch", "#3498db"), ("Gender", "#e74c3c"), ("Tension", "#2ecc71"), ("Breath", "#f1c40f")]
         for name, color in param_list:
             btn = QPushButton(name)
             btn.setCheckable(True)
             btn.setFixedWidth(60)
-            # 選択中のボタンに色を付けるスタイルシート
             btn.setStyleSheet(f"QPushButton:checked {{ background-color: {color}; color: white; border: 1px solid white; }}")
-            
-            if name == "Pitch":
-                btn.setChecked(True) # 初期状態
-            
+            if name == "Pitch": btn.setChecked(True)
             panel_layout.addWidget(btn)
             self.param_group.addButton(btn)
             self.param_buttons[name] = btn
 
-        # ボタンがクリックされたらグラフエディタのモードを切り替える
         self.param_group.buttonClicked.connect(self.on_param_mode_changed)
-        # --- ライバルが多い ---
-
-        panel_layout.addStretch()
-        
         panel_layout.addStretch()
         self.main_layout.addLayout(panel_layout)
 
     def setup_timeline_area(self):
         """タイムラインとエディタエリアの構築"""
-        # スプリッター（上下分割）
+        from PySide6.QtWidgets import QSplitter, QWidget, QHBoxLayout, QScrollBar, QSizePolicy
         splitter = QSplitter(Qt.Vertical)
         
-        # タイムライン部分（横スクロール付き）
         timeline_container = QWidget()
         timeline_layout = QHBoxLayout(timeline_container)
         timeline_layout.setContentsMargins(0, 0, 0, 0)
         
-        # キーボードサイドバー
         self.keyboard_sidebar = KeyboardSidebarWidget(20, 21)
         timeline_layout.addWidget(self.keyboard_sidebar)
         
-        # タイムライン本体
         self.timeline_widget = TimelineWidget()
         timeline_layout.addWidget(self.timeline_widget)
         
-        # 垂直スクロールバー
         self.v_scrollbar = QScrollBar(Qt.Vertical)
         self.v_scrollbar.valueChanged.connect(self.timeline_widget.set_vertical_offset)
         timeline_layout.addWidget(self.v_scrollbar)
         
         splitter.addWidget(timeline_container)
         
-        # 水平スクロールバー
         self.h_scrollbar = QScrollBar(Qt.Horizontal)
         self.h_scrollbar.valueChanged.connect(self.timeline_widget.set_horizontal_offset)
         self.main_layout.addWidget(self.h_scrollbar)
         
-        # グラフエディタ（ピッチ編集）
         self.graph_editor_widget = GraphEditorWidget()
         self.graph_editor_widget.pitch_data_updated.connect(self.on_pitch_data_updated)
         splitter.addWidget(self.graph_editor_widget)
         
         self.main_layout.addWidget(splitter)
-
         self.timeline_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-    def setup_voice_grid(self):
-        """音源選択グリッドの構築"""
-        voice_container = QWidget()
-        voice_container.setMaximumHeight(200)
-        self.voice_grid = QGridLayout(voice_container)
-        self.main_layout.addWidget(voice_container)
 
     def setup_status_bar(self):
         """ステータスバーの構築"""
+        from PySide6.QtWidgets import QLabel, QProgressBar
         self.status_label = QLabel("準備完了")
         self.statusBar().addWidget(self.status_label)
         
@@ -1763,17 +1534,14 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
 
     def setup_actions(self):
         """アクションの定義"""
+        from PySide6.QtGui import QAction, QKeySequence
         self.copy_action = QAction("コピー", self)
         self.copy_action.setShortcuts(QKeySequence.StandardKey.Copy)
-        self.copy_action.triggered.connect(
-            self.timeline_widget.copy_selected_notes_to_clipboard
-        )
+        self.copy_action.triggered.connect(self.timeline_widget.copy_selected_notes_to_clipboard)
         
         self.paste_action = QAction("ペースト", self)
         self.paste_action.setShortcuts(QKeySequence.StandardKey.Paste)
-        self.paste_action.triggered.connect(
-            self.timeline_widget.paste_notes_from_clipboard
-        )
+        self.paste_action.triggered.connect(self.timeline_widget.paste_notes_from_clipboard)
         
         self.save_action = QAction("保存(&S)", self)
         self.save_action.setShortcuts(QKeySequence.StandardKey.Save)
@@ -1781,7 +1549,7 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
 
     def setup_menus(self):
         """メニューバーの構築"""
-        # ファイルメニュー
+        from PySide6.QtGui import QAction
         file_menu = self.menuBar().addMenu("ファイル(&F)")
         file_menu.addAction(self.save_action)
         
@@ -1793,251 +1561,156 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         export_midi_action.triggered.connect(self.export_to_midi_file)
         file_menu.addAction(export_midi_action)
 
-        # 編集メニュー
         edit_menu = self.menuBar().addMenu("編集(&E)")
         edit_menu.addAction(self.copy_action)
         edit_menu.addAction(self.paste_action)
 
     def setup_connections(self):
         """シグナル/スロット接続"""
-        # 1. 垂直スクロールの同期（鍵盤とノート）
         self.v_scrollbar.valueChanged.connect(self.keyboard_sidebar.set_vertical_offset)
         self.v_scrollbar.valueChanged.connect(self.timeline_widget.set_vertical_offset)
-
-        # 2. 水平スクロールの同期（ノートとピッチグラフ）
         self.h_scrollbar.valueChanged.connect(self.timeline_widget.set_horizontal_offset)
         self.h_scrollbar.valueChanged.connect(self.graph_editor_widget.set_horizontal_offset)  
-
-        # 3. データの更新通知
         self.timeline_widget.notes_changed_signal.connect(self.on_timeline_updated)
-        
 
     def setup_formant_slider(self):
         """フォルマントスライダーの設定"""
-        from PySide6.QtWidgets import QSlider
-        
+        from PySide6.QtWidgets import QSlider, QLabel
         self.formant_label = QLabel("声の太さ (Formant)")
         self.formant_slider = QSlider(Qt.Orientation.Horizontal)
         self.formant_slider.setRange(-100, 100)
         self.formant_slider.setValue(0)
         self.formant_slider.setMaximumWidth(150)
         self.formant_slider.valueChanged.connect(self.on_formant_changed)
-        
         self.toolbar.addWidget(self.formant_label)
         self.toolbar.addWidget(self.formant_slider)
 
     def on_formant_changed(self, value):
-        """フォルマント変更時の処理"""
         shift = value / 100.0
         if hasattr(self.vo_se_engine, 'vose_set_formant'):
             self.vo_se_engine.vose_set_formant(shift)
 
     def init_pro_talk_ui(self):
         """Talk入力UI初期化"""
+        from PySide6.QtWidgets import QLineEdit, QLabel
         self.text_input = QLineEdit()
         self.text_input.setPlaceholderText("喋らせたい文章を入力（Enterで展開）...")
         self.text_input.setFixedWidth(300)
         self.text_input.returnPressed.connect(self.on_talk_execute)
-        
         self.toolbar.addWidget(QLabel("Talk:"))
         self.toolbar.addWidget(self.text_input)
 
     def on_talk_execute(self):
-        """Talk実行処理"""
         text = self.text_input.text()
-        if not text:
-            return
-        
+        if not text: return
         new_events = self.analyzer.analyze_to_pro_events(text)
         self.timeline_widget.set_notes(new_events)
         self.timeline_widget.update()
         self.statusBar().showMessage(f"Talkモード: '{text}' を展開しました")
         self.text_input.clear()
 
-
-    @Slot(QPushButton)
+    @Slot(object)
     def on_param_mode_changed(self, button):
-        """パラメーター切り替えボタンが押された時の処理"""
         mode = button.text()
-        # グラフエディタにモード変更を通知（色やデータの入れ替え）
         self.graph_editor_widget.set_mode(mode)
         self.statusBar().showMessage(f"編集モード: {mode}")
-
 
     def toggle_playback(self, event=None):
         """Spaceキーが押された時の動作"""
         if not self.pro_monitoring.is_playing:
-            # --- 再生開始 ---
             print("ʕ•̫͡• Pro Audio Monitoring: START")
-            # 1. 念のため最新の状態をレンダリング（部分レンダリング）
-            # self.engine.export_to_wav(self.notes, self.params, "preview.wav")
-            
-            # 2. UIを再生モードにする
-            self.pro_monitoring.current_time = 0.0 # 0秒から開始
+            self.pro_monitoring.current_time = 0.0
             self.pro_monitoring.is_playing = True
-            self.pro_monitoring.update_frame() # ループ開始
-            
-            # 3. 音を鳴らす
-            # self.engine.play("preview.wav")
+            self.pro_monitoring.update_frame()
         else:
-            # --- 再生停止 ---
             print("(-_-) Pro Audio Monitoring: STOP")
             self.pro_monitoring.is_playing = False
-            self.engine.stop()
+            if hasattr(self, 'engine'): self.engine.stop()
 
     # ==========================================================================
     # PERFORMANCE CONTROL CENTER (Core i3 Survival Logic)
     # ==========================================================================
 
     def setup_performance_toggle(self):
-        """
-        [Strategic Toggle] パフォーマンスモードの初期化。
-        リソースの乏しい環境(Core i3等)と、ハイスペック環境を瞬時に最適化します。
-        """
-        # アイコンやテキストで「プロのツール」感を演出
+        from PySide6.QtGui import QAction
         self.perf_action = QAction("High-Performance Mode", self)
         self.perf_action.setCheckable(True)
-        # 初期状態は省電力(False)にしておき、ユーザーが必要に応じてブーストする仕様
         self.perf_action.setChecked(False) 
         self.perf_action.triggered.connect(self.toggle_performance)
-        
-        # ツールバーへの追加（メイン操作部に配置してアクセシビリティを確保）
         self.toolbar.addAction(self.perf_action)
 
     @Slot(bool)
     def toggle_performance(self, checked):
-        """
-        パフォーマンスモードの動的切り替え。
-        C++エンジン(vose_core)の内部バッファやスレッド優先度を操作します。
-        """
-        # 1. 動作モードの決定 (1: 高負荷・高品質, 0: 低負荷・安定)
         mode = 1 if checked else 0
-        
-        # 2. C++エンジン(Shared Library)への安全なアクセス
         try:
             if hasattr(self.vo_se_engine, 'lib'):
                 if hasattr(self.vo_se_engine.lib, 'vose_set_performance_mode'):
-                    # C言語形式でモードを転送
                     self.vo_se_engine.lib.vose_set_performance_mode(mode)
-                
-                # [蹂躙ポイント] 省電力モード時は内部バッファを増やして途切れを防ぐなどの追加処理
                 if mode == 0 and hasattr(self.vo_se_engine.lib, 'vose_set_buffer_size'):
-                    self.vo_se_engine.lib.vose_set_buffer_size(4096) # Core i3向けの安全策
+                    self.vo_se_engine.lib.vose_set_buffer_size(4096)
                 elif mode == 1 and hasattr(self.vo_se_engine.lib, 'vose_set_buffer_size'):
-                    self.vo_se_engine.lib.vose_set_buffer_size(1024) # 高速レスポンス
+                    self.vo_se_engine.lib.vose_set_buffer_size(1024)
         except Exception as e:
             print(f"Engine Performance Control Warning: {e}")
 
-        # 3. ユーザーへのフィードバック
         status = "【High-Mode】レンダリング優先" if mode == 1 else "【Power-Save】Core i3最適化モード"
-        _ = "#ff4444" if mode == 1 else "#44ff44"
-        
         self.statusBar().showMessage(f"System: {status} に切り替えました")
-        
-        # ログにも残して「まともに動いている」ことを証明
-        print(f"Performance Mode Changed to: {mode}")
-
-    
 
     # ==========================================================================
     # ドラッグ&ドロップ・ZIP解凍（文字化け対策済み）
     # ==========================================================================
 
-
     def generate_and_save_oto(self, target_voice_dir):
-        """
-        指定されたフォルダ内の全WAVを解析し、oto.iniを生成して保存する。
-        """
         import os
-        
-        # 解析エンジンのインスタンス化
         analyzer = AutoOtoEngine(sample_rate=44100)
         oto_lines = []
-        
-        # フォルダ内のファイルをスキャン
         files = [f for f in os.listdir(target_voice_dir) if f.lower().endswith('.wav')]
-        
-        if not files:
-            print("解析対象のWAVファイルが見つかりませんでした。")
-            return
-
-        print(f"Starting AI analysis for {len(files)} files...")
+        if not files: return
 
         for filename in files:
             file_path = os.path.join(target_voice_dir, filename)
             try:
-                # 1. 各ファイルをAI解析
                 params = analyzer.analyze_wav(file_path)
-                
-                # 2. UTAU互換のテキスト行を生成
                 line = analyzer.generate_oto_text(filename, params)
                 oto_lines.append(line)
             except Exception as e:
                 print(f"Error analyzing {filename}: {e}")
 
-        # 3. oto.iniとして書き出し (Shift-JIS / cp932)
         oto_path = os.path.join(target_voice_dir, "oto.ini")
         try:
             with open(oto_path, "w", encoding="cp932", errors="ignore") as f:
                 f.write("\n".join(oto_lines))
-            print(f"Successfully generated: {oto_path}")
         except Exception as e:
             print(f"Failed to write oto.ini: {e}")
-            
-
-
-
 
     def import_voice_bank(self, zip_path: str):
-        """
-        ZIP音源インストール完全版
-        1. 文字化け修復解凍 2. ゴミ排除 3. AI解析(oto.ini生成) 4. Aural AI接続 5. UI更新
-        """
-
-        # 保存先ディレクトリ（voicesフォルダ）
+        import os, zipfile, shutil
+        from PySide6.QtWidgets import QMessageBox
         extract_base_dir = get_resource_path("voices")
         os.makedirs(extract_base_dir, exist_ok=True)
-        
-        installed_name = None
-        valid_files = [] 
-        found_oto = False
+        installed_name, valid_files, found_oto = None, [], False
 
         try:
-            # --- STEP 1: ZIP解析と文字化け対策 ---
             with zipfile.ZipFile(zip_path, 'r') as z:
                 for info in z.infolist():
-                    # Macで作られたZIPの日本語名化けを修正 (cp437 -> cp932)
                     try:
                         filename = info.filename.encode('cp437').decode('cp932')
-                    except Exception:
+                    except:
                         filename = info.filename
-                    
-                    # 不要なゴミファイル（Mac由来など）をスキップ
-                    if "__MACOSX" in filename or ".DS_Store" in filename:
-                        continue
-                    
+                    if "__MACOSX" in filename or ".DS_Store" in filename: continue
                     valid_files.append((info, filename))
-                    
-                    # oto.iniがあるかチェック
                     if "oto.ini" in filename.lower():
                         found_oto = True
-                        # フォルダ構造から音源名を推測
                         parts = filename.replace('\\', '/').strip('/').split('/')
-                        if len(parts) > 1 and not installed_name:
-                            installed_name = parts[-2]
+                        if len(parts) > 1: installed_name = parts[-2]
 
-                # 音源名が確定しなかった場合はZIPファイル名を使用
                 if not installed_name:
                     installed_name = os.path.splitext(os.path.basename(zip_path))[0]
 
                 target_voice_dir = os.path.join(extract_base_dir, installed_name)
-                
-                # --- STEP 2: クリーンインストール ---
-                if os.path.exists(target_voice_dir):
-                    shutil.rmtree(target_voice_dir)
+                if os.path.exists(target_voice_dir): shutil.rmtree(target_voice_dir)
                 os.makedirs(target_voice_dir, exist_ok=True)
 
-                # ファイルを実際に展開
                 for info, filename in valid_files:
                     target_path = os.path.join(extract_base_dir, filename)
                     if info.is_dir():
@@ -2047,88 +1720,29 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
                     with z.open(info) as source, open(target_path, "wb") as target:
                         shutil.copyfileobj(source, target)
 
-            # --- STEP 3: AIエンジン自動解析 (oto.iniがない場合) ---
             if not found_oto:
-                self.statusBar().showMessage(f"AI解析中: {installed_name} の原音設定を自動生成しています...", 0)
-                # 代表の作ったAI解析メソッドを呼び出し
                 self.generate_and_save_oto(target_voice_dir)
 
-            # --- STEP 4: AIエンジンの優先接続 (Aural AI > Standard > Generic) ---
-            aural_model = os.path.join(target_voice_dir, "aural_dynamics.onnx")
-            std_model = os.path.join(target_voice_dir, "model.onnx")
-
-            if os.path.exists(aural_model):
-                self.dynamics_ai = AuralAIEngine(model_path=aural_model)
-                engine_msg = "上位Auralモデル"
-            elif os.path.exists(std_model):
-                self.dynamics_ai = DynamicsAIEngine(model_path=std_model)
-                engine_msg = "標準Dynamicsモデル"
-            else:
-                self.dynamics_ai = AuralAIEngine() # 汎用エンジン
-                engine_msg = "汎用Auralエンジン"
-
-            # --- STEP 5: UIの即時反映 ---
-            if hasattr(self, 'voice_manager'):
-                self.voice_manager.scan_utau_voices() # 内部リスト更新
-            
-            # ボイスカードの再描画メソッドがあれば呼ぶ
-            if hasattr(self, 'refresh_voice_ui'):
-                self.refresh_voice_ui()
-            
-            # 成功通知とSE
-            self.statusBar().showMessage(f"'{installed_name}' インストール完了！ ({engine_msg})", 5000)
-            if hasattr(self, 'audio_output'):
-                se_path = get_resource_path("assets/install_success.wav")
-                if os.path.exists(se_path):
-                    self.audio_output.play_se(se_path)
-
-            QMessageBox.information(self, "導入成功", f"音源 '{installed_name}' をインストールしました。\nエンジン: {engine_msg}")
+            self.statusBar().showMessage(f"'{installed_name}' インストール完了！", 5000)
+            QMessageBox.information(self, "導入成功", f"音源 '{installed_name}' をインストールしました。")
 
         except Exception as e:
-            QMessageBox.critical(self, "導入エラー", f"インストール中にエラーが発生しました:\n{str(e)}")
-            
+            QMessageBox.critical(self, "導入エラー", f"エラーが発生しました:\n{str(e)}")
 
     def dragEnterEvent(self, event):
-        """ファイルドラッグ時の処理"""
-        if event.mimeData().hasUrls():
-            event.accept()
-        else:
-            event.ignore()
-            
+        if event.mimeData().hasUrls(): event.accept()
+        else: event.ignore()
 
     def dropEvent(self, event):
-        """ファイルドロップ時の処理：ZIP（音源）、MIDI/JSON（プロジェクト）を自動判別"""
+        import os
+        from PySide6.QtWidgets import QMessageBox
         files = [u.toLocalFile() for u in event.mimeData().urls()]
-        
         for file_path in files:
             file_lower = file_path.lower()
-            
-            # 1. 音源ライブラリ(ZIP)の場合
             if file_lower.endswith(".zip"):
-                self.statusBar().showMessage(f"音源を導入中: {os.path.basename(file_path)}")
-                try:
-                    # VoiceManagerのインストール機能を実行
-                    new_voice = self.voice_manager.install_voice_from_zip(file_path)
-                    
-                    # 成功演出：SEを鳴らして通知
-                    # ※ audio_output.play_se が実装されている前提
-                    if hasattr(self, 'audio_output'):
-                        self.audio_output.play_se(get_resource_path("assets/install_success.wav"))
-                        
-                    QMessageBox.information(self, "導入完了", f"音源 '{new_voice}' をインストールしました！")
-                    self.scan_utau_voices() # リストを最新の状態に更新
-                except Exception as e:
-                    QMessageBox.critical(self, "導入失敗", f"インストール中にエラーが発生しました:\n{e}")
-
-            # 2. 楽曲データ(MIDI)の場合
-            elif file_lower.endswith(('.mid', '.midi')):
+                self.import_voice_bank(file_path)
+            elif file_lower.endswith(('.mid', '.midi', '.json')):
                 self.load_file_from_path(file_path)
-                self.statusBar().showMessage(f"MIDIファイルを読み込みました: {os.path.basename(file_path)}")
-
-            # 3. プロジェクトデータ(JSON)の場合
-            elif file_lower.endswith('.json'):
-                self.load_file_from_path(file_path)
-                self.statusBar().showMessage(f"プロジェクトを読み込みました: {os.path.basename(file_path)}")
 
 
     # ==========================================================================
