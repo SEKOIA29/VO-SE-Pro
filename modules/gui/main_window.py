@@ -1080,6 +1080,20 @@ class MainWindow(QMainWindow):
             msg += f" (File: {os.path.basename(target_tr.audio_path) if target_tr.audio_path else 'None'})"
         self.statusBar().showMessage(msg)
 
+    def refresh_track_list_ui(self):
+        """UI上のリスト表示を最新状態に同期"""
+        self.track_list_widget.blockSignals(True)
+        self.track_list_widget.clear()
+        for i, t in enumerate(self.tracks):
+            item_text = f"[{'V' if t.track_type == 'vocal' else 'A'}] {t.name}"
+            item = QListWidgetItem(item_text)
+            if t.track_type == "wave":
+                item.setForeground(Qt.cyan) # オーディオトラックは色を変えて識別
+            self.track_list_widget.addItem(item)
+        
+        self.track_list_widget.setCurrentRow(self.current_track_idx)
+        self.track_list_widget.blockSignals(False)
+
 
     def refresh_ui(self):
         """Undo/Redo後に現在のトラック状態を画面に同期"""
