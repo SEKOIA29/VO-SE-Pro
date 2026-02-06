@@ -747,8 +747,6 @@ class MainWindow(QMainWindow):
        
         # ==============================================================================
 
-def __init__(self, parent=None, engine=None, ai=None, config=None):
-        super().__init__(parent)
         
         # --- 1. 基礎データ・設定の初期化 ---
         self.config_manager = ConfigHandler()
