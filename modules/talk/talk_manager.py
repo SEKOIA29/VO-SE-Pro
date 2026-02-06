@@ -44,7 +44,9 @@ class TalkManager:
     def __init__(self):
         # 実行パスの解決
         if getattr(sys, 'frozen', False):
-            self.base_bin = os.path.join(sys._MEIPASS, "bin", "open_jtalk")
+            # こちらも getattr で安全に取得
+            meipass = getattr(sys, '_MEIPASS', os.getcwd())
+            self.base_bin = os.path.join(meipass, "bin", "open_jtalk") 
         else:
             self.base_bin = os.path.join(os.path.dirname(__file__), "../../bin/open_jtalk")
 
