@@ -1080,6 +1080,17 @@ class MainWindow(QMainWindow):
             msg += f" (File: {os.path.basename(target_tr.audio_path) if target_tr.audio_path else 'None'})"
         self.statusBar().showMessage(msg)
 
+        # --- 追加：ミキサーUIの同期 ---
+        self.vol_slider.blockSignals(True) # 無限ループ防止
+        vol_int = int(target_tr.volume * 100)
+        self.vol_slider.setValue(vol_int)
+        self.vol_label.setText(f"Volume: {vol_int}%")
+        self.btn_mute.setChecked(target_tr.is_muted)
+        self.btn_solo.setChecked(target_tr.is_solo)
+        self.vol_slider.blockSignals(False)
+
+        self.statusBar().showMessage(f"Editing: {target_tr.name}")
+
     def refresh_track_list_ui(self):
         """UI上のリスト表示を最新状態に同期"""
         self.track_list_widget.blockSignals(True)
@@ -1132,6 +1143,135 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Saved: {path}")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Save Failed: {e}")
+
+    #ミュート（M）とソロ（S）
+
+    def setup_track_controls(self):
+        """トラックごとのM/S状態を制御する（setup_main_editor_areaから呼び出し）"""
+        # 現在選択されているトラックに対して操作を行う
+        control_layout = QHBoxLayout()
+        
+        self.btn_mute = QPushButton("M")
+        self.btn_mute.setCheckable(True)
+        self.btn_mute.setFixedWidth(30)
+        self.btn_mute.clicked.connect(self.toggle_mute)
+        
+        self.btn_solo = QPushButton("S")
+        self.btn_solo.setCheckable(True)
+        self.btn_solo.setFixedWidth(30)
+        self.btn_solo.clicked.connect(self.toggle_solo)
+        
+        control_layout.addWidget(self.btn_mute)
+        control_layout.addWidget(self.btn_solo)
+        return control_layout
+
+    def toggle_mute(self):
+        """現在のトラックをミュートにする"""
+        target = self.tracks[self.current_track_idx]
+        target.is_muted = self.btn_mute.isChecked()
+        self.refresh_track_list_ui()
+        self.statusBar().showMessage(f"{target.name} Muted: {target.is_muted}")
+
+    def toggle_solo(self):
+        """現在のトラックをソロにする"""
+        target = self.tracks[self.current_track_idx]
+        target.is_solo = self.btn_solo.isChecked()
+        
+        # ソロがONになった場合、他のトラックのソロ状況も考慮するロジック
+        self.refresh_track_list_ui()
+        self.statusBar().showMessage(f"{target.name} Solo: {target.is_solo}")
+
+    def get_active_tracks(self):
+        """現在鳴らすべきトラックのリストを返す（再生エンジン用）"""
+        # ソロがあるかチェック
+        solo_exists = any(t.is_solo for t in self.tracks)
+        
+        active_tracks = []
+        for t in self.tracks:
+            if solo_exists:
+                # ソロがあるなら、ソロがONかつミュートでないものだけ
+                if t.is_solo and not t.is_muted:
+                    active_tracks.append(t)
+            else:
+                # ソロがないなら、ミュートでないものすべて
+                if not t.is_muted:
+                    active_tracks.append(t)
+        return active_tracks
+
+    def refresh_track_list_ui(self):
+        """UI上のリスト表示を最新状態に同期（M/S状態を反映）"""
+        self.track_list_widget.blockSignals(True)
+        self.track_list_widget.clear()
+        
+        solo_exists = any(t.is_solo for t in self.tracks)
+        
+        for i, t in enumerate(self.tracks):
+            status = ""
+            if t.is_muted: status += "[M]"
+            if t.is_solo: status += "[S]"
+            
+            item_text = f"{status} [{'V' if t.track_type == 'vocal' else 'A'}] {t.name}"
+            item = QListWidgetItem(item_text)
+            
+            # ミュート中やソロ以外のトラックをグレーアウトさせて視認性を上げる
+            if t.is_muted or (solo_exists and not t.is_solo):
+                item.setForeground(Qt.gray)
+            elif t.track_type == "wave":
+                item.setForeground(Qt.cyan)
+                
+            self.track_list_widget.addItem(item)
+        
+        self.track_list_widget.setCurrentRow(self.current_track_idx)
+        # 現在のトラックに合わせてM/Sボタンの状態も更新
+        current_t = self.tracks[self.current_track_idx]
+        self.btn_mute.setChecked(current_t.is_muted)
+        self.btn_solo.setChecked(current_t.is_solo)
+        
+        self.track_list_widget.blockSignals(False)
+
+    #オーディオミキサー
+
+    def setup_mixer_controls(self):
+        """トラックの音量を調整するスライダーを構築（setup_main_editor_areaから呼び出し）"""
+        from PySide6.QtWidgets import QSlider
+        from PySide6.QtCore import Qt
+
+        mixer_layout = QVBoxLayout()
+        
+        # 音量ラベル
+        self.vol_label = QLabel("Volume: 100%")
+        self.vol_label.setAlignment(Qt.AlignCenter)
+        
+        # 音量スライダー (0-100で管理)
+        self.vol_slider = QSlider(Qt.Horizontal)
+        self.vol_slider.setRange(0, 100)
+        self.vol_slider.setValue(100)
+        self.vol_slider.setTickPosition(QSlider.TicksBelow)
+        self.vol_slider.setTickInterval(10)
+        
+        # 値が変わった時の連動
+        self.vol_slider.valueChanged.connect(self.on_volume_changed)
+        
+        mixer_layout.addWidget(self.vol_label)
+        mixer_layout.addWidget(self.vol_slider)
+        
+        # 前に作ったM/Sボタンもここにまとめると綺麗です
+        ms_layout = self.setup_track_controls()
+        mixer_layout.addLayout(ms_layout)
+        
+        return mixer_layout
+
+    def on_volume_changed(self, value):
+        """スライダーを動かした時の処理"""
+        target = self.tracks[self.current_track_idx]
+        
+        # 内部データは 0.0 ~ 1.0 の浮動小数点で保持
+        target.volume = value / 100.0
+        self.vol_label.setText(f"Volume: {value}%")
+        
+        # 履歴に登録（細かすぎるので、スライダーを離した時だけに絞るのがプロ流ですが、まずは簡易実装）
+        self.statusBar().showMessage(f"{target.name} Volume set to {value}%")
+
             
 
     # --- [2] 連続音（VCV）解決メソッド ---
