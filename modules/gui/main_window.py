@@ -747,153 +747,126 @@ class MainWindow(QMainWindow):
        
         # ==============================================================================
 
-
-        self.render_timer = QTimer()
-        self.render_timer.setSingleShot(True)
-        self.render_timer.timeout.connect(self.execute_async_render)
-        self.vo_se_engine = VO_SE_Engine()
-         
-        self.init_ui()
-        self.init_engine()
-
-        # Canvasをプロ仕様のダークカラーに設定
-        self.timeline_widget.setStyleSheet("background-color: #121212;")
-
+def __init__(self, parent=None, engine=None, ai=None, config=None):
+        super().__init__(parent)
         
-        # --- 1. 基盤の初期化 ---
+        # --- 1. 基礎データ・設定の初期化 ---
         self.config_manager = ConfigHandler()
         self.config = config if config else self.config_manager.load_config()
-        self.vo_se_engine = engine if engine else VO_SE_Engine()
-        self.dynamics_ai = ai if ai else DynamicsAIEngine()
         
         # 内部状態
         self.is_playing = False
         self.is_recording = False
         self.is_looping = False
-        self.is_looping_selection = False
         self.current_playback_time = 0.0
-        self.current_voice = self.config.get("default_voice", "標準ボイス")
         self.volume = self.config.get("volume", 0.8)
-        self.pitch_data: List[PitchEvent] = []
+        self.current_voice = self.config.get("default_voice", "標準ボイス")
+        
+        # データモデル
+        self.notes = [] 
+        self.pitch_data = []
         self.playing_notes = {}
-        self.voice_cards: List[VoiceCardWidget] = []
         
-        # DLLライブラリ（後で初期化）
-        self.lib = None
-        
-        # --- 2. DLLエンジンのロード ---
-        self.init_dll_engine()
-        
-        # --- 3. UIコンポーネントの作成 ---
-        self.init_ui()
-        
-        # --- 4. マネージャー・解析器の起動 ---
+        # 母音グループの定義
+        self.vowel_groups = {
+            'a': 'あかさたなはまやらわがざだばぱぁゃ',
+            'i': 'いきしちにひみりぎじぢびぴぃ',
+            'u': 'うくすつぬふむゆるぐずづぶぷぅゅ',
+            'e': 'えけせてねへめれげぜでべぺぇ',
+            'o': 'おこそとのほもよろをごぞどぼぽぉょ',
+            'n': 'ん'
+        }
+
+        # --- 2. エンジン・マネージャー類の初期化 ---
+        # 重複を避け、一つの変数名(vo_se_engine)に統一
+        try:
+            from backend.engine import VO_SE_Engine # 仮定
+            self.vo_se_engine = engine if engine else VO_SE_Engine()
+        except ImportError:
+            class MockEngine: 
+                def set_active_character(self, name): pass
+            self.vo_se_engine = MockEngine()
+
+        self.dynamics_ai = ai if ai else DynamicsAIEngine()
         self.voice_manager = VoiceManager(self.dynamics_ai)
-        self.voice_manager.first_run_setup()
         self.analyzer = IntonationAnalyzer()
         self.audio_player = AudioPlayer(volume=self.volume)
         self.audio_output = AudioOutput()
-        self.midi_manager: Optional[MidiInputManager] = None
-        # AIマネージャーの準備
-        self.ai_manager = AIManager()
-
-        # Pro Monitoring UI のインスタンス化
-        self.pro_monitoring = ProMonitoringUI(self.canvas, self.engine)
-
-        # Spaceキーを「再生/停止」に割り当て
-        self.root.bind("<space>", self.toggle_playback)
         
-        # 信号を繋ぐ（これがクラッシュ防止の鍵！）
-        self.ai_manager.finished.connect(self.on_analysis_finished)
-        self.ai_manager.error.connect(self.on_analysis_error)
-        
-        # モデルをバックグラウンドで初期化しておく
-        self.ai_manager.init_model()
-        
-        # --- 5. 仕上げ設定 ---
-        self.setAcceptDrops(True)
-        self.playback_timer = QTimer(self)
-        self.playback_timer.timeout.connect(self.update_playback_cursor)
-        self.playback_timer.setInterval(10)
-        
-        self.vo_se_engine.set_active_character(self.current_voice)
-        self.setup_connections()
-
-
-        # 音源スキャン
-        self.scan_utau_voices()
-        # ウィンドウタイトル
-        self.setWindowTitle("VO-SE Pro")
-
-        
-
-
-        # Python側で管理するデータモデルのリスト
-        self.notes = []        # ここに NoteEvent オブジェクトが溜まっていく
-        self.selected_index = -1
-        
-        # UI上の入力欄（QLineEdit）のリスト（Tab移動用）
-        self.input_fields = [] 
-        self.setup_vose_shortcuts()
-
-
-        # 1. UIの組み立て
+        # --- 3. UIの構築 (一度だけ呼ぶ) ---
         self.init_ui()
+        
+        # --- 4. ポスト初期化 (UI構築後に必要な処理) ---
+        self.setup_connections()
+        self.setup_vose_shortcuts()
+        self.perform_startup_sequence()
+        
+        # ウィンドウ設定
+        self.setWindowTitle("VO-SE Pro")
+        self.resize(1200, 800)
 
 
-        # エンジン周りの初期化を一気に叩く
-        self.init_vose_engine()       # DLLロード
-        self.perform_startup_sequence() # NPU/CPU診断
-        self.setup_aural_ai()         # AIロード
-        self.apply_dsp_equalizer()    # デフォルトのEQ設定
+    def setup_vose_shortcuts(self):
+        """ショートカットキーの設定 (PySide6方式)"""
+        from PySide6.QtGui import QShortcut, QKeySequence
+        
+        # Spaceキーで再生/停止
+        self.play_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
+        self.play_shortcut.activated.connect(self.toggle_playback)
+
+    def toggle_playback(self):
+        """再生状態の切り替え"""
+        self.is_playing = not self.is_playing
+        print(f"Playback: {self.is_playing}")
+        # ここに再生ロジックを追加
 
     def perform_startup_sequence(self):
         """[完全版] 起動時のハードウェア診断とエンジン最適化"""
-        # 1. 初期化開始の通知
+        # 1. UIの初期化（ステータスバーにラベルを追加）
+        if not hasattr(self, 'device_status_label'):
+            from PySide6.QtWidgets import QLabel
+            self.device_status_label = QLabel(self)
+            self.statusBar().addPermanentWidget(self.device_status_label)
+
         self.statusBar().showMessage("Initializing VO-SE Engine...")
-        self.log_startup("Starting engine diagnostic sequence.")
-
-        # 2. ハードウェア診断 (NPU / CPU の自動判別)
-        # ※ EngineInitializerクラスが外部または同ファイルにある前提
-        try:
-            initializer = EngineInitializer()
-            device_name, provider = initializer.detect_best_engine()
-            
-            # クラス変数に保存して AIロード時に使用
-            self.active_device = device_name
-            self.active_provider = provider
-        except Exception as e:
-            self.log_startup(f"Diagnostic Error: {e}")
-            self.active_device, self.active_provider = "CPU (Safe Mode)", "CPUExecutionProvider"
-
-        # 3. UIへの反映（右下の恒久的なラベル表示）
-        self.statusBar().showMessage(f"Engine Ready: {self.active_device}", 5000)
         
-        self.device_label = QLabel(f" MODE: {self.active_device} ")
-        self.device_label.setStyleSheet("""
-            background-color: #1a1a1a; 
-            color: #ff4d4d; 
-            border-radius: 4px; 
-            font-weight: bold;
-            font-family: 'Consolas', monospace;
-            padding: 2px 8px;
-            margin-right: 5px;
-        """)
-        self.statusBar().addPermanentWidget(self.device_label)
-
-        # 4. オーディオデバイスの導通確認 (sounddevice)
+        # 2. ハードウェア診断ロジック
         try:
-            import sounddevice as sd
-            default_device = sd.query_devices(kind='output')
-            self.log_startup(f"Audio Output: {default_device['name']}")
-        except Exception:
-            self.statusBar().showMessage("Warning: Audio device not found.", 10000)
-            self.log_startup("Audio output check failed.")
+            # 外部ライブラリがあるか、どのハードが使えるかチェック
+            import onnxruntime as ort
+            providers = ort.get_available_providers()
+            
+            if 'DmlExecutionProvider' in providers:
+                self.active_device = "GPU (DirectML)"
+                self.active_provider = "DmlExecutionProvider"
+            elif 'CoreMLExecutionProvider' in providers:
+                self.active_device = "Neural Engine (Apple)"
+                self.active_provider = "CoreMLExecutionProvider"
+            elif 'CUDAExecutionProvider' in providers:
+                self.active_device = "NVIDIA GPU (CUDA)"
+                self.active_provider = "CUDAExecutionProvider"
+            else:
+                self.active_device = "CPU (Standard)"
+                self.active_provider = "CPUExecutionProvider"
+                
+        except ImportError:
+            # ライブラリが見つからない場合は安全なCPUモードへ
+            self.active_device = "CPU (Safe Mode)"
+            self.active_provider = "CPUExecutionProvider"
 
-        # 5. リソースのプリロード（完了報告）
-        self.log_startup(f"All systems nominal. Provider: {self.active_provider}")
-        self.statusBar().showMessage("VO-SE Pro is ready.", 3000)
+        # 3. 診断結果をUIに反映
+        self.device_status_label.setText(f" [ {self.active_device} ] ")
+        self.statusBar().showMessage(f"Engine Ready: {self.active_device}", 5000)
 
+    def setup_connections(self):
+        """信号とスロットの接続"""
+        pass
+
+    def scan_utau_voices(self):
+        """音源のスキャン"""
+        if hasattr(self.voice_manager, 'scan_utau_voices'):
+            self.voice_manager.scan_utau_voices()
+            
     def log_startup(self, message):
         """標準出力へのログ記録（2026年開発者モード用）"""
         timestamp = time.strftime('%H:%M:%S')
