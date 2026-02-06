@@ -2771,20 +2771,10 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "エラー", f"書き出し失敗: {e}")
             self.statusBar().showMessage("エラー発生")
             
-    def _sample_range(self, events, note, res):
-        """
-        ノートの時間範囲(start 〜 start+duration)をres分割して
-        グラフの値をサンプリングする補助関数
-        """
-        # numpy を使って時間を均等に分割# 1. 時間軸を生成
-        times = np.linspace(note.start_time, note.start_time + note.duration, res)
-        
-        # 2. データがない場合の安全策
-        if not events:
-            return [0.5] * res
-            
-        # 3. グラフエディタの補間関数を呼び出し
-        return [self.graph_editor_widget.get_value_at_time(events, t) for t in times]
+
+
+    def load_json_project(self, filepath: str):
+        # ここから下の既存の load_json_project 関数へ繋がるように
 
     def load_oto_ini_special(self, path):
         try:
@@ -2831,6 +2821,21 @@ class MainWindow(QMainWindow):
             
         times = np.linspace(note.start_time, note.start_time + note.duration, res)
         # グラフエディタの補間関数を呼び出し
+        return [self.graph_editor_widget.get_value_at_time(events, t) for t in times]
+
+    def _sample_range(self, events, note, res):
+        """
+        ノートの時間範囲(start 〜 start+duration)をres分割して
+        グラフの値をサンプリングする補助関数
+        """
+        # 1. numpyを使って時間を均等に分割
+        times = np.linspace(note.start_time, note.start_time + note.duration, res)
+        
+        # 2. データがない場合の安全策
+        if not events:
+            return [0.5] * res
+            
+        # 3. グラフエディタの補間関数を呼び出し
         return [self.graph_editor_widget.get_value_at_time(events, t) for t in times]
 
     def load_json_project(self, filepath: str):
