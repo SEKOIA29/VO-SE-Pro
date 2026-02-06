@@ -805,7 +805,7 @@ class MainWindow(QMainWindow):
 
     def setup_vose_shortcuts(self):
         """ショートカットキーの設定 (PySide6方式)"""
-        from PySide6.QtGui import QShortcut, QKeySequence
+       
         
         # Spaceキーで再生/停止
         self.play_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
