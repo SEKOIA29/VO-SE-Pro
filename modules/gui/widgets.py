@@ -1,12 +1,13 @@
-#GUI/widgets.py
+# GUI/widgets.py
 
 import os
-from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel
-from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtGui import QPixmap
+from PySide6.QtWidgets import QFrame, QVBoxLayout, QLabel
+from PySide6.QtCore import Signal, Qt
+from PySide6.QtGui import QPixmap
 
 class VoiceCardWidget(QFrame):
-    clicked = pyqtSignal(str)
+    # PySide6 では pyqtSignal ではなく Signal を使います
+    clicked = Signal(str)
 
     def __init__(self, name, icon_path, color="#007AFF"):
         super().__init__()
@@ -14,18 +15,20 @@ class VoiceCardWidget(QFrame):
         self.color = color
         self._selected = False # 選択状態を内部で保持
         self.setFixedSize(120, 160)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Qt.CursorShape.PointingHandCursor -> Qt.PointingHandCursor (PySide6の標準)
+        self.setCursor(Qt.PointingHandCursor)
         self.setObjectName("VoiceCard")
         
-        # レイアウト・UI構築（提供されたコードを継承）
+        # レイアウト・UI構築
         layout = QVBoxLayout(self)
         self.icon_label = QLabel()
         pix = QPixmap(icon_path if os.path.exists(icon_path) else "assets/default_icon.png")
-        self.icon_label.setPixmap(pix.scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # AspectRatioMode などの列挙型も Qt.XXX でアクセス可能です
+        self.icon_label.setPixmap(pix.scaled(80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self.icon_label.setAlignment(Qt.AlignCenter)
         
         self.name_label = QLabel(self.name)
-        self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.name_label.setAlignment(Qt.AlignCenter)
         self.name_label.setStyleSheet("font-weight: bold; color: white; font-size: 11px;")
         
         layout.addWidget(self.icon_label)
@@ -53,5 +56,5 @@ class VoiceCardWidget(QFrame):
         """)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
+        if event is not None and event.button() == Qt.LeftButton:
             self.clicked.emit(self.name)
