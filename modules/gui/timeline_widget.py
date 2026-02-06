@@ -224,7 +224,8 @@ class TimelineWidget(QWidget):
         self.update()
 
     def mousePressEvent(self, event):
-        if event is None: return  # 安全策を追加
+        if event is None: 
+            return  # 安全策を追加
         
         pos = event.position()
         self.drag_start_pos = pos
@@ -253,7 +254,8 @@ class TimelineWidget(QWidget):
         self.update()
 
     def mouseMoveEvent(self, event):
-        if event is None or self.drag_start_pos is None: return
+        if event is None or self.drag_start_pos is None:
+            return
 
         pos = event.position()
         
