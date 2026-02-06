@@ -2692,7 +2692,8 @@ class MainWindow(QMainWindow):
         file_path, _ = QFileDialog.getSaveFileName(
             self, "音声ファイルを保存", "output.wav", "WAV Files (*.wav)"
         )
-        if not file_path: return
+        if not file_path: 
+            return
 
         self.stop_and_clear_playback()
         self.statusBar().showMessage("レンダリング中...")
@@ -2732,7 +2733,8 @@ class MainWindow(QMainWindow):
         filepath, _ = QFileDialog.getSaveFileName(
             self, "プロジェクトを保存", "", "VO-SE Project (*.vose);;JSON Files (*.json)"
         )
-        if not filepath: return
+        if not filepath: 
+            return
 
         all_params = self.graph_editor_widget.all_parameters
         save_data = {
