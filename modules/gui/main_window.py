@@ -2457,33 +2457,25 @@ class MainWindow(QMainWindow):
             print(f"Analysis Error: {e}")
 
     def on_analysis_finished(self, results):
-        """
-        AIがスキャンした全音符のデータをループで処理
-        results: [{"onset": 1.2, ...}, {"onset": 1.5, ...}, ...]
-        """
+        """AIがスキャンした全音符のデータをタイムラインに展開"""
         if not results:
             self.statusBar().showMessage("音符が見つかりませんでした")
             return
 
-        # 既存のノードをクリアするならここで実行
-        # self.timeline.clear_notes()
-
         for note_data in results:
-            # --- 描画位置の計算 ---
-            # 1秒 = 100ピクセル(px)の場合
+            # 1秒 = 100ピクセルの基準で配置
             x_pos = note_data["onset"] * 100 
             
-            # --- ノードの生成（呼び出し） ---
-            # 代表のVO-SEエンジンのNoteクラスに合わせて呼び出す
+            # 代表のVO-SEエンジンに合わせてノードを生成
             self.create_new_note(
                 x=x_pos, 
-                lyric="あ", # 初期値
-                overlap=note_data["overlap"],
-                pre_utterance=note_data["pre_utterance"]
+                lyric="あ", 
+                overlap=note_data.get("overlap", 0.0),
+                pre_utterance=note_data.get("pre_utterance", 0.0)
             )
 
         self.statusBar().showMessage(f"{len(results)} 個の音符を配置しました")
-        self.update() # 画面全体を更新
+        self.update()
 
     def create_new_note(self, x, lyric, overlap, pre_utterance):
         """実際にノードをリストに追加し、描画を指示する関数（仮）"""
