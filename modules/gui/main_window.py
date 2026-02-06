@@ -3145,7 +3145,7 @@ class MainWindow(QMainWindow):
             if not (30.0 <= new_tempo <= 300.0):
                 raise ValueError("テンポは30-300の範囲で入力してください")
             
-            self.timeline_widget.tempo = new_tempo
+            self.timeline_widget.tempo = int(new_tempo)
             self.vo_se_engine.set_tempo(new_tempo)
             self.graph_editor_widget.tempo = new_tempo
             self.update_scrollbar_range()
