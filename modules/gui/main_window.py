@@ -1697,18 +1697,21 @@ def setup_vose_shortcuts(self):
                         filename = info.filename.encode('cp437').decode('cp932')
                     except:
                         filename = info.filename
-                    if "__MACOSX" in filename or ".DS_Store" in filename: continue
+                    if "__MACOSX" in filename or ".DS_Store" in filename: 
+                        continue
                     valid_files.append((info, filename))
                     if "oto.ini" in filename.lower():
                         found_oto = True
                         parts = filename.replace('\\', '/').strip('/').split('/')
-                        if len(parts) > 1: installed_name = parts[-2]
+                        if len(parts) > 1: 
+                            installed_name = parts[-2]
 
                 if not installed_name:
                     installed_name = os.path.splitext(os.path.basename(zip_path))[0]
 
                 target_voice_dir = os.path.join(extract_base_dir, installed_name)
-                if os.path.exists(target_voice_dir): shutil.rmtree(target_voice_dir)
+                if os.path.exists(target_voice_dir): 
+                    shutil.rmtree(target_voice_dir)
                 os.makedirs(target_voice_dir, exist_ok=True)
 
                 for info, filename in valid_files:
@@ -1730,8 +1733,10 @@ def setup_vose_shortcuts(self):
             QMessageBox.critical(self, "導入エラー", f"エラーが発生しました:\n{str(e)}")
 
     def dragEnterEvent(self, event):
-        if event.mimeData().hasUrls(): event.accept()
-        else: event.ignore()
+        if event.mimeData().hasUrls(): 
+            event.accept()
+        else: 
+            event.ignore()
 
     def dropEvent(self, event):
         import os
