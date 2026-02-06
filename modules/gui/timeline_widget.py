@@ -1,5 +1,4 @@
-#timeline_widget.py
-
+# timeline_widget.py
 
 import json
 import os
@@ -18,8 +17,7 @@ class TimelineWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(400, 200)
-        self.setFocusPolicy(Qt.StrongFocus)
-        self.init_voice_engine()
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         
         # --- 基本データ ---
         self.notes_list: list[NoteEvent] = []
@@ -41,6 +39,10 @@ class TimelineWidget(QWidget):
         self.drag_start_pos = None
         self.selection_rect = QRect()
         self.tokenizer = Tokenizer()
+        
+        # エンジン初期化（属性エラー回避のため最後に呼ぶ）
+        self.vose_core = None 
+        self.init_voice_engine()
 
     # --- 座標 & 解析 ---
     def seconds_to_beats(self, s): 
@@ -62,7 +64,8 @@ class TimelineWidget(QWidget):
     def analyze_lyric_to_phoneme(self, text):
         try:
             tokens = self.tokenizer.tokenize(text)
-            return "".join([t.reading if t.reading != "*" else t.surface for t in tokens])
+            # Pyrightのエラーを回避するため、属性の存在を確認
+            return "".join([getattr(t, 'reading', '*') if getattr(t, 'reading', '*') != "*" else getattr(t, 'surface', '') for t in tokens])
         except Exception: 
             return text
 
@@ -100,7 +103,7 @@ class TimelineWidget(QWidget):
                     with wave.open(os.path.join(voice_db_path, file), 'rb') as wr:
                         frames = wr.readframes(wr.getnframes())
                         data = np.frombuffer(frames, dtype=np.int16)
-                        if hasattr(self, 'vose_core'):
+                        if self.vose_core:
                             self.vose_core.load_embedded_resource(
                                 phoneme.encode('utf-8'), 
                                 data.ctypes.data_as(ctypes.POINTER(ctypes.c_int16)), 
@@ -117,7 +120,7 @@ class TimelineWidget(QWidget):
     # --- 描画ロジック ---
     def paintEvent(self, event):
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.fillRect(self.rect(), QColor(18, 18, 18))
         
         # 背景グリッド
@@ -159,19 +162,19 @@ class TimelineWidget(QWidget):
             p.drawRoundedRect(r, 2, 2)
             
             if n.lyrics:
-                p.setPen(Qt.white)
-                p.setFont(QFont("Helvetica", 9, QFont.Bold))
-                p.drawText(r.adjusted(5, 0, 0, 0), Qt.AlignLeft | Qt.AlignVCenter, n.lyrics)
+                p.setPen(Qt.GlobalColor.white)
+                p.setFont(QFont("Helvetica", 9, QFont.Weight.Bold))
+                p.drawText(r.adjusted(5, 0, 0, 0), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, n.lyrics)
                 
                 # 音素の表示
                 p.setPen(QColor(200, 200, 200, 150))
                 p.setFont(QFont("Consolas", 7))
                 phoneme_text = self.analyze_lyric_to_phoneme(n.lyrics)
-                p.drawText(r.adjusted(2, 22, 0, 0), Qt.AlignLeft, phoneme_text)
+                p.drawText(r.adjusted(2, 22, 0, 0), Qt.AlignmentFlag.AlignLeft, phoneme_text)
 
         # 選択枠
         if self.edit_mode == "select_box":
-            p.setPen(QPen(Qt.white, 1, Qt.DashLine))
+            p.setPen(QPen(Qt.GlobalColor.white, 1, Qt.PenStyle.DashLine))
             p.setBrush(QBrush(QColor(255, 255, 255, 30)))
             p.drawRect(self.selection_rect)
 
@@ -197,26 +200,26 @@ class TimelineWidget(QWidget):
             prev = curr
 
     def keyPressEvent(self, event):
-        ctrl = event.modifiers() & Qt.ControlModifier
-        if event.key() == Qt.Key_1:
+        ctrl = event.modifiers() & Qt.KeyboardModifier.ControlModifier
+        if event.key() == Qt.Key.Key_1:
             self.change_layer("Dynamics")
-        elif event.key() == Qt.Key_2:
+        elif event.key() == Qt.Key.Key_2:
             self.change_layer("Pitch")
-        elif event.key() == Qt.Key_3:
+        elif event.key() == Qt.Key.Key_3:
             self.change_layer("Vibrato")
-        elif event.key() == Qt.Key_4:
+        elif event.key() == Qt.Key.Key_4:
             self.change_layer("Formant")
-        elif ctrl and event.key() == Qt.Key_S:
+        elif ctrl and event.key() == Qt.Key.Key_S:
             self.export_all_data()
-        elif ctrl and event.key() == Qt.Key_C:
+        elif ctrl and event.key() == Qt.Key.Key_C:
             self.copy_notes()
-        elif ctrl and event.key() == Qt.Key_V:
+        elif ctrl and event.key() == Qt.Key.Key_V:
             self.paste_notes()
-        elif ctrl and event.key() == Qt.Key_D:
+        elif ctrl and event.key() == Qt.Key.Key_D:
             self.duplicate_notes()
-        elif ctrl and event.key() == Qt.Key_A:
+        elif ctrl and event.key() == Qt.Key.Key_A:
             self.select_all()
-        elif event.key() in (Qt.Key_Delete, Qt.Key_BackSpace):
+        elif event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_BackSpace):
             self.delete_selected()
 
     def change_layer(self, name):
@@ -225,31 +228,29 @@ class TimelineWidget(QWidget):
 
     def mousePressEvent(self, event):
         if event is None: 
-            return  # 安全策を追加
+            return
         
         pos = event.position()
         self.drag_start_pos = pos
         
-        if event.modifiers() & Qt.AltModifier:
+        if event.modifiers() & Qt.KeyboardModifier.AltModifier:
             self.edit_mode = "draw_parameter"
             self.add_param_pt(pos)
             return
             
-        # reversed で重なり順の上のノートから判定
         for n in reversed(self.notes_list):
             if self.get_note_rect(n).contains(pos.toPoint()):
                 if not n.is_selected:
-                    if not (event.modifiers() & Qt.ControlModifier):
+                    if not (event.modifiers() & Qt.KeyboardModifier.ControlModifier):
                         self.deselect_all()
                     n.is_selected = True
                 self.edit_mode = "move"
                 self.update()
                 return
         
-        if not (event.modifiers() & Qt.ControlModifier):
+        if not (event.modifiers() & Qt.KeyboardModifier.ControlModifier):
             self.deselect_all()
         self.edit_mode = "select_box"
-        # QPointF から QPoint に明示的に変換
         self.selection_rect = QRect(pos.toPoint(), QSize(0,0))
         self.update()
 
@@ -273,10 +274,9 @@ class TimelineWidget(QWidget):
                     if n.is_selected:
                         n.start_time += dt
                         n.note_number = max(0, min(127, n.note_number + dn))
-                self.drag_start_pos = pos # 現在位置を保存
+                self.drag_start_pos = pos
                 self.update()
         elif self.edit_mode == "select_box":
-            # normalized() を使って選択枠を正しく描画
             self.selection_rect = QRect(self.drag_start_pos.toPoint(), pos.toPoint()).normalized()
             for n in self.notes_list:
                 n.is_selected = self.selection_rect.intersects(self.get_note_rect(n))
@@ -327,12 +327,12 @@ class TimelineWidget(QWidget):
     def mouseDoubleClickEvent(self, event):
         for n in self.notes_list:
             if self.get_note_rect(n).contains(event.position().toPoint()):
-                text, ok = QInputDialog.getText(self, "歌詞", "入力:", QLineEdit.Normal, n.lyrics)
+                text, ok = QInputDialog.getText(self, "歌詞", "入力:", QLineEdit.EchoMode.Normal, n.lyrics)
                 if ok:
                     n.lyrics = text
                     n.phoneme = self.analyze_lyric_to_phoneme(text)
                     tokens = self.tokenizer.tokenize(text)
-                    chars = [t.surface for t in tokens]
+                    chars = [getattr(t, 'surface', '') for t in tokens]
                     if len(chars) > 1:
                         self.split_note(n, chars)
                     self.notes_changed_signal.emit()
