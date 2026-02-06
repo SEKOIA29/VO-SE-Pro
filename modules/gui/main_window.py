@@ -811,11 +811,7 @@ class MainWindow(QMainWindow):
         self.play_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
         self.play_shortcut.activated.connect(self.toggle_playback)
 
-    def toggle_playback(self):
-        """再生状態の切り替え"""
-        self.is_playing = not self.is_playing
-        print(f"Playback: {self.is_playing}")
-        # ここに再生ロジックを追加
+
 
     def perform_startup_sequence(self):
         """[完全版] 起動時のハードウェア診断とエンジン最適化"""
