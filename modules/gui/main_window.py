@@ -1059,16 +1059,27 @@ class MainWindow(QMainWindow):
         self.history.execute(EditCommand(redo_fn, undo_fn, f"Add {name}"))
 
     def switch_track(self, index):
-        """表示トラックの切り替え"""
-        if 0 <= index < len(self.tracks):
-            # 現在の状態を保存
-            self.tracks[self.current_track_idx].notes = deepcopy(self.timeline_widget.notes_list)
-            
-            # 切り替え
-            self.current_track_idx = index
-            target = self.tracks[index]
-            self.timeline_widget.set_notes(target.notes)
-            self.statusBar().showMessage(f"Selected: {target.name}")
+        """トラック切り替え時のデータ保護と読み込み"""
+        if index < 0 or index >= len(self.tracks):
+            return
+
+        # 1. 現在の編集状態を今のトラックに退避
+        current_tr = self.tracks[self.current_track_idx]
+        current_tr.notes = deepcopy(self.timeline_widget.notes_list)
+
+        # 2. インデックス更新
+        self.current_track_idx = index
+        target_tr = self.tracks[index]
+        
+        # 3. タイムラインへデータをロード
+        self.timeline_widget.set_notes(target_tr.notes)
+        
+        # 4. ステータスバー更新
+        msg = f"Track: {target_tr.name}"
+        if target_tr.track_type == "wave":
+            msg += f" (File: {os.path.basename(target_tr.audio_path) if target_tr.audio_path else 'None'})"
+        self.statusBar().showMessage(msg)
+
 
     def refresh_ui(self):
         """Undo/Redo後に現在のトラック状態を画面に同期"""
