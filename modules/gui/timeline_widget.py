@@ -224,14 +224,19 @@ class TimelineWidget(QWidget):
         self.update()
 
     def mousePressEvent(self, event):
-        self.drag_start_pos = event.position()
+        if event is None: return  # 安全策を追加
+        
+        pos = event.position()
+        self.drag_start_pos = pos
+        
         if event.modifiers() & Qt.AltModifier:
             self.edit_mode = "draw_parameter"
-            self.add_param_pt(event.position())
+            self.add_param_pt(pos)
             return
             
+        # reversed で重なり順の上のノートから判定
         for n in reversed(self.notes_list):
-            if self.get_note_rect(n).contains(event.position().toPoint()):
+            if self.get_note_rect(n).contains(pos.toPoint()):
                 if not n.is_selected:
                     if not (event.modifiers() & Qt.ControlModifier):
                         self.deselect_all()
@@ -243,16 +248,21 @@ class TimelineWidget(QWidget):
         if not (event.modifiers() & Qt.ControlModifier):
             self.deselect_all()
         self.edit_mode = "select_box"
-        self.selection_rect = QRect(event.position().toPoint(), QSize(0,0))
+        # QPointF から QPoint に明示的に変換
+        self.selection_rect = QRect(pos.toPoint(), QSize(0,0))
         self.update()
 
     def mouseMoveEvent(self, event):
+        if event is None or self.drag_start_pos is None: return
+
+        pos = event.position()
+        
         if self.edit_mode == "draw_parameter":
-            self.add_param_pt(event.position())
+            self.add_param_pt(pos)
             self.update()
         elif self.edit_mode == "move":
-            dx = (event.position().x() - self.drag_start_pos.x()) / self.pixels_per_beat
-            dy = (event.position().y() - self.drag_start_pos.y()) / self.key_height_pixels
+            dx = (pos.x() - self.drag_start_pos.x()) / self.pixels_per_beat
+            dy = (pos.y() - self.drag_start_pos.y()) / self.key_height_pixels
             dt = self.beats_to_seconds(dx)
             dn = -int(round(dy))
             
@@ -261,10 +271,11 @@ class TimelineWidget(QWidget):
                     if n.is_selected:
                         n.start_time += dt
                         n.note_number = max(0, min(127, n.note_number + dn))
-                self.drag_start_pos = event.position()
+                self.drag_start_pos = pos # 現在位置を保存
                 self.update()
         elif self.edit_mode == "select_box":
-            self.selection_rect = QRect(self.drag_start_pos.toPoint(), event.position().toPoint()).normalized()
+            # normalized() を使って選択枠を正しく描画
+            self.selection_rect = QRect(self.drag_start_pos.toPoint(), pos.toPoint()).normalized()
             for n in self.notes_list:
                 n.is_selected = self.selection_rect.intersects(self.get_note_rect(n))
             self.update()
