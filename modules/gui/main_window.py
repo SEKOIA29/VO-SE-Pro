@@ -1037,14 +1037,26 @@ class MainWindow(QMainWindow):
     # --- マルチトラック操作 ---
 
     def add_track(self, t_type="vocal"):
-        """新規トラック追加"""
-        name = f"Track {len(self.tracks) + 1}"
+        """新規トラックの追加と履歴登録"""
+        count = len(self.tracks) + 1
+        name = f"Vocal {count}" if t_type == "vocal" else f"Audio {count}"
         new_track = VoseTrack(name, t_type)
-        
-        # 履歴に追加
-        def redo_fn(): self.tracks.append(new_track)
-        def undo_fn(): self.tracks.remove(new_track)
-        self.history.execute(EditCommand(redo_fn, undo_fn, f"Add {t_type} track"))
+
+        def redo_fn():
+            self.tracks.append(new_track)
+            self.refresh_track_list_ui()
+            self.track_list_widget.setCurrentRow(len(self.tracks) - 1)
+            if t_type == "wave":
+                self.load_audio_for_track(new_track)
+
+        def undo_fn():
+            if new_track in self.tracks:
+                self.tracks.remove(new_track)
+                self.refresh_track_list_ui()
+                self.track_list_widget.setCurrentRow(0)
+
+        # 履歴にコマンドを登録して実行
+        self.history.execute(EditCommand(redo_fn, undo_fn, f"Add {name}"))
 
     def switch_track(self, index):
         """表示トラックの切り替え"""
