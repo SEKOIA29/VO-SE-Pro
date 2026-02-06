@@ -858,14 +858,7 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         self.device_status_label.setText(f" [ {self.active_device} ] ")
         self.statusBar().showMessage(f"Engine Ready: {self.active_device}", 5000)
 
-    def setup_connections(self):
-        """信号とスロットの接続"""
-        pass
 
-    def scan_utau_voices(self):
-        """音源のスキャン"""
-        if hasattr(self.voice_manager, 'scan_utau_voices'):
-            self.voice_manager.scan_utau_voices()
             
     def log_startup(self, message):
         """標準出力へのログ記録（2026年開発者モード用）"""
