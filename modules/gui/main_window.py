@@ -15,6 +15,7 @@ import zipfile     # 音源ZIPのインストールに必要
 import shutil      # フォルダ削除やコピーに必要
 import platform
 import threading
+from copy import deepcopy
 import onnxruntime as ort
 from typing import List, Optional, Dict, Any
 
@@ -212,6 +213,81 @@ class CreditsDialog(QDialog):
         row.addWidget(badge)
         
         return frame
+
+# ==========================================================================
+# Undo/Redo コマンド管理
+# ==========================================================================
+
+class EditCommand:
+    """操作一つ分を記録するクラス"""
+    def __init__(self, redo_func, undo_func, description=""):
+        self.redo_func = redo_func
+        self.undo_func = undo_func
+        self.description = description
+
+    def redo(self):
+        self.redo_func()
+
+    def undo(self):
+        self.undo_func()
+
+class HistoryManager:
+    """Undo/Redoのスタックを管理する"""
+    def __init__(self, max_depth=50):
+        self.undo_stack = []
+        self.redo_stack = []
+        self.max_depth = max_depth
+
+    def execute(self, command):
+        command.redo()
+        self.undo_stack.append(command)
+        self.redo_stack.clear() # 新しい操作をしたらRedoは消去
+        if len(self.undo_stack) > self.max_depth:
+            self.undo_stack.pop(0)
+
+    def undo(self):
+        if not self.undo_stack: return
+        command = self.undo_stack.pop()
+        command.undo()
+        self.redo_stack.append(command)
+
+    def redo(self):
+        if not self.redo_stack: return
+        command = self.redo_stack.pop()
+        command.redo()
+        self.undo_stack.append(command)
+
+# ==========================================================================
+# マルチトラック・データ構造
+# ==========================================================================
+
+class Track:
+    """単一のトラック（ボーカルまたはオーディオ）"""
+    def __init__(self, name="Track 1", track_type="vocal"):
+        self.name = name
+        self.track_type = track_type  # "vocal" or "audio"
+        self.notes = []               # Vocal用
+        self.audio_file = ""          # Audio用(伴奏など)
+        self.volume = 1.0
+        self.pan = 0.0
+        self.is_muted = False
+        self.is_solo = False
+        self.parameters = {
+            "Pitch": [], "Gender": [], "Tension": [], "Breath": []
+        }
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "type": self.track_type,
+            "notes": [n.to_dict() for n in self.notes] if self.track_type == "vocal" else [],
+            "audio_file": self.audio_file,
+            "volume": self.volume,
+            "parameters": {
+                mode: [{"t": p.time, "v": p.value} for p in events]
+                for mode, events in self.parameters.items()
+            }
+        }
 
 
 
@@ -723,6 +799,14 @@ class MainWindow(QMainWindow):
        
         self.playback_thread = None # 今の演奏スレッドを保存する変数
 
+        # システム初期化
+        self.history = HistoryManager()
+        self.tracks = [VoseTrack("Vocal 1", "vocal")]
+        self.current_track_idx = 0
+        
+        # UIセットアップ（省略）
+        self.statusBar().showMessage("Ready.")
+
         self.vowel_groups = {
             'a': 'あかさたなはまやらわがざだばぱぁゃ',
             'i': 'いきしちにひみりぎじぢびぴぃ',
@@ -921,6 +1005,97 @@ class MainWindow(QMainWindow):
         for y in range(0, 1000, 40):
             if hasattr(self, 'canvas'):
                 pass
+    #=======================================================
+    # --- Undo / Redo スロット ---
+    #======================================================-
+    
+    @Slot()
+    def undo(self):
+        """Ctrl+Z で呼び出し"""
+        self.history.undo()
+        self.refresh_ui()
+        self.statusBar().showMessage("Undo executed")
+
+    @Slot()
+    def redo(self):
+        """Ctrl+Y で呼び出し"""
+        self.history.redo()
+        self.refresh_ui()
+        self.statusBar().showMessage("Redo executed")
+
+    def register_edit(self, old_state, new_state, description):
+        """状態変化を履歴に登録"""
+        def redo_fn(): self.apply_state(new_state)
+        def undo_fn(): self.apply_state(old_state)
+        self.history.execute(EditCommand(redo_fn, undo_fn, description))
+
+    def apply_state(self, state):
+        """状態（ノートリストなど）を反映"""
+        self.timeline_widget.notes_list = deepcopy(state)
+        self.timeline_widget.update()
+
+    # --- マルチトラック操作 ---
+
+    def add_track(self, t_type="vocal"):
+        """新規トラック追加"""
+        name = f"Track {len(self.tracks) + 1}"
+        new_track = VoseTrack(name, t_type)
+        
+        # 履歴に追加
+        def redo_fn(): self.tracks.append(new_track)
+        def undo_fn(): self.tracks.remove(new_track)
+        self.history.execute(EditCommand(redo_fn, undo_fn, f"Add {t_type} track"))
+
+    def switch_track(self, index):
+        """表示トラックの切り替え"""
+        if 0 <= index < len(self.tracks):
+            # 現在の状態を保存
+            self.tracks[self.current_track_idx].notes = deepcopy(self.timeline_widget.notes_list)
+            
+            # 切り替え
+            self.current_track_idx = index
+            target = self.tracks[index]
+            self.timeline_widget.set_notes(target.notes)
+            self.statusBar().showMessage(f"Selected: {target.name}")
+
+    def refresh_ui(self):
+        """Undo/Redo後に現在のトラック状態を画面に同期"""
+        current_notes = self.tracks[self.current_track_idx].notes
+        self.timeline_widget.set_notes(current_notes)
+        self.update()
+
+    # --- 保存（マルチトラック対応） ---
+
+    @Slot()
+    def save_project(self):
+        """プロジェクトを .vose 形式で保存"""
+        path, _ = QFileDialog.getSaveFileName(self, "保存", "", "VO-SE Project (*.vose)")
+        if not path: return
+
+        # データの同期
+        self.tracks[self.current_track_idx].notes = self.timeline_widget.notes_list
+
+        data = {
+            "app_id": "VO_SE_Pro_2026",
+            "tempo": self.timeline_widget.tempo,
+            "tracks": [
+                {
+                    "name": t.name,
+                    "type": t.track_type,
+                    "notes": [n.to_dict() for n in t.notes],
+                    "audio": t.audio_path,
+                    "mixer": {"vol": t.volume, "pan": t.pan}
+                } for t in self.tracks
+            ]
+        }
+        
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            self.statusBar().showMessage(f"Saved: {path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Save Failed: {e}")
+            
 
     # --- [2] 連続音（VCV）解決メソッド ---
     def resolve_vcv_alias(self, lyric, prev_lyric):
