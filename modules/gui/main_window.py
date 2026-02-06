@@ -2740,57 +2740,48 @@ class MainWindow(QMainWindow):
     # ==========================================================================
 
     def scan_utau_voices(self):
-        """voicesフォルダ内をスキャンし、UTAU形式の音源を抽出"""
+        """音源フォルダをスキャンし統合管理"""
         voice_root = os.path.join(os.getcwd(), "voices")
         if not os.path.exists(voice_root):
             os.makedirs(voice_root)
-            return {}
 
         found_voices = {}
-        
+        # 1. ユーザー追加音源のスキャン
         for dir_name in os.listdir(voice_root):
             dir_path = os.path.join(voice_root, dir_name)
-            
             if os.path.isdir(dir_path):
                 oto_path = os.path.join(dir_path, "oto.ini")
-                char_txt_path = os.path.join(dir_path, "character.txt")
-                
-                if os.path.exists(oto_path) or os.path.exists(char_txt_path):
+                if os.path.exists(oto_path):
                     char_name = dir_name
-                    if os.path.exists(char_txt_path):
-                        content = self.read_file_safely(char_txt_path)
+                    char_txt = os.path.join(dir_path, "character.txt")
+                    if os.path.exists(char_txt):
+                        content = self.read_file_safely(char_txt)
                         for line in content.splitlines():
                             if line.startswith("name="):
                                 char_name = line.split("=")[1].strip()
                                 break
                     
-                    icon_path = os.path.join(dir_path, "icon.png")
-                    if not os.path.exists(icon_path):
-                        icon_path = "resources/default_avatar.png"
-                        
                     found_voices[char_name] = {
                         "path": dir_path,
-                        "icon": icon_path,
+                        "icon": os.path.join(dir_path, "icon.png") if os.path.exists(os.path.join(dir_path, "icon.png")) else "resources/default_avatar.png",
                         "id": dir_name
                     }
         
-        self.voice_manager.voices = found_voices
-        
-        # 3. 【追加】公式音源フォルダ内をスキャンして全員登録
+        # 2. 公式音源のスキャン
         official_base = os.path.join(self.base_path, "assets", "official_voices")
         if os.path.exists(official_base):
-            # フォルダ（kanase, characters_b, etc...）をすべて取得
             for char_dir in os.listdir(official_base):
                 full_dir = os.path.join(official_base, char_dir)
                 if os.path.isdir(full_dir):
-                    # 「[Official] 奏瀬」のような表示名で登録
                     display_name = f"[Official] {char_dir}"
-                    # 内部パスとして "__INTERNAL__:{フォルダ名}" としておくと後で判別しやすい
-                    self.voices[display_name] = f"__INTERNAL__:{char_dir}"
+                    found_voices[display_name] = {
+                        "path": full_dir,
+                        "icon": "resources/official_icon.png",
+                        "id": f"__INTERNAL__:{char_dir}"
+                    }
         
-        return self.voices
+        self.voice_manager.voices = found_voices
         return found_voices
-
 
     def parse_oto_ini(self, voice_path: str) -> dict:
         """
