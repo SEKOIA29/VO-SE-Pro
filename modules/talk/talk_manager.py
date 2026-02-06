@@ -1,93 +1,56 @@
-import subprocess
 import os
 import sys
-
+import numpy as np
+import soundfile as sf
+import pyopenjtalk
+from PySide6.QtCore import QObject
 
 class IntonationAnalyzer:
     def __init__(self):
-        # パス設定（ビルド後と開発時両対応）
-        if getattr(sys, 'frozen', False):
-            # sys に _MEIPASS があればそれを、なければ現在のディレクトリを返す（エラー回避）
-            self.root = getattr(sys, '_MEIPASS', os.getcwd())
-        else:
-            self.root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            
-        self.exe = os.path.join(self.root, "bin", "open_jtalk", "open_jtalk.exe")
-        self.dic = os.path.join(self.root, "bin", "open_jtalk", "dic")
+        # ライブラリが内部で辞書を持つため、複雑なパス設定は不要です
+        pass
 
     def analyze(self, text):
-        """テキストを解析してアクセント句情報を返す"""
-        temp_input = "temp_in.txt"
-        temp_trace = "temp_trace.txt"
-        
-        with open(temp_input, "w", encoding="utf-8") as f:
-            f.write(text)
-            
-        # -ot (trace) で解析結果を出力し、-ow NUL で音声生成をスキップ
-        cmd = [self.exe, "-x", self.dic, "-ot", temp_trace, "-ow", "NUL", temp_input]
-        
+        """
+        テキストを解析してフルコンテキストラベル（イントネーション情報）を返す
+        ノート反映モードの核となるデータです
+        """
         try:
-            subprocess.run(cmd, check=True, shell=True, capture_output=True)
-            with open(temp_trace, "r", encoding="utf-8") as f:
-                trace_data = f.read()
-            return trace_data
+            # pyopenjtalkで解析
+            labels = pyopenjtalk.make_label(pyopenjtalk.run_frontend(text))
+            # タイムラインに反映しやすいよう、改行区切りのテキストとして返却
+            return "\n".join(labels)
         except Exception as e:
             return f"Error: {e}"
-        finally:
-            # 掃除（E701修正：改行して4スペース下げる）
-            for t in [temp_input, temp_trace]:
-                if os.path.exists(t):
-                    os.remove(t)
 
 
-class TalkManager:
+class TalkManager(QObject):
     def __init__(self):
-        # 実行パスの解決
-        if getattr(sys, 'frozen', False):
-            # こちらも getattr で安全に取得
-            meipass = getattr(sys, '_MEIPASS', os.getcwd())
-            self.base_bin = os.path.join(meipass, "bin", "open_jtalk") 
-        else:
-            self.base_bin = os.path.join(os.path.dirname(__file__), "../../bin/open_jtalk")
-
-        self.exe = os.path.join(self.base_bin, "open_jtalk.exe")
-        self.dic = os.path.join(self.base_bin, "dic")
-        
-        # デフォルトボイス
-        self.current_voice_path = os.path.join(self.base_bin, "voice", "mei_normal.htsvoice")
+        super().__init__()
+        # デフォルトのHTSボイス（必要に応じてパスを指定）
+        # pyopenjtalk.get_static_vocal_chitose() なども使えます
+        self.current_voice_path = None 
 
     def set_voice(self, htsvoice_path):
-        """外部からボイスモデルを切り替える"""
+        """外部からボイスモデル(.htsvoice)を切り替える"""
         if os.path.exists(htsvoice_path):
             self.current_voice_path = htsvoice_path
             return True
         return False
 
     def synthesize(self, text, output_path):
-        """選択中のボイスモデルでWAVを生成（F811修正：重複した定義を1つに統合）"""
-        if not os.path.exists(self.exe):
-            return False, "Open JTalk本体が見つかりません。"
-
-        # コマンドの組み立て
-        command = [
-            self.exe,
-            "-x", self.dic,
-            "-m", self.current_voice_path,
-            "-ow", output_path
-        ]
-
+        """pyopenjtalkを使用して高品質なWAVを生成"""
         try:
-            # テキストを標準入力経由で渡して実行
-            process = subprocess.Popen(
-                command, 
-                stdin=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-            process.communicate(input=text.encode('utf-8'))
+            # 音声合成 (x: 波形データ, sr: サンプリングレート)
+            # font引数にボイスパスを渡すことで声の種類を変更可能
+            x, sr = pyopenjtalk.tts(text, font=self.current_voice_path)
+            
+            # 16bit PCMとして書き出し
+            sf.write(output_path, x.astype(np.int16), sr)
             
             if os.path.exists(output_path):
                 return True, output_path
-            return False, "音声生成に失敗しました。"
+            return False, "ファイルの書き出しに失敗しました。"
             
         except Exception as e:
             return False, str(e)
