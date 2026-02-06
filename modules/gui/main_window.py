@@ -803,7 +803,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("VO-SE Pro")
         self.resize(1200, 800)
 
-def setup_vose_shortcuts(self):
+    def setup_vose_shortcuts(self):
         """ショートカットキーの設定 (PySide6方式)"""
         from PySide6.QtGui import QShortcut, QKeySequence
         
