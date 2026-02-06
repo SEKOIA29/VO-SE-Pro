@@ -1820,7 +1820,7 @@ def setup_vose_shortcuts(self):
         self.statusBar().showMessage(f"Talkモード: '{text}' を展開しました")
         self.text_input.clear()
 
-    @Slot(QPushButton)
+    @Slot
     def on_param_mode_changed(self, button):
         """パラメーター切り替えボタンが押された時の処理"""
         mode = button.text()
