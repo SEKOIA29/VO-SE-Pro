@@ -118,19 +118,94 @@ class TimelineWidget(QWidget):
         self.update()        
 
     # --- 描画ロジック ---
+def get_audio_peaks(self, file_path, num_peaks=2000):
+        """WAVファイルから描画用のピークデータ（音の形）を抽出する（NumPy高速版）"""
+        if not file_path or not os.path.exists(file_path):
+            return []
+            
+        try:
+            with wave.open(file_path, 'rb') as w:
+                params = w.getparams()
+                n_frames = params.nframes
+                if n_frames == 0: return []
+                
+                # データを読み込んでnumpy配列化
+                frames = w.readframes(n_frames)
+                samples = np.frombuffer(frames, dtype=np.int16)
+                
+                # ステレオならモノラル化（左チャンネルのみ抽出）
+                if params.nchannels == 2:
+                    samples = samples[::2]
+                
+                # 描画解像度に合わせて分割
+                if len(samples) < num_peaks:
+                    num_peaks = len(samples)
+                
+                # 配列を分割して各区間の最大絶対値をとる
+                chunks = np.array_split(samples, num_peaks)
+                peaks = [np.max(np.abs(chunk)) if len(chunk) > 0 else 0 for chunk in chunks]
+                
+                # 0.0 ~ 1.0 に正規化
+                max_val = np.max(peaks) if peaks else 1
+                return [p / max_val for p in peaks]
+        except Exception as e:
+            print(f"Waveform Analysis Error: {e}")
+            return []
+
+    def _draw_audio_waveform(self, p, track_list, current_idx):
+        """現在のトラックがAudioトラックの場合に波形を描画する"""
+        if current_idx >= len(track_list):
+            return
+            
+        track = track_list[current_idx]
+        if track.track_type != "wave" or not track.audio_path:
+            return
+
+        # 解析データのキャッシュ（Trackオブジェクト側に持たせる）
+        if not hasattr(track, 'vose_peaks'):
+            track.vose_peaks = self.get_audio_peaks(track.audio_path)
+            
+        if not track.vose_peaks:
+            return
+
+        # 描画設定
+        wave_color = QColor(0, 255, 255, 100) # VO-SE Pro シアン（半透明）
+        p.setPen(QPen(wave_color, 1))
+        
+        mid_y = self.height() / 2
+        max_h = self.height() * 0.6
+        
+        # タイムライン上の位置計算（スクロール対応）
+        # ※本来はWAVの長さをビート換算して描画範囲を決める
+        width = len(track.vose_peaks) * 2 # 1ピクセルあたり2データ分などで調整
+        
+        for i, peak in enumerate(track.vose_peaks):
+            # スクロールオフセットを考慮したX座標
+            x = (i * 2) - self.scroll_x_offset
+            if x < 0: continue
+            if x > self.width(): break
+            
+            h = peak * max_h
+            p.drawLine(int(x), int(mid_y - h/2), int(x), int(mid_y + h/2))
+
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.fillRect(self.rect(), QColor(18, 18, 18))
         
-        # 背景グリッド
+        # --- 1. 背景グリッド ---
         for i in range(200):
             x = i * self.pixels_per_beat - self.scroll_x_offset
             pen_color = QColor(58, 58, 60) if i % 4 == 0 else QColor(36, 36, 36)
             p.setPen(QPen(pen_color, 1))
             p.drawLine(int(x), 0, int(x), self.height())
 
-        # モニタリング発光
+        # --- 2. 【追加】オーディオ波形描画 ---
+        # MainWindowから渡されるtracksを参照する想定
+        if hasattr(self.parent(), 'tracks'):
+            self._draw_audio_waveform(p, self.parent().tracks, self.parent().current_track_idx)
+
+        # --- 3. モニタリング発光（既存） ---
         if self.audio_level > 0.001:
             cx = int(self.seconds_to_beats(self._current_playback_time) * self.pixels_per_beat - self.scroll_x_offset)
             glow_w = int(self.audio_level * 100)
@@ -140,7 +215,7 @@ class TimelineWidget(QWidget):
             grad.setColorAt(1, QColor(255, 45, 85, 0))
             p.fillRect(self.rect(), QBrush(grad))
 
-        # パラメータ表示
+        # --- 4. パラメータ表示（既存） ---
         colors = {
             "Dynamics": QColor(255, 45, 85), 
             "Pitch": QColor(0, 255, 255), 
@@ -152,7 +227,7 @@ class TimelineWidget(QWidget):
                 self._draw_curve(p, data, colors[name], 40, 1)
         self._draw_curve(p, self.parameters[self.current_param_layer], colors[self.current_param_layer], 220, 2)
 
-        # ノート描画
+        # --- 5. ノート描画（既存） ---
         for n in self.notes_list:
             r = self.get_note_rect(n)
             color = QColor(255, 159, 10) if n.is_selected else QColor(10, 132, 255)
@@ -166,22 +241,20 @@ class TimelineWidget(QWidget):
                 p.setFont(QFont("Helvetica", 9, QFont.Weight.Bold))
                 p.drawText(r.adjusted(5, 0, 0, 0), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, n.lyrics)
                 
-                # 音素の表示
                 p.setPen(QColor(200, 200, 200, 150))
                 p.setFont(QFont("Consolas", 7))
                 phoneme_text = self.analyze_lyric_to_phoneme(n.lyrics)
                 p.drawText(r.adjusted(2, 22, 0, 0), Qt.AlignmentFlag.AlignLeft, phoneme_text)
 
-        # 選択枠
+        # --- 6. 選択枠 & カーソル（既存） ---
         if self.edit_mode == "select_box":
             p.setPen(QPen(Qt.GlobalColor.white, 1, Qt.PenStyle.DashLine))
             p.setBrush(QBrush(QColor(255, 255, 255, 30)))
             p.drawRect(self.selection_rect)
 
-        # カーソル
         cx = int(self.seconds_to_beats(self._current_playback_time) * self.pixels_per_beat - self.scroll_x_offset)
         p.setPen(QPen(QColor(255, 45, 85), 2))
-        p.drawLine(cx, 0, cx, self.height())
+        p.drawLine(cx, 0, cx, self.height()
 
     def _draw_curve(self, p, data, color, alpha, width):
         if not data:
