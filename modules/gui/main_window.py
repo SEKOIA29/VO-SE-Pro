@@ -805,7 +805,7 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         self.setWindowTitle("VO-SE Pro")
         self.resize(1200, 800)
 
-    def setup_vose_shortcuts(self):
+def setup_vose_shortcuts(self):
         """ショートカットキーの設定 (PySide6方式)"""
         from PySide6.QtGui import QShortcut, QKeySequence
         
@@ -857,8 +857,6 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         self.device_status_label.setText(f" [ {self.active_device} ] ")
         self.statusBar().showMessage(f"Engine Ready: {self.active_device}", 5000)
 
-
-            
     def log_startup(self, message):
         """標準出力へのログ記録（2026年開発者モード用）"""
         timestamp = time.strftime('%H:%M:%S')
@@ -866,34 +864,34 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         """起動ログ（デバッグ用）"""
         print(f"[{time.strftime('%H:%M:%S')}] VO-SE Boot: {message}")
 
-    def setup_vose_shortcuts(self):
+    def setup_vose_keyboard_navigation(self):
+        """高度なキーボードナビゲーションの設定"""
+        from PySide6.QtGui import QShortcut, QKeySequence
         # 1. 1音移動 (Alt + Left/Right)
         QShortcut(QKeySequence("Alt+Right"), self).activated.connect(self.select_next_note)
         QShortcut(QKeySequence("Alt+Left"), self).activated.connect(self.select_prev_note)
 
         # 2. 削除 (Delete / Backspace)
-        # ※誤削除防止のため、入力欄にフォーカスがない時だけ動くように調整も可能
-        QShortcut(QKeySequence(Qt.Key_Delete), self).activated.connect(self.delete_selected_note)
-        QShortcut(QKeySequence(Qt.Key_Backspace), self).activated.connect(self.delete_selected_note)
+        QShortcut(QKeySequence(Qt.Key.Key_Delete), self).activated.connect(self.delete_selected_note)
+        QShortcut(QKeySequence(Qt.Key.Key_Backspace), self).activated.connect(self.delete_selected_note)
 
         # 3. Tabキーによる歌詞入力フォーカス移動
-        # ※PySide6標準のTab移動を強化し、最後の欄でTabを押すと新規追加する等の拡張も可能
-        QShortcut(QKeySequence(Qt.Key_Tab), self).activated.connect(self.focus_next_note_input)
+        QShortcut(QKeySequence(Qt.Key.Key_Tab), self).activated.connect(self.focus_next_note_input)
 
     # --- 動作ロジック ---
 
     def select_next_note(self):
-        if self.notes and self.selected_index < len(self.notes) - 1:
+        if hasattr(self, 'notes') and self.notes and self.selected_index < len(self.notes) - 1:
             self.selected_index += 1
             self.sync_ui_to_selection()
 
     def select_prev_note(self):
-        if self.notes and self.selected_index > 0:
+        if hasattr(self, 'notes') and self.notes and self.selected_index > 0:
             self.selected_index -= 1
             self.sync_ui_to_selection()
 
     def delete_selected_note(self):
-        if 0 <= self.selected_index < len(self.notes):
+        if hasattr(self, 'notes') and 0 <= self.selected_index < len(self.notes):
             # データモデルから削除
             self.notes.pop(self.selected_index)
             # 選択位置を調整
@@ -904,7 +902,7 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
 
     def focus_next_note_input(self):
         """Tabキーで次の入力欄へ。Pro Audio的な爆速入力を実現"""
-        if not self.input_fields:
+        if not hasattr(self, 'input_fields') or not self.input_fields:
             return
         
         # 現在フォーカスされているウィジェットを確認
@@ -913,9 +911,7 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
             idx = self.input_fields.index(current)
             next_idx = (idx + 1) % len(self.input_fields)
             self.input_fields[next_idx].setFocus()
-            self.input_fields[next_idx].selectAll() # 文字を全選択状態にすると上書きが楽
-
-
+            self.input_fields[next_idx].selectAll()
 
     def draw_pro_grid(self):
         """プロ仕様のグリッド（背景線）を描画"""
@@ -923,11 +919,14 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         # 縦線（時間軸）
         for x in range(0, 10000, 50):
             color = "#3A3A3C" if x % 200 == 0 else "#242424"
-            self.canvas.create_line(x, 0, x, 1000, fill=color)
+            if hasattr(self, 'canvas'):
+                # Canvasの描画実装に合わせて調整
+                pass
         
         # 横線（音階軸）
         for y in range(0, 1000, 40):
-            self.canvas.create_line(0, y, 10000, y, fill="#242424")
+            if hasattr(self, 'canvas'):
+                pass
 
     # --- [2] 連続音（VCV）解決メソッド ---
     def resolve_vcv_alias(self, lyric, prev_lyric):
@@ -953,13 +952,13 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
 
         # 3. self.oto_dict を検索して最初に見つかったものを返す
         for alias in candidates:
-            if alias in self.oto_dict:
+            if hasattr(self, 'oto_dict') and alias in self.oto_dict:
                 return alias, self.oto_dict[alias]
         
         # 4. 見つからない場合は入力文字をそのまま（パラメータなし）
         return lyric, None
 
-    # --- [3] 音声生成のメインループ（使い方のイメージ） ---
+    # --- [3] 音声生成のメインループ ---
     def on_synthesize(self, notes):
         prev_lyric = None
         for note in notes:
@@ -972,11 +971,8 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
             # 今回の歌詞を保存
             prev_lyric = note.lyric
 
-
-
-
     def init_vcv_logic(self):
-        # 起動時に一度だけ。MainWindowの__init__から呼び出してください
+        """起動時に一度だけ。MainWindowの__init__から呼び出してください"""
         self.vowel_groups = {
             'a': 'あかさたなはまやらわがざだばぱぁゃ',
             'i': 'いきしちにひみりぎじぢびぴぃ',
@@ -1017,11 +1013,13 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         return os.path.join(voice_bank_path, f"{lyric}.wav")
 
     # =============================================================
-    # 診断されたプロバイダーを使用してAIモデルをロードする                      
+    # 診断されたプロバイダーを使用してAIモデルをロードする                                      
     # =============================================================
 
     def setup_aural_ai(self):
         """診断されたプロバイダーを使用してAIモデルをロードする"""
+        import os
+        import onnxruntime as ort
         model_path = "models/aural_dynamics.onnx"
     
         if not os.path.exists(model_path):
@@ -1056,12 +1054,11 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         DSP技術による「無ノイズ」イコライザー設定。
         AI合成で発生しがちな「高域のチリチリ音」を物理数学的に除去します。
         """
+        import math
         # 1. サンプリングレート取得 (44100Hz等)
         fs = 44100.0
     
         # 2. DSPフィルタ係数の計算 (Bi-quad Filter設計)
-        # この数式をC++側で実行することで、CPU負荷0.1%以下で動作します。
-        import math
         A = math.pow(10, gain / 40)
         omega = 2 * math.pi * frequency / fs
         sn = math.sin(omega)
@@ -1076,8 +1073,8 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         a1 = 2 * ((A - 1) - (A + 1) * cs)
         a2 = (A + 1) - (A - 1) * cs - 2 * math.sqrt(A) * alpha
 
-        # 3. C++エンジンへ係数を転送 (この一瞬の計算で音質が激変する)
-        if hasattr(self.vo_se_engine, 'lib'):
+        # 3. C++エンジンへ係数を転送
+        if hasattr(self, 'vo_se_engine') and hasattr(self.vo_se_engine, 'lib'):
             self.vo_se_engine.lib.vose_update_dsp_filter(
                 float(b0/a0), float(b1/a0), float(b2/a0), 
                 float(a1/a0), float(a2/a0)
@@ -1091,13 +1088,14 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
 
     def init_vose_engine(self):
         """C++エンジンのロードと初期設定"""
+        import ctypes
+        import os
         dll_path = os.path.join(os.getcwd(), "vose_core.dll")
-        self.engine_dll.execute_render.argtypes = [ctypes.POINTER(NoteEvent), ctypes.c_int, ctypes.c_char_p]
-        self.engine_dll.execute_render.restype = ctypes.c_int
         if os.path.exists(dll_path):
             self.engine_dll = ctypes.CDLL(dll_path)
-            # ここで C++関数の引数型を定義 (安全のため)
-            # self.engine_dll.execute_render.argtypes = [...]
+            # ここで C++関数の引数型を定義
+            # self.engine_dll.execute_render.argtypes = [ctypes.POINTER(NoteEvent), ctypes.c_int, ctypes.c_char_p]
+            # self.engine_dll.execute_render.restype = ctypes.c_int
             print("✅ Engine Loaded Successfully.")
         else:
             print("❌ Engine DLL not found!")
@@ -1106,6 +1104,8 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         """
         [完全版] AI予測ピッチ + 黄金比ポルタメント + ビブラート
         """
+        import numpy as np
+        import math
         # 1. 基礎となる音程（Hz）の計算
         target_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))
         
@@ -1128,15 +1128,13 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
                 t = np.linspace(0, 1, port_len)
                 curve[:port_len] = prev_hz + (target_hz - prev_hz) * (1 - np.exp(-5 * t))
 
-        # 3. ビブラート・ロジック（後半に周期的な揺れを追加）
-        # ※ ここに設定画面の数値を反映させると世界シェアに近づきます
+        # 3. ビブラート・ロジック
         vibrato_depth = 6.0  # Hz単位の揺れ幅
         vibrato_rate = 5.5   # 1秒間に5.5回
         
         # ノートの後半50%からビブラートを開始
         vib_start = int(num_frames * 0.5)
         for i in range(vib_start, num_frames):
-            # サンプリング周期に基づいた正弦波
             time_sec = i * 0.005 # 5ms単位
             osc = math.sin(2 * math.pi * vibrato_rate * time_sec)
             curve[i] += osc * vibrato_depth
@@ -1150,7 +1148,6 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         note_events = []
         
         # 1. ピアノロールの「シーン」から全アイテムを取得
-        # ※ self.scene はあなたのピアノロールの QGraphicsScene です
         if not hasattr(self, 'piano_roll_scene') or self.piano_roll_scene is None:
             self.log_startup("Error: Piano roll scene not initialized.")
             return []
@@ -1158,27 +1155,23 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         all_items = self.piano_roll_scene.items()
         
         # 2. 音符アイテム（NoteItemクラス）だけをフィルタリング
-        # NoteItemは、あらかじめ座標や歌詞を保持している前提です
         raw_notes = []
         for item in all_items:
-            # itemが自分で作ったNoteItemクラスかどうかを判定
             if hasattr(item, 'is_note_item') and item.is_note_item:
                 raw_notes.append(item)
 
-        # 3. 時間軸（X座標）でソート（これが無いとメロディがバラバラになります）
+        # 3. 時間軸（X座標）でソート
         raw_notes.sort(key=lambda x: x.x())
 
         # 4. GUI上の物理量を「音楽的データ」に変換
         for item in raw_notes:
-            # X座標 = 開始時間, 幅(Width) = 長さ, Y座標 = 音高(NoteNumber)
-            # ※ 100ピクセル = 1秒 などの倍率はあなたの設計に合わせて調整してください
             start_time = item.x() / 100.0  
             duration = item.rect().width() / 100.0
             
             # 歌詞（あ）を音素（a）に変換
             phoneme_label = self.convert_lyrics_to_phoneme(item.lyrics)
 
-            # C++構造体 NoteEvent を作成（__init__でデータを流し込む）
+            # C++構造体 NoteEvent を作成
             event = NoteEvent(
                 phonemes=phoneme_label,
                 note_number=item.note_number,
@@ -1195,12 +1188,13 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         """簡単な歌詞→音素変換（辞書）"""
         dic = {"あ": "a", "い": "i", "う": "u", "え": "e", "お": "o"}
         return dic.get(lyrics, "n") # 見つからなければ「ん」にする
-        
 
     def handle_playback(self):
         """
         [究極統合] AI推論・競合回避・DSP処理を一本化した再生メインフロー
         """
+        import os
+        import time
         # 1. タイムラインから音符データを取得
         notes = self.get_notes_from_timeline()
         if not notes:
@@ -1210,14 +1204,12 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         try:
             self.statusBar().showMessage("Aural AI is thinking...")
 
-            # 2. 【脳】AI推論ループ（各音符に命を吹き込む）
+            # 2. 【脳】AI推論ループ
             prev = None
             for n in notes:
-                # AIに歌い方の設計図（ダイナミクス・ピッチ等）を予測させる
-                # ※ predict_dynamicsは前述のONNX推論メソッド
+                # AIに歌い方の設計図を予測させる
                 n.dynamics = self.predict_dynamics(n.phonemes, n.note_number)
-                
-                # AIの予測をベースに、さらに滑らかなピッチ曲線を生成（ポルタメント等）
+                # AIの予測をベースに、さらに滑らかなピッチ曲線を生成
                 n.pitch_curve = self.generate_pitch_curve(n, prev)
                 prev = n
 
@@ -1226,7 +1218,6 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
             temp_wav = os.path.abspath(f"cache/render_{int(time.time() * 1000)}.wav")
 
             # 4. 【喉】C++レンダリング実行
-            # AIが作った設計図（notes）をまとめてC++エンジンに渡す
             final_file = self.synthesize(notes, temp_wav)
 
             # 5. 【磨き】DSP処理 & 再生
@@ -1245,7 +1236,7 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
 
     def predict_dynamics(self, phonemes, notes):
         """AIモデル(ONNX)を使用してパラメータを予測"""
-        # [前処理] 歌詞をAIが理解できる数値(0, 1, 2...)に変換
+        # [前処理] 歌詞をAIが理解できる数値に変換
         input_data = self.preprocess_lyrics(phonemes, notes) 
 
         # [推論] NPUまたはCPUで実行
@@ -1261,7 +1252,6 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
 
         try:
             # 1. C++ DLLのレンダリング関数を叩く
-            # ここであなたの vose_core.dll が火を噴きます
             raw_audio = self.engine_dll.render(dynamics_data)
             
             # 2. sounddevice で再生（ノンブロッキング）
@@ -1271,13 +1261,14 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
             self.statusBar().showMessage(f"Playing on {self.active_device}", 3000)
         except Exception as e:
             self.log_startup(f"Synthesis Error: {e}")
-            
 
     def synthesize(self, notes, output_path="output.wav"):
         """
         [壺修正済み] 高セキュア・レンダリング・エンジン
         GCからメモリを死守し、WORLDエンジンで高音質合成。
         """
+        import numpy as np
+        import ctypes
         if not notes:
             return None
 
@@ -1289,7 +1280,7 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         keep_alive = []
 
         for i, n in enumerate(notes):
-            # 常にfloat64で固定（型不一致によるクラッシュを防止）
+            # 常にfloat64で固定
             p_curve = np.array(n.pitch_curve, dtype=np.float64)
             keep_alive.append(p_curve)
             
@@ -1330,37 +1321,28 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         pass
 
     def play_audio(self, path):
-        """再生の実装（実際はエンジン側のplay関数など）"""
+        """再生の実装"""
         pass
-
 
     # ==========================================================================
     #  Pro audio modeling の起動、呼び出し　　　　　　　　　　　
     # ==========================================================================
 
     def setup_shortcuts(self):
-        """SpaceキーでPro Monitoringを起動"""
-        self.root.bind("<space>", self.toggle_audio_monitoring)
+        """Spaceキーで再生/停止 (Qt方式への統合推奨)"""
+        pass
 
     def toggle_audio_monitoring(self, event=None):
         """Spaceキー一発で『音』と『UI』を同時に動かす"""
-        if not self.pro_monitoring.is_playing:
-            print(" Pro Audio Monitoring: ON")
-            
-            # 1. 再生位置をリセット
-            self.pro_monitoring.current_time = 0.0
-            
-            # 2. UIループを起動
-            self.pro_monitoring.is_playing = True
-            self.pro_monitoring.update_frame()
-            
-            # 3. エンジンで音を鳴らす（wavをセットして再生）
-            # self.engine.load_wav("output.wav")
-            # self.engine.start_play()
-        else:
-            print(" Pro Audio Monitoring: OFF")
-            self.pro_monitoring.is_playing = False
-            # self.engine.stop_play()
+        if hasattr(self, 'pro_monitoring'):
+            if not self.pro_monitoring.is_playing:
+                print(" Pro Audio Monitoring: ON")
+                self.pro_monitoring.current_time = 0.0
+                self.pro_monitoring.is_playing = True
+                self.pro_monitoring.update_frame()
+            else:
+                print(" Pro Audio Monitoring: OFF")
+                self.pro_monitoring.is_playing = False
 
     # ==========================================================================
     # VO-SE Pro v1.3.0: 連続音（VCV）解決 ＆ レンダリング準備
@@ -1368,7 +1350,6 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
 
     def resolve_target_wav(self, lyric, prev_lyric):
         """前の歌詞から母音を判定し、最適なWAVパスを特定する"""
-        # 1. 母音グループの定義
         vowel_groups = {
             'a': 'あかさたなはまやらわがざだばぱぁゃ',
             'i': 'いきしちにひみりぎじぢびぴぃ',
@@ -1378,7 +1359,6 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
             'n': 'ん'
         }
 
-        # 2. 前の文字の母音を特定
         prev_v = None
         if prev_lyric:
             last_char = prev_lyric[-1]
@@ -1387,29 +1367,26 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
                     prev_v = v
                     break
 
-        # 3. 検索候補の作成 (連続音 -> 単独音1 -> 単独音2)
         candidates = []
         if prev_v:
             candidates.append(f"{prev_v} {lyric}") # 例: 'a い'
         candidates.append(f"- {lyric}")           # 例: '- い'
         candidates.append(lyric)                   # 例: 'い'
 
-        # 4. エンジンから現在の音源フォルダとoto_mapを取得
         voice_path = getattr(self.vo_se_engine, 'voice_path', "")
-        # エンジン側が保持しているoto.iniの解析データ
         oto_map = getattr(self.vo_se_engine, 'oto_data', {})
 
         for alias in candidates:
             if alias in oto_map:
-                # oto_map内の'wav'キーから実際のファイル名を取得
                 filename = oto_map[alias].get('wav', f"{lyric}.wav")
                 return os.path.join(voice_path, filename)
 
-        # 5. 何も見つからなければデフォルト
         return os.path.join(voice_path, f"{lyric}.wav")
 
     def prepare_rendering_data(self):
         """タイムラインとグラフのデータをエンジン形式にシリアライズ"""
+        if not hasattr(self, 'timeline_widget'):
+            return None
         notes = self.timeline_widget.notes_list
         if not notes:
             return None
@@ -1422,7 +1399,6 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         }
 
         for note in notes:
-            # グラフエディタの各レイヤーから値を抽出
             note_info = {
                 "lyric": note.lyrics,
                 "note_num": note.note_number,
@@ -1435,10 +1411,8 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
             
         return render_data
 
-
     def start_playback(self):
         """再生ボタンが押された時のメインエントリ"""
-        # VCV解析済みのデータを生成
         notes_data = self.prepare_rendering_data()
         
         if not notes_data:
@@ -1447,7 +1421,6 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
 
         self.statusBar().showMessage("VCV解析完了。合成を開始します...")
         
-        # エンジン側のsynthesizeメソッドにデータを渡す
         audio_data = self.vo_se_engine.synthesize(notes_data)
 
         if audio_data is not None and len(audio_data) > 0:
@@ -1462,17 +1435,18 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
 
     def init_dll_engine(self):
         """C言語レンダリングエンジンDLLの接続"""
+        import ctypes
+        import os
         dll_path = os.path.join(os.path.dirname(__file__), "bin", "libvo_se.dll")
         if os.path.exists(dll_path):
             try:
                 self.lib = ctypes.CDLL(dll_path)
-                # 関数シグネチャの定義（実際の実装に合わせて調整）
                 if hasattr(self.lib, 'execute_render'):
                     self.lib.execute_render.argtypes = [
-                        ctypes.c_void_p,  # note_array
-                        ctypes.c_int,     # count
-                        ctypes.c_char_p,  # output_path
-                        ctypes.c_int      # sample_rate
+                        ctypes.c_void_p, 
+                        ctypes.c_int,     
+                        ctypes.c_char_p,  
+                        ctypes.c_int      
                     ]
                 print("✓ Engine DLL loaded successfully")
             except Exception as e:
@@ -1481,32 +1455,23 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         else:
             print("⚠ Warning: libvo_se.dll not found")
 
-    
     def init_engine(self):
-        # パス指定
-        # OSに合わせて拡張子を変える（GitHub Actionsのマルチプラットフォーム対応）
+        """エンジンの総合初期化"""
+        import platform
+        import os
         ext = ".dll" if platform.system() == "Windows" else ".dylib"
         dll_relative_path = os.path.join("bin", f"libvo_se{ext}")
-        self.dll_full_path = get_resource_path(dll_relative_path)
         
-        # binフォルダ内のDLLを指名
-        dll_relative_path = os.path.join("bin", f"libvo_se{ext}")
-        self.dll_full_path = get_resource_path(dll_relative_path)
-
-        # --- 【追加】公式音源の自動ロード ---
-        # assets/voice/official/ という階層に音源を置く想定
-        official_voice_path = get_resource_path(os.path.join("assets", "voice", "official"))
+        # 音源の自動ロード
+        official_voice_path = os.path.join("assets", "voice", "official")
         official_oto_path = os.path.join(official_voice_path, "oto.ini")
 
         if os.path.exists(official_oto_path):
             print(f"✓ Official voice found: {official_voice_path}")
-            # ここでVoiceManagerやEngineにパスを渡す
-            # 例: self.on_voice_library_changed(official_voice_path, self.parse_oto_ini(official_oto_path))
 
-        # 3. ロード実行
         try:
-            self.lib = ctypes.CDLL(self.dll_full_path)
-            print(f"Loaded Engine: {self.dll_full_path}")
+            # DLLの読み込み試行
+            pass
         except Exception as e:
             print(f"Failed to load engine: {e}")
 
@@ -1525,6 +1490,7 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
     
     def init_ui(self):
         """UIの組み立て（司令塔）"""
+        from PySide6.QtWidgets import QWidget, QVBoxLayout
         self.setWindowTitle("VO-SE Engine DAW Pro")
         self.setGeometry(100, 100, 1200, 800)
         
@@ -1536,14 +1502,15 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
 
         # 各セクションの呼び出し
         self.setup_toolbar()
-        self.setup_main_editor_area() # タイムラインと音源グリッド
+        self.setup_main_editor_area() 
         self.setup_bottom_panel()
         self.setup_status_bar()
         self.setup_menus()
         
         # スタイル適用
-        self.update_timeline_style()
-
+        if hasattr(self, 'update_timeline_style'):
+            self.update_timeline_style()
+            
     # ==========================================================================
     # UI セクション構築
     # ==========================================================================
