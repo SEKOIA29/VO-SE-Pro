@@ -1602,7 +1602,8 @@ def setup_vose_shortcuts(self):
 
     def on_talk_execute(self):
         text = self.text_input.text()
-        if not text: return
+        if not text:
+            return
         new_events = self.analyzer.analyze_to_pro_events(text)
         self.timeline_widget.set_notes(new_events)
         self.timeline_widget.update()
@@ -1625,11 +1626,8 @@ def setup_vose_shortcuts(self):
         else:
             print("(-_-) Pro Audio Monitoring: STOP")
             self.pro_monitoring.is_playing = False
-            if hasattr(self, 'engine'): self.engine.stop()
-
-    # ==========================================================================
-    # PERFORMANCE CONTROL CENTER (Core i3 Survival Logic)
-    # ==========================================================================
+            if hasattr(self, 'engine'):
+                self.engine.stop()
 
     def setup_performance_toggle(self):
         from PySide6.QtGui import QAction
@@ -1646,26 +1644,23 @@ def setup_vose_shortcuts(self):
             if hasattr(self.vo_se_engine, 'lib'):
                 if hasattr(self.vo_se_engine.lib, 'vose_set_performance_mode'):
                     self.vo_se_engine.lib.vose_set_performance_mode(mode)
-                if mode == 0 and hasattr(self.vo_se_engine.lib, 'vose_set_buffer_size'):
-                    self.vo_se_engine.lib.vose_set_buffer_size(4096)
-                elif mode == 1 and hasattr(self.vo_se_engine.lib, 'vose_set_buffer_size'):
-                    self.vo_se_engine.lib.vose_set_buffer_size(1024)
+                
+                if hasattr(self.vo_se_engine.lib, 'vose_set_buffer_size'):
+                    buffer_size = 1024 if mode == 1 else 4096
+                    self.vo_se_engine.lib.vose_set_buffer_size(buffer_size)
         except Exception as e:
             print(f"Engine Performance Control Warning: {e}")
 
         status = "【High-Mode】レンダリング優先" if mode == 1 else "【Power-Save】Core i3最適化モード"
         self.statusBar().showMessage(f"System: {status} に切り替えました")
 
-    # ==========================================================================
-    # ドラッグ&ドロップ・ZIP解凍（文字化け対策済み）
-    # ==========================================================================
-
     def generate_and_save_oto(self, target_voice_dir):
         import os
         analyzer = AutoOtoEngine(sample_rate=44100)
         oto_lines = []
         files = [f for f in os.listdir(target_voice_dir) if f.lower().endswith('.wav')]
-        if not files: return
+        if not files:
+            return
 
         for filename in files:
             file_path = os.path.join(target_voice_dir, filename)
@@ -1697,8 +1692,10 @@ def setup_vose_shortcuts(self):
                         filename = info.filename.encode('cp437').decode('cp932')
                     except:
                         filename = info.filename
+                    
                     if "__MACOSX" in filename or ".DS_Store" in filename: 
                         continue
+                    
                     valid_files.append((info, filename))
                     if "oto.ini" in filename.lower():
                         found_oto = True
@@ -1719,6 +1716,7 @@ def setup_vose_shortcuts(self):
                     if info.is_dir():
                         os.makedirs(target_path, exist_ok=True)
                         continue
+                    
                     os.makedirs(os.path.dirname(target_path), exist_ok=True)
                     with z.open(info) as source, open(target_path, "wb") as target:
                         shutil.copyfileobj(source, target)
