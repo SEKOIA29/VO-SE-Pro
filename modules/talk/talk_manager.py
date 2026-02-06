@@ -7,7 +7,8 @@ class IntonationAnalyzer:
     def __init__(self):
         # パス設定（ビルド後と開発時両対応）
         if getattr(sys, 'frozen', False):
-            self.root = sys._MEIPASS
+            # sys に _MEIPASS があればそれを、なければ現在のディレクトリを返す（エラー回避）
+            self.root = getattr(sys, '_MEIPASS', os.getcwd())
         else:
             self.root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             
