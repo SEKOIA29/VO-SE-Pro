@@ -2775,6 +2775,7 @@ class MainWindow(QMainWindow):
 
     def load_json_project(self, filepath: str):
         # ここから下の既存の load_json_project 関数へ繋がるように
+        pass
 
     def load_oto_ini_special(self, path):
         try:
