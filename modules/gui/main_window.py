@@ -805,7 +805,6 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         self.setWindowTitle("VO-SE Pro")
         self.resize(1200, 800)
 
-
     def setup_vose_shortcuts(self):
         """ショートカットキーの設定 (PySide6方式)"""
         from PySide6.QtGui import QShortcut, QKeySequence
@@ -1853,7 +1852,6 @@ def __init__(self, parent=None, engine=None, ai=None, config=None):
         self.timeline_widget.update()
         self.statusBar().showMessage(f"Talkモード: '{text}' を展開しました")
         self.text_input.clear()
-
 
     @Slot(QPushButton)
     def on_param_mode_changed(self, button):
