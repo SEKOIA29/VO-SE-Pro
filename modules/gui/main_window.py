@@ -1070,6 +1070,14 @@ class MainWindow(QMainWindow):
         # 2. インデックス更新
         self.current_track_idx = index
         target_tr = self.tracks[index]
+
+        # タイムラインにノートをセット
+        self.timeline_widget.set_notes(target.notes)
+        
+        # 重要：トラックが切り替わったので、背景の波形も書き換えるためにupdateを呼ぶ
+        self.timeline_widget.update()
+        
+        self.statusBar().showMessage(f"Editing: {target.name}")
         
         # 3. タイムラインへデータをロード
         self.timeline_widget.set_notes(target_tr.notes)
@@ -1090,6 +1098,7 @@ class MainWindow(QMainWindow):
         self.vol_slider.blockSignals(False)
 
         self.statusBar().showMessage(f"Editing: {target_tr.name}")
+
 
     def refresh_track_list_ui(self):
         """UI上のリスト表示を最新状態に同期"""
