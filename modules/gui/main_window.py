@@ -1934,6 +1934,12 @@ class MainWindow(QMainWindow):
         # 初期リスト更新
         self.refresh_track_list_ui()
 
+        self.timeline_widget = TimelineWidget(parent=self) 
+
+        self.editor_splitter.addWidget(self.track_panel)
+        self.editor_splitter.addWidget(self.timeline_widget)
+        self.main_layout.addWidget(self.editor_splitter)
+
     def setup_bottom_panel(self):
         """下部：歌詞入力などのツール"""
         bottom_box = QHBoxLayout()
