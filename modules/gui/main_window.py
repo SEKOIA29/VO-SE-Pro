@@ -1099,6 +1099,23 @@ class MainWindow(QMainWindow):
 
         self.statusBar().showMessage(f"Editing: {target_tr.name}")
 
+    def load_audio_for_track(self, track):
+        """Audioトラックにファイルを読み込み、波形解析をキックする"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "伴奏を選択", "", "Audio Files (*.wav *.mp3)"
+        )
+        if file_path:
+            track.audio_path = file_path
+            track.name = os.path.basename(file_path)
+            
+            # 重要：読み込み時に一度解析させてキャッシュを作る
+            # TimelineWidgetのメソッドを呼び出してピークを取得
+            track.vose_peaks = self.timeline_widget.get_audio_peaks(file_path)
+            
+            self.refresh_track_list_ui()
+            self.timeline_widget.update() # 再描画を指示
+            self.statusBar().showMessage(f"Loaded: {track.name}")
+
 
     def refresh_track_list_ui(self):
         """UI上のリスト表示を最新状態に同期"""
