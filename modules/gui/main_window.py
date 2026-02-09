@@ -1288,16 +1288,27 @@ class MainWindow(QMainWindow):
         return mixer_layout
 
     def on_volume_changed(self, value):
-        """スライダーを動かした時の処理"""
+        """
+        スライダーを動かした時の処理
+        内部データ保持、ラベル更新、および再生エンジンへの即時反映を行います。
+        """
+        # 1. 現在操作対象のトラックを取得
         target = self.tracks[self.current_track_idx]
         
-        # 内部データは 0.0 ~ 1.0 の浮動小数点で保持
+        # 2. 内部データは 0.0 ~ 1.0 の浮動小数点で保持
         target.volume = value / 100.0
+        
+        # 3. UIラベルの更新
         self.vol_label.setText(f"Volume: {value}%")
         
-        # 履歴に登録（細かすぎるので、スライダーを離した時だけに絞るのがプロ流ですが、まずは簡易実装）
+        # 4. 【重要】もし再生中のトラックがオーディオトラックなら、出力を即座に変更
+        # これにより、再生を止めずに音量バランスを調整できます
+        if hasattr(self, 'audio_output'):
+            if target.track_type == "wave":
+                self.audio_output.setVolume(target.volume)
+        
+        # 5. ステータスバーへの表示（履歴登録の代わり）
         self.statusBar().showMessage(f"{target.name} Volume set to {value}%")
-
             
 
     # --- [2] 連続音（VCV）解決メソッド ---
