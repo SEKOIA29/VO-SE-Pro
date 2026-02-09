@@ -1,56 +1,65 @@
 #GUI/text_analyzer.py
 
 import pyopenjtalk
+import os
+from typing import List, Optional
 from .data_models import NoteEvent
 
 class TextAnalyzer:
-    def __init__(self, dict_path: str = None):
+    def __init__(self, dict_path: Optional[str] = None):
         """
         dict_path: Open JTalkの辞書ディレクトリへのパス。
-        Mac M3の場合、brew install等で入れたパスやプロジェクト内のパスを指定。
         """
-        self.dict_path = dict_path
-        # 辞書の初期化（実行環境に合わせて調整が必要）
-        # pyopenjtalk.set_dic_path(self.dict_path) # 必要に応じて
+        # None対策：パスが指定されていない場合は空文字にするか、デフォルトを考慮
+        self.dict_path: str = dict_path if dict_path is not None else ""
+        
+        # 辞書のパスが実在する場合のみセットする（製品としての安全設計）
+        if self.dict_path and os.path.exists(self.dict_path):
+            pyopenjtalk.set_dic_path(self.dict_path)
 
-    def analyze_text(self, text: str) -> list[NoteEvent]:
+    def analyze_text(self, text: Optional[str]) -> List[NoteEvent]:
         """
-        入力テキストを音素に分解し、抑揚情報（pitch_start/end）を含むNoteEventのリストを返す。
+        入力テキストを音素に分解し、NoteEventのリストを返す。
         """
+        # --- Pyright対策: Noneチェック ---
+        if text is None or not text.strip():
+            return []
+
         # 1. 音素とアクセント情報の取得
-        # run_frontendは 'k o N n i ch i w a' のような形式で返す場合があるため分解
-        phonemes_list = pyopenjtalk.run_frontend(text)
+        # pyopenjtalk.run_frontend は List[str] を返す想定
+        raw_phonemes = pyopenjtalk.run_frontend(text)
         
-        # ※ pyopenjtalkの戻り値がアクセントラベルを含むリストの場合、
-        # その情報を pitch_end の計算に反映させることができます。
+        # 戻り値がNoneの場合に備えた安全策
+        phonemes_list: List[str] = raw_phonemes if raw_phonemes is not None else []
         
-        events = []
-        current_time = 0.0
-        base_pitch = 60.0 # C4 (MIDI Note Number)
+        events: List[NoteEvent] = []
+        current_time: float = 0.0
+        base_pitch: float = 60.0  # C4
 
         for p in phonemes_list:
+            # 型の安全性を確保
+            if not isinstance(p, str):
+                continue
+
             # 2. 音素に応じた標準的な長さを設定
-            if p == "pau" or p == "sil":
-                duration = 0.25  # ポーズ（無音）
-                p_label = " "     # GUI上は空白
+            if p in ["pau", "sil"]:
+                duration = 0.25
+                p_label = " "
             elif p in "aeiou": 
-                duration = 0.15  # 母音
+                duration = 0.15
                 p_label = p
             else:
-                duration = 0.08  # 子音
+                duration = 0.08
                 p_label = p
 
-            # 3. 簡易的な日本語イントネーションのシミュレーション
-            # pitch_end に値を入れることで NoteEvent の「Talkモード」をトリガー
-            # ここでは簡易的に、文末以外の母音を少し下げ、子音はフラットに設定
+            # 3. イントネーションのシミュレーション
             is_vowel = p in "aeiou"
             
+            p_start = base_pitch
             if is_vowel:
-                # 母音の場合はわずかにピッチを動かして「喋り」の生っぽさを出す
-                p_start = base_pitch
+                # 母音は少しピッチを下げて人間味を出す
                 p_end = base_pitch - 1.0 
             else:
-                p_start = base_pitch
                 p_end = base_pitch
 
             # 4. NoteEventの生成
@@ -60,7 +69,7 @@ class TextAnalyzer:
                 duration=duration,
                 lyric=p_label,
                 phonemes=[p],
-                pitch_end=p_end,      # これによりTalkモードとして認識される
+                pitch_end=p_end,
                 has_analysis=True
             )
             
