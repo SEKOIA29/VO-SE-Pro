@@ -2276,7 +2276,7 @@ class MainWindow(QMainWindow):
         
         self.main_layout.addWidget(splitter)
 
-        self.timeline_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.timeline_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def setup_voice_grid(self):
         """音源選択グリッドの構築"""
