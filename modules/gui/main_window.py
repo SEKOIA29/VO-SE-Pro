@@ -2937,9 +2937,9 @@ class MainWindow(QMainWindow):
         # 海外ユーザーの手間を減らすための親切設計
         reply = QMessageBox.question(self, "Acoustic Config Save", 
             "解析結果を oto.ini に反映し、音源ライブラリを最適化しますか？\n(既存ファイルは自動でバックアップされます)",
-            QMessageBox.Yes | QMessageBox.No)
+            QMessageBox.StandardButton.Yes | QMessageBox.No)
             
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             self.export_analysis_to_oto_ini()
 
     def export_analysis_to_oto_ini(self):
