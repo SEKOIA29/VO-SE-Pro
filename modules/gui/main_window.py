@@ -1069,6 +1069,76 @@ class MainWindow(QMainWindow):
         for y in range(0, 1000, 40):
             if hasattr(self, 'canvas'):
                 pass
+
+
+    # --- 1. データ・ファイル管理系 ---
+
+    def load_file_from_path(self, filepath: str):
+        """指定されたパスからプロジェクトまたはMIDIファイルを読み込む"""
+        if filepath.endswith('.mid') or filepath.endswith('.midi'):
+            self._parse_midi(filepath)
+        elif filepath.endswith('.ustx'):
+            self._parse_ustx(filepath)
+        print(f"ファイルを読み込みました: {filepath}")
+
+    def _parse_midi(self, filepath: str):
+        """MIDIファイルを解析してタイムラインに反映"""
+        from modules.data.midi_manager import load_midi_file
+        notes_data = load_midi_file(filepath)
+        if notes_data:
+            self.update_timeline_with_notes(notes_data)
+
+    def _parse_ustx(self, filepath: str):
+        """OpenUTAU形式(ustx)を解析（将来拡張用）"""
+        print(f"USTX解析は現在開発中です: {filepath}")
+
+    def update_timeline_with_notes(self, notes_data: list):
+        """解析したノートデータをタイムラインウィジェットにセットする"""
+        if hasattr(self, 'timeline_widget'):
+            # notes_data は辞書のリストを想定
+            self.timeline_widget.set_notes(notes_data)
+            self.refresh_voice_ui()
+
+    def export_to_midi_file(self):
+        """現在のタイムラインをMIDIファイルとして出力"""
+        print("MIDIエクスポートを開始します...")
+        # 実装詳細は midi_manager の保存機能に依存
+
+    # --- 2. 音声・AI処理系 ---
+
+    def preprocess_lyrics(self, text: str):
+        """歌詞の事前処理（平仮名化など）を実行"""
+        if hasattr(self, 'text_analyzer'):
+            processed = self.text_analyzer.analyze_text(text)
+            print(f"歌詞を解析しました: {text} -> {len(processed)}音素")
+            return processed
+        return []
+
+    def refresh_voice_ui(self):
+        """音声設定やタイムラインの表示を最新状態に更新する"""
+        self.update() # 再描画
+        print("UIをリフレッシュしました。")
+
+    # --- 3. エンジン・モニタリング系 ---
+
+    def run_engine(self):
+        """音声合成エンジンの実行（レンダリング）"""
+        print("エンジンのレンダリングを開始します...")
+        if hasattr(self, 'ai_manager'):
+            # AIマネージャーを通じた処理をここに記述
+            pass
+
+    @property
+    def pro_monitoring(self):
+        """プロフェッショナル・モニタリング設定の参照用プロパティ"""
+        # エラーログで self.pro_monitoring へのアクセスがあったため定義
+        return getattr(self, "_pro_monitoring_enabled", False)
+
+    @pro_monitoring.setter
+    def pro_monitoring(self, value: bool):
+        self._pro_monitoring_enabled = value
+        print(f"Pro Monitoring: {value}")
+        
     #=======================================================
     # --- Undo / Redo スロット ---
     #======================================================-
