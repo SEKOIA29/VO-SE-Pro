@@ -7,7 +7,7 @@ import os
 import sys         # app起動や引数処理に必要
 import time
 import wave  
-#import platform    # 重複を削除し、1つにまとめました (F811対策)
+import platform    # 重複を削除し、1つにまとめました (F811対策)
 from scipy.io.wavfile import write as wav_write  
 import json
 import ctypes      # DLL(エンジン)の読み込みに必要
