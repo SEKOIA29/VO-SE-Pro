@@ -201,30 +201,10 @@ class TimelineWidget(QWidget):
             p.drawLine(int(x), int(mid_y - h/2), int(x), int(mid_y + h/2))
 
     def paintEvent(self, event):
-        """描画順序を「背景 -> 波形 -> グリッド -> ノート」に変更"""
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        # 1. 背景塗りつぶし
         p.fillRect(self.rect(), QColor(18, 18, 18))
-        
-        # 2. 【ここが重要】波形を最背面に描く
-        self._draw_audio_waveform(p)
-        
-        # 3. 背景グリッド（半透明にして波形を透かす）
-        for i in range(200):
-            x = i * self.pixels_per_beat - self.scroll_x_offset
-            pen_color = QColor(58, 58, 60, 100) if i % 4 == 0 else QColor(36, 36, 36, 100)
-            p.setPen(QPen(pen_color, 1))
-            p.drawLine(int(x), 0, int(x), self.height())
-            
-        # --- 以降、モニタリング発光、パラメータ、ノートの描画（既存のまま） ---
 
-    def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.fillRect(self.rect(), QColor(18, 18, 18))
-        
         # --- 1. 背景グリッド ---
         for i in range(200):
             x = i * self.pixels_per_beat - self.scroll_x_offset
@@ -232,12 +212,13 @@ class TimelineWidget(QWidget):
             p.setPen(QPen(pen_color, 1))
             p.drawLine(int(x), 0, int(x), self.height())
 
-        # --- 2. 【追加】オーディオ波形描画 ---
-        # MainWindowから渡されるtracksを参照する想定
-        if hasattr(self.parent(), 'tracks'):
-            self._draw_audio_waveform(p, self.parent().tracks, self.parent().current_track_idx)
+        # --- 2. オーディオ波形描画（最背面） ---
+        # parent()が対象の属性を持っているか安全に確認
+        parent_obj = self.parent()
+        if hasattr(parent_obj, 'tracks') and hasattr(parent_obj, 'current_track_idx'):
+            self._draw_audio_waveform(p, parent_obj.tracks, parent_obj.current_track_idx)
 
-        # --- 3. モニタリング発光（既存） ---
+        # --- 3. モニタリング発光 ---
         if self.audio_level > 0.001:
             cx = int(self.seconds_to_beats(self._current_playback_time) * self.pixels_per_beat - self.scroll_x_offset)
             glow_w = int(self.audio_level * 100)
@@ -247,7 +228,7 @@ class TimelineWidget(QWidget):
             grad.setColorAt(1, QColor(255, 45, 85, 0))
             p.fillRect(self.rect(), QBrush(grad))
 
-        # --- 4. パラメータ表示（既存） ---
+        # --- 4. パラメータ表示 ---
         colors = {
             "Dynamics": QColor(255, 45, 85), 
             "Pitch": QColor(0, 255, 255), 
@@ -257,9 +238,12 @@ class TimelineWidget(QWidget):
         for name, data in self.parameters.items():
             if name != self.current_param_layer:
                 self._draw_curve(p, data, colors[name], 40, 1)
-        self._draw_curve(p, self.parameters[self.current_param_layer], colors[self.current_param_layer], 220, 2)
+        
+        # 現在選択中のレイヤーを強調描画
+        current_layer_data = self.parameters.get(self.current_param_layer, [])
+        self._draw_curve(p, current_layer_data, colors[self.current_param_layer], 220, 2)
 
-        # --- 5. ノート描画（既存） ---
+        # --- 5. ノート描画 ---
         for n in self.notes_list:
             r = self.get_note_rect(n)
             color = QColor(255, 159, 10) if n.is_selected else QColor(10, 132, 255)
@@ -273,20 +257,22 @@ class TimelineWidget(QWidget):
                 p.setFont(QFont("Helvetica", 9, QFont.Weight.Bold))
                 p.drawText(r.adjusted(5, 0, 0, 0), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, n.lyrics)
                 
+                # 音素情報の表示
                 p.setPen(QColor(200, 200, 200, 150))
                 p.setFont(QFont("Consolas", 7))
                 phoneme_text = self.analyze_lyric_to_phoneme(n.lyrics)
                 p.drawText(r.adjusted(2, 22, 0, 0), Qt.AlignmentFlag.AlignLeft, phoneme_text)
 
-        # --- 6. 選択枠 & カーソル（既存） ---
+        # --- 6. 選択枠 & 再生カーソル ---
         if self.edit_mode == "select_box":
             p.setPen(QPen(Qt.GlobalColor.white, 1, Qt.PenStyle.DashLine))
             p.setBrush(QBrush(QColor(255, 255, 255, 30)))
             p.drawRect(self.selection_rect)
 
-        cx = int(self.seconds_to_beats(self._current_playback_time) * self.pixels_per_beat - self.scroll_x_offset)
+        # 再生カーソル（Actionで指摘された閉じカッコを修正済み）
+        cx_play = int(self.seconds_to_beats(self._current_playback_time) * self.pixels_per_beat - self.scroll_x_offset)
         p.setPen(QPen(QColor(255, 45, 85), 2))
-        p.drawLine(cx, 0, cx, self.height()
+        p.drawLine(cx_play, 0, cx_play, self.height())
 
     def _draw_curve(self, p, data, color, alpha, width):
         if not data:
