@@ -22,7 +22,7 @@ class AIManager(QObject):
     def _get_model_path(self):
         """PyInstaller環境でも動作するパス解決"""
         if getattr(sys, 'frozen', False):
-            base = sys._MEIPASS
+            base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
         else:
             base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         return os.path.join(base, "assets", "models", "onset_detector.onnx")
