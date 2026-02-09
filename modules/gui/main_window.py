@@ -17,7 +17,7 @@ import shutil      # フォルダ削除やコピーに必要
 import threading
 from copy import deepcopy
 import onnxruntime as ort
-from typing import List, Dict, Any # Optionalが未使用なら除外 (F401対策)
+from typing import Dict, Any # Optionalが未使用なら除外 (F401対策)
 
 # ==========================================================================
 # 2. 数値計算・信号処理 (Numerical Processing)
