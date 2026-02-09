@@ -20,12 +20,16 @@ class AIManager(QObject):
         self.model_path = self._get_model_path()
 
     def _get_model_path(self):
-        """PyInstaller環境でも動作するパス解決"""
+        """PyInstaller環境でも動作するパス解決（修正版）"""
         if getattr(sys, 'frozen', False):
-            base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+            # PyInstallerで固められた時用のパス
+            base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
         else:
+            # 開発環境用のパス
             base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        return os.path.join(base, "assets", "models", "onset_detector.onnx")
+        
+        # モデルファイルへのフルパスを組み立てて返す
+        return os.path.join(base, "models", "aural_dynamics.onnx")
 
     def init_model(self):
         """ハードウェアを自動検知してモデルを初期化"""
