@@ -916,6 +916,7 @@ class MainWindow(QMainWindow):
 
         # --- 2. エンジン・マネージャー類の初期化 ---
         # 重複を避け、一つの変数名(vo_se_engine)に統一
+    try:
         except ImportError:
             class MockEngine: 
                 def __init__(self):
