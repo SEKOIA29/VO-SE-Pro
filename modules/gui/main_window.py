@@ -1255,6 +1255,37 @@ class MainWindow(QMainWindow):
         
         self.track_list_widget.blockSignals(False)
 
+
+    def init_audio_playback(self):
+        """オーディオ再生機能の初期設定（MainWindowの__init__から呼び出し）"""
+        from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+        
+        # 伴奏（Wave）再生用の心臓部
+        self.audio_player = QMediaPlayer()
+        self.audio_output = QAudioOutput()
+        self.audio_player.setAudioOutput(self.audio_output)
+        
+        # 再生位置が動いた時にタイムラインのカーソルを同期させる
+        self.audio_player.positionChanged.connect(self.sync_ui_to_audio)
+        
+        # 再生が終わった時の処理
+        self.audio_player.playbackStateChanged.connect(self.on_playback_state_changed)
+
+    def sync_ui_to_audio(self, ms):
+        """オーディオの再生位置（ms）をUIの秒数に反映"""
+        if self.audio_player.playbackState() == QMediaPlayer.PlayingState:
+            current_sec = ms / 1000.0
+            # タイムラインのカーソル位置を更新
+            self.timeline_widget._current_playback_time = current_sec
+            self.timeline_widget.update()
+
+    def on_playback_state_changed(self, state):
+        """再生が終わった、または止まった時のUI更新"""
+        from PySide6.QtMultimedia import QMediaPlayer
+        if state == QMediaPlayer.StoppedState:
+            self.pro_monitoring.is_playing = False
+            self.statusBar().showMessage("Playback Stopped.")
+
     #オーディオミキサー
 
     def setup_mixer_controls(self):
