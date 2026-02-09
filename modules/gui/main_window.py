@@ -946,7 +946,7 @@ class MainWindow(QMainWindow):
                 def play_realtime_note(self, *args, **kwargs): pass
                 def stop_realtime_note(self, *args, **kwargs): pass
 
-            self.vo_se_engine = MockEngine())
+            self.vo_se_engine = MockEngine()
 
         self.dynamics_ai = ai if ai else DynamicsAIEngine()
         self.voice_manager = VoiceManager(self.dynamics_ai)
