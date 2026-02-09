@@ -35,14 +35,16 @@ from PySide6.QtWidgets import (
     QPushButton, QFileDialog, QScrollBar, QInputDialog, QLineEdit,
     QLabel, QSplitter, QComboBox, QProgressBar, QMessageBox, QToolBar,
     QGridLayout, QFrame, QDialog, QScrollArea, QSizePolicy, QButtonGroup,
-    QListWidget
+    QListWidget, QListWidgetItem  # ← 【追加】トラックリストの項目作成に必須です
 )
 from PySide6.QtGui import (
-    QAction, QKeySequence, QKeyEvent, QFont, QShortcut
+    QAction, QKeySequence, QKeyEvent, QFont, QShortcut,
+    QPainter, QPen, QColor, QBrush, QLinearGradient # ← 【確認】Timelineの描画に必要です
 )
 from PySide6.QtCore import (
     Slot, Qt, QTimer, Signal, QThread
 )
+from PySide6.QtMultimedia import QMediaPlayer # ← 【追加】再生状態の同期に必須です
 
 # ==========================================================================
 # 4. 自作モジュール (Custom VO-SE Modules)
