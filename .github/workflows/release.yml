@@ -36,6 +36,7 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           pip install PySide6 numpy sounddevice soundfile mido janome Pillow pyinstaller ruff pyright
           pip install pyopenjtalk --only-binary :all: || pip install pyopenjtalk
+          pip install numpy scipy PySide6 onnxruntime mido chardet
 
       # 2. その後に Ruff でチェック
       - name: Lint with Ruff
