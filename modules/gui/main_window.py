@@ -1397,7 +1397,7 @@ class MainWindow(QMainWindow):
 
     def sync_ui_to_audio(self, ms):
         """オーディオの再生位置（ms）をUIの秒数に反映"""
-        if self.audio_player.playbackState() == QMediaPlayer.PlayingState:
+        if self.audio_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             current_sec = ms / 1000.0
             # タイムラインのカーソル位置を更新
             self.timeline_widget._current_playback_time = current_sec
