@@ -2231,27 +2231,49 @@ class MainWindow(QMainWindow):
         self.graph_editor_widget.set_mode(mode)
         self.statusBar().showMessage(f"編集モード: {mode}")
 
-
     def toggle_playback(self, event=None):
-        """Spaceキーが押された時の動作"""
+        """Spaceキーまたは再生ボタンが押された時の動作（最終統合版）"""
+        from PySide6.QtMultimedia import QMediaPlayer
+
         if not self.pro_monitoring.is_playing:
-            # --- 再生開始 ---
-            print("ʕ•̫͡• Pro Audio Monitoring: START")
-            # 1. 念のため最新の状態をレンダリング（部分レンダリング）
-            # self.engine.export_to_wav(self.notes, self.params, "preview.wav")
+            # --- 【再生開始】 ---
+            print("ʕ•̫͡• VO-SE Engine: PLAY START")
+            self.statusBar().showMessage("Playing...")
             
-            # 2. UIを再生モードにする
-            self.pro_monitoring.current_time = 0.0 # 0秒から開始
+            # 1. 現在選択されているトラックの準備
+            current_tr = self.tracks[self.current_track_idx]
+            
+            # 2. 伴奏トラックならWAVをセットして再生
+            if current_tr.track_type == "wave" and current_tr.audio_path:
+                self.audio_player.setSource(current_tr.audio_path)
+                # ミキサーの音量を反映
+                self.audio_output.setVolume(current_tr.volume)
+                self.audio_player.play()
+            
+            # 3. UIの再生フラグとモニタリングをON
+            # 開始位置は現在のカーソル位置から（0秒固定ではなく、今の位置から再生）
+            start_time = self.timeline_widget._current_playback_time
+            if current_tr.track_type == "wave":
+                self.audio_player.setPosition(int(start_time * 1000))
+                
             self.pro_monitoring.is_playing = True
-            self.pro_monitoring.update_frame() # ループ開始
             
-            # 3. 音を鳴らす
-            # self.engine.play("preview.wav")
+            # 4. 歌声合成エンジンへの再生指示（実装に合わせてコメントアウト解除）
+            # self.vose_engine.start_playback(start_time, self.tracks)
+
         else:
-            # --- 再生停止 ---
-            print("(-_-) Pro Audio Monitoring: STOP")
+            # --- 【再生停止】 ---
+            print("(-_-) VO-SE Engine: PLAY STOP")
+            self.statusBar().showMessage("Paused.")
+            
+            # 1. 全ての音を止める
+            self.audio_player.pause()
+            # self.vose_engine.stop()
+            
+            # 2. UIのフラグをOFF
             self.pro_monitoring.is_playing = False
-            self.engine.stop()
+
+        self.update() # UI全体の再描画
 
     # ==========================================================================
     # PERFORMANCE CONTROL CENTER (Core i3 Survival Logic)
