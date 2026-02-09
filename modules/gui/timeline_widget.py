@@ -5,6 +5,7 @@ import os
 import ctypes
 import wave
 import numpy as np
+from typing import List, Optional, Dict, Any
 from PySide6.QtWidgets import QWidget, QApplication, QInputDialog, QLineEdit
 from PySide6.QtCore import Qt, QRect, Signal, Slot, QPoint, QSize
 from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QFont, QLinearGradient
