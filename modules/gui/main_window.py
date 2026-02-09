@@ -1123,22 +1123,6 @@ class MainWindow(QMainWindow):
             self.timeline_widget.update() # 再描画を指示
             self.statusBar().showMessage(f"Loaded: {track.name}")
 
-
-    def refresh_track_list_ui(self):
-        """UI上のリスト表示を最新状態に同期"""
-        self.track_list_widget.blockSignals(True)
-        self.track_list_widget.clear()
-        for i, t in enumerate(self.tracks):
-            item_text = f"[{'V' if t.track_type == 'vocal' else 'A'}] {t.name}"
-            item = QListWidgetItem(item_text)
-            if t.track_type == "wave":
-                item.setForeground(Qt.cyan) # オーディオトラックは色を変えて識別
-            self.track_list_widget.addItem(item)
-        
-        self.track_list_widget.setCurrentRow(self.current_track_idx)
-        self.track_list_widget.blockSignals(False)
-
-
     def refresh_ui(self):
         """Undo/Redo後に現在のトラック状態を画面に同期"""
         current_notes = self.tracks[self.current_track_idx].notes
@@ -1236,26 +1220,32 @@ class MainWindow(QMainWindow):
         self.track_list_widget.blockSignals(True)
         self.track_list_widget.clear()
         
+        # ソロ状態のトラックが1つでも存在するかチェック
         solo_exists = any(t.is_solo for t in self.tracks)
         
         for i, t in enumerate(self.tracks):
             status = ""
-            if t.is_muted: status += "[M]"
-            if t.is_solo: status += "[S]"
+            # 修正：if文の後は改行する（Actionエラー E701 回避）
+            if t.is_muted:
+                status += "[M]"
+            if t.is_solo:
+                status += "[S]"
             
             item_text = f"{status} [{'V' if t.track_type == 'vocal' else 'A'}] {t.name}"
             item = QListWidgetItem(item_text)
             
-            # ミュート中やソロ以外のトラックをグレーアウトさせて視認性を上げる
+            # ミュート中や、ソロモード時にソロではないトラックをグレーアウト（視認性向上）
             if t.is_muted or (solo_exists and not t.is_solo):
-                item.setForeground(Qt.gray)
+                item.setForeground(Qt.GlobalColor.gray)
             elif t.track_type == "wave":
-                item.setForeground(Qt.cyan)
+                item.setForeground(Qt.GlobalColor.cyan)
                 
             self.track_list_widget.addItem(item)
         
+        # 現在の選択行を維持
         self.track_list_widget.setCurrentRow(self.current_track_idx)
-        # 現在のトラックに合わせてM/Sボタンの状態も更新
+        
+        # 現在のトラックに合わせてM/SボタンのUI状態も同期
         current_t = self.tracks[self.current_track_idx]
         self.btn_mute.setChecked(current_t.is_muted)
         self.btn_solo.setChecked(current_t.is_solo)
