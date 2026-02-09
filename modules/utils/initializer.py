@@ -7,16 +7,23 @@ class AppInitializer:
         """必要なファイルが揃っているかチェックし、足りなければエラーを返す"""
         # 実行環境(exe化後か)に応じたベースパスの取得
         if getattr(sys, 'frozen', False):
-            base_path = sys._MEIPASS
+            # reportAttributeAccessIssue を回避するため getattr で安全に取得
+            # sys._MEIPASS は PyInstaller が実行時に注入する特殊パス
+            base_path = getattr(sys, '_MEIPASS', os.path.abspath("."))
         else:
             base_path = os.path.dirname(os.path.abspath(__file__))
+            # modules/utils/ からプロジェクトルート (../../) へ移動
             base_path = os.path.join(base_path, "../../")
 
         # チェック対象リスト
+        # 各プラットフォームに合わせたバイナリ名を判定
+        dll_ext = "libvo_se.dll" if sys.platform == "win32" else "libvo_se.dylib"
+        jtalk_bin = "open_jtalk.exe" if sys.platform == "win32" else "open_jtalk"
+
         required_files = [
-            os.path.join(base_path, "bin", "libvo_se.dll" if sys.platform == "win32" else "libvo_se.dylib"),
+            os.path.join(base_path, "bin", dll_ext),
             os.path.join(base_path, "models", "onset_detector.onnx"),
-            os.path.join(base_path, "bin", "open_jtalk", "open_jtalk.exe" if sys.platform == "win32" else "open_jtalk")
+            os.path.join(base_path, "bin", "open_jtalk", jtalk_bin)
         ]
 
         missing = []
