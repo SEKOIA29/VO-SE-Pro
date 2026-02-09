@@ -1421,7 +1421,7 @@ class MainWindow(QMainWindow):
         
         # 音量ラベル
         self.vol_label = QLabel("Volume: 100%")
-        self.vol_label.setAlignment(Qt.AlignCenter)
+        self.vol_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # 音量スライダー (0-100で管理)
         self.vol_slider = QSlider(Qt.Orientation.Horizontal)
