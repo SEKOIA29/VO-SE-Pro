@@ -1,5 +1,3 @@
-VO-SE Pro (Voice Synthesis Engine Professional)
-"既存の枠組みを、1人のコードで塗り替える。"
 
 VO-SE Pro は、Python による高度な日本語言語解析と、C言語による高速な信号処理を組み合わせた、次世代ハイブリッド型音声合成プラットフォームです。
 
