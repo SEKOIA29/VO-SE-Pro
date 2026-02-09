@@ -1072,6 +1072,7 @@ class MainWindow(QMainWindow):
         # 1. 現在の編集状態を今のトラックに退避
         current_tr = self.tracks[self.current_track_idx]
         current_tr.notes = deepcopy(self.timeline_widget.notes_list)
+        target = self.tracks[index] # targetを定義 (F821対策)
 
         # 2. インデックス更新
         self.current_track_idx = index
