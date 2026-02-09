@@ -1046,10 +1046,9 @@ class MainWindow(QMainWindow):
         # 代表のコードをここに配属
         # 縦線（時間軸）
         for x in range(0, 10000, 50):
-            color = "#3A3A3C" if x % 200 == 0 else "#242424"
+            grid_color = "#3A3A3C" if x % 200 == 0 else "#242424"
             if hasattr(self, 'canvas'):
-                # Canvasの描画実装に合わせて調整
-                pass
+                self.canvas.draw_line(x, grid_color)
         
         # 横線（音階軸）
         for y in range(0, 1000, 40):
@@ -1179,7 +1178,8 @@ class MainWindow(QMainWindow):
     def save_project(self):
         """プロジェクトを .vose 形式で保存"""
         path, _ = QFileDialog.getSaveFileName(self, "保存", "", "VO-SE Project (*.vose)")
-        if not path: return
+        if not path: 
+            return
 
         # データの同期
         self.tracks[self.current_track_idx].notes = self.timeline_widget.notes_list
@@ -1474,7 +1474,6 @@ class MainWindow(QMainWindow):
     def setup_aural_ai(self):
         """診断されたプロバイダーを使用してAIモデルをロードする"""
         import os
-        import onnxruntime as ort
         model_path = "models/aural_dynamics.onnx"
     
         if not os.path.exists(model_path):
