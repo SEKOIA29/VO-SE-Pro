@@ -5,7 +5,6 @@ import os
 import ctypes
 import wave
 import numpy as np
-from typing import List, Optional, Dict, Any
 from PySide6.QtWidgets import QWidget, QApplication, QInputDialog, QLineEdit
 from PySide6.QtCore import Qt, QRect, Signal, Slot, QPoint, QSize
 from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QFont, QLinearGradient
@@ -158,11 +157,16 @@ class TimelineWidget(QWidget):
         """タイムラインの背景としてオーディオ波形を描画する（同期修正版）"""
         # 親ウィンドウから現在のトラック情報を取得
         parent_obj = self.parent()
-        if not hasattr(parent_obj, 'tracks'):
+        if parent_obj is None or not hasattr(parent_obj, 'tracks'):
             return
             
-        target_idx = parent_obj.current_track_idx
-        track = parent_obj.tracks[target_idx]
+        target_idx = getattr(parent_obj, 'current_track_idx', 0)
+        tracks = getattr(parent_obj, 'tracks', [])
+        
+        if target_idx >= len(tracks):
+            return
+            
+        track = tracks[target_idx]
         
         # Audioトラックでない、またはファイルがない場合は何もしない
         if track.track_type != "wave" or not track.audio_path:
@@ -180,7 +184,6 @@ class TimelineWidget(QWidget):
         pixels_per_second = (self.tempo / 60.0) * self.pixels_per_beat
         
         # 【重要】Actionの警告対応：計算した pixels_per_second を描画間隔に反映
-        # これにより、BPMを変えると波形の伸び縮みがノートと同期します
         # 0.05秒間隔でピークを取得していると仮定した場合の計算例：
         data_interval_px = pixels_per_second * 0.05 
         
@@ -195,7 +198,6 @@ class TimelineWidget(QWidget):
             x = (i * data_interval_px) - self.scroll_x_offset
             
             # 画面外なら描画スキップ（負荷対策）
-            # 修正：if文の後は改行する（Actionエラー E701 回避）
             if x < -data_interval_px:
                 continue
             if x > self.width():
@@ -218,9 +220,7 @@ class TimelineWidget(QWidget):
 
         # --- 2. オーディオ波形描画（最背面） ---
         # parent()が対象の属性を持っているか安全に確認
-        parent_obj = self.parent()
-        if hasattr(parent_obj, 'tracks') and hasattr(parent_obj, 'current_track_idx'):
-            self._draw_audio_waveform(p, parent_obj.tracks, parent_obj.current_track_idx)
+        self._draw_audio_waveform(p)
 
         # --- 3. モニタリング発光 ---
         if self.audio_level > 0.001:
@@ -244,7 +244,7 @@ class TimelineWidget(QWidget):
                 self._draw_curve(p, data, colors[name], 40, 1)
         
         # 現在選択中のレイヤーを強調描画
-        current_layer_data = self.parameters.get(self.current_param_layer, [])
+        current_layer_data = self.parameters.get(self.current_param_layer, {})
         self._draw_curve(p, current_layer_data, colors[self.current_param_layer], 220, 2)
 
         # --- 5. ノート描画 ---
@@ -273,7 +273,7 @@ class TimelineWidget(QWidget):
             p.setBrush(QBrush(QColor(255, 255, 255, 30)))
             p.drawRect(self.selection_rect)
 
-        # 再生カーソル（Actionで指摘された閉じカッコを修正済み）
+        # 再生カーソル
         cx_play = int(self.seconds_to_beats(self._current_playback_time) * self.pixels_per_beat - self.scroll_x_offset)
         p.setPen(QPen(QColor(255, 45, 85), 2))
         p.drawLine(cx_play, 0, cx_play, self.height())
