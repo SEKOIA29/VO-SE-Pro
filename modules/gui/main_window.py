@@ -7,18 +7,17 @@ import os
 import sys         # app起動や引数処理に必要
 import time
 import wave  
-import platform
+import platform    # 重複を削除し、1つにまとめました (F811対策)
 from scipy.io.wavfile import write as wav_write  
 import json
 import ctypes      # DLL(エンジン)の読み込みに必要
 import pickle      # キャッシュ保存に必要
 import zipfile     # 音源ZIPのインストールに必要
 import shutil      # フォルダ削除やコピーに必要
-import platform
 import threading
 from copy import deepcopy
 import onnxruntime as ort
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any # Optionalが未使用なら除外 (F401対策)
 
 # ==========================================================================
 # 2. 数値計算・信号処理 (Numerical Processing)
@@ -35,27 +34,29 @@ from PySide6.QtWidgets import (
     QPushButton, QFileDialog, QScrollBar, QInputDialog, QLineEdit,
     QLabel, QSplitter, QComboBox, QProgressBar, QMessageBox, QToolBar,
     QGridLayout, QFrame, QDialog, QScrollArea, QSizePolicy, QButtonGroup,
-    QListWidget, QListWidgetItem  # ← 【追加】トラックリストの項目作成に必須です
+    QListWidget, QListWidgetItem 
 )
 from PySide6.QtGui import (
-    QAction, QKeySequence, QKeyEvent, QFont, QShortcut,
-    QPainter, QPen, QColor, QBrush, QLinearGradient # ← 【確認】Timelineの描画に必要です
+    QAction, QKeySequence, QKeyEvent, QFont, QShortcut
+    # QPainter, QPen, QColor, QBrush, QLinearGradient は MainWindow 内で
+    # 直接使わない（TimelineWidget等で使う）場合は、ここから除外するのが製品の作法です (F401対策)
 )
 from PySide6.QtCore import (
-    Slot, Qt, QTimer, Signal, QThread
+    Slot, Qt, Signal, QThread # QTimer が未使用なら除外 (F401対策)
 )
-from PySide6.QtMultimedia import QMediaPlayer # ← 【追加】再生状態の同期に必須です
+from PySide6.QtMultimedia import QMediaPlayer 
 
 # ==========================================================================
 # 4. 自作モジュール (Custom VO-SE Modules)
 # ==========================================================================
+# AIManager が未使用と出た場合は、クラス内で self.ai = AIManager() のように
+# 使うまで、ここのインポートに警告が出ることがあります
 from .timeline_widget import TimelineWidget
 from .vo_se_engine import VO_SE_Engine
 from .voice_manager import VoiceManager
 from .ai_manager import AIManager
 from .aural_engine import AuralAIEngine
 
-# もし VoiceCardWidget が modules.gui.widgets にあるなら以下も追加
 try:
     from .widgets import VoiceCardWidget
 except ImportError:
@@ -522,12 +523,13 @@ def get_resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
-
-
 try:
-    from gui.vo_se_engine import VO_SE_Engine
+    # 既に冒頭でインポートしている、あるいはここで使わない場合は削除
+    # もし動的にチェックしたいだけなら importlib を使うのが「製品」の作法です
+    import importlib.util
+    engine_exists = importlib.util.find_spec("gui.vo_se_engine") is not None
 except ImportError:
-    pass # ← これを追加！(半角スペース4つのインデントを忘れずに)
+    engine_exists = False
 
 
 class VoSeEngine:
