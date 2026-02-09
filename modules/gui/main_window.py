@@ -250,13 +250,15 @@ class HistoryManager:
             self.undo_stack.pop(0)
 
     def undo(self):
-        if not self.undo_stack: return
+        if not self.undo_stack:
+            return
         command = self.undo_stack.pop()
         command.undo()
         self.redo_stack.append(command)
 
     def redo(self):
-        if not self.redo_stack: return
+        if not self.redo_stack: 
+            return
         command = self.redo_stack.pop()
         command.redo()
         self.undo_stack.append(command)
