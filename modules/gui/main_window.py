@@ -105,7 +105,51 @@ class EngineInitializer:
 # MainWindowの初期化時にこれを呼び出す
 # initializer = EngineInitializer()
 # device_name, provider = initializer.detect_best_engine()
-# self.statusBar().showMessage(f"Engine: {device_name} 起動完了")
+# self.statusBar().showMessage(f"Engine: {device_name} 起動完了")                                                                                
+
+
+# ==========================================================================
+
+
+
+
+class VoseTrack:
+    def __init__(self, name, track_type="vocal"):
+        self.name = name
+        self.track_type = track_type  # "vocal"（歌声） または "wave"（オケ）
+        
+        # --- 基本データ ---
+        self.notes = []               # 歌声トラック用のノートリスト
+        self.audio_path = ""          # オーディオトラック用のファイルパス
+        self.vose_peaks = []          # タイムライン描画用の高速キャッシュ
+        
+        # --- 最高品質のための「ミキシング・パラメータ」 ---
+        self.volume = 1.0             # 0.0 ~ 1.0 (音量)
+        self.pan = 0.0                # -1.0 (左) ~ 1.0 (右)
+        self.is_muted = False
+        self.is_solo = False
+        self.is_active = True
+        
+        # --- AI & エフェクト管理（将来の拡張用） ---
+        self.engine_type = "Aural"     # このトラックに使うAIエンジンの種類
+        self.effects = []              # リバーブやコンプレッサーの設定保持用
+        self.color_label = "#64D2FF"   # UIで見分けるためのトラックカラー
+
+    def to_dict(self):
+        """保存用の辞書データ変換（全パラメータを網羅）"""
+        return {
+            "name": self.name,
+            "type": self.track_type,
+            "audio_path": self.audio_path,
+            "volume": self.volume,
+            "pan": self.pan,
+            "is_muted": self.is_muted,
+            "is_solo": self.is_solo,
+            "engine_type": self.engine_type,
+            "color_label": self.color_label,
+            # ノートがオブジェクトなら辞書化、そうでなければそのまま
+            "notes": [n.to_dict() if hasattr(n, 'to_dict') else n for n in self.notes]
+        }
 
 
 # ==========================================================
