@@ -3324,7 +3324,7 @@ class MainWindow(QMainWindow):
 
 
 
-    # ==========================================================================
+ # ==========================================================================
     # 音源管理
     # ==========================================================================
 
@@ -3357,7 +3357,6 @@ class MainWindow(QMainWindow):
                     }
         
         # 2. 公式音源のスキャン
-        # self.base_path が未定義の場合を考慮し getattr で取得
         base_path = getattr(self, 'base_path', os.getcwd())
         official_base = os.path.join(base_path, "assets", "official_voices")
         if os.path.exists(official_base):
@@ -3371,7 +3370,6 @@ class MainWindow(QMainWindow):
                         "id": f"__INTERNAL__:{char_dir}"
                     }
         
-        # Attribute "voice_manager" の存在を確認
         if hasattr(self, 'voice_manager'):
             self.voice_manager.voices = found_voices
         return found_voices
@@ -3387,7 +3385,6 @@ class MainWindow(QMainWindow):
         if not os.path.exists(oto_path):
             return oto_map
 
-        # 安全な読み込みを使用
         content = self.read_file_safely(oto_path)
         
         for line in content.splitlines():
@@ -3395,20 +3392,18 @@ class MainWindow(QMainWindow):
                 continue
             
             try:
-                # 形式: wav_filename=alias,offset,consonant,blank,preutterance,overlap
                 wav_file, params = line.split("=", 1)
                 p = params.split(",")
                 
                 alias = p[0] if p[0] else os.path.splitext(wav_file)[0]
                 
-                # パラメータを辞書化（数値はfloatに変換）
                 oto_map[alias] = {
                     "wav_path": os.path.join(voice_path, wav_file),
-                    "offset": float(p[1]) if len(p) > 1 else 0.0,      # 左ブランク
-                    "consonant": float(p[2]) if len(p) > 2 else 0.0,   # 固定範囲
-                    "blank": float(p[3]) if len(p) > 3 else 0.0,       # 右ブランク
-                    "preutterance": float(p[4]) if len(p) > 4 else 0.0, # 先行発声
-                    "overlap": float(p[5]) if len(p) > 5 else 0.0       # オーバーラップ
+                    "offset": float(p[1]) if len(p) > 1 else 0.0,
+                    "consonant": float(p[2]) if len(p) > 2 else 0.0,
+                    "blank": float(p[3]) if len(p) > 3 else 0.0,
+                    "preutterance": float(p[4]) if len(p) > 4 else 0.0,
+                    "overlap": float(p[5]) if len(p) > 5 else 0.0
                 }
             except (ValueError, IndexError):
                 continue
@@ -3427,7 +3422,6 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("音源フォルダをスキャン中...")
         self.scan_utau_voices()
         self.update_voice_list()
-        # voice_manager.voices へのアクセスを安全に
         count = len(self.voice_manager.voices) if hasattr(self, 'voice_manager') else 0
         self.statusBar().showMessage(
             f"スキャン完了: {count} 個の音源",
@@ -3436,13 +3430,11 @@ class MainWindow(QMainWindow):
 
     def update_voice_list(self):
         """VoiceManagerと同期してUI（カード一覧）を再構築"""
-        # 既存カードクリア (voice_cards が list か dict かの整合性を調整)
         if not hasattr(self, 'voice_cards') or isinstance(self.voice_cards, dict):
             self.voice_cards = []
         else:
             self.voice_cards.clear()
 
-        # UI要素の存在確認
         if not hasattr(self, 'voice_grid'):
             return
 
@@ -3451,14 +3443,12 @@ class MainWindow(QMainWindow):
             if item and item.widget():
                 item.widget().deleteLater()
 
-        # カード生成
         voices_dict = self.voice_manager.voices if hasattr(self, 'voice_manager') else {}
         for index, (name, data) in enumerate(voices_dict.items()):
             path = data.get("path", "")
             icon_path = data.get("icon", os.path.join(path, "icon.png"))
             color = self.voice_manager.get_character_color(path) if hasattr(self, 'voice_manager') else "#FFFFFF"
             
-            # VoiceCardWidget の存在を前提とする
             try:
                 from .widgets import VoiceCardWidget # type: ignore
                 card = VoiceCardWidget(name, icon_path, color)
@@ -3468,23 +3458,18 @@ class MainWindow(QMainWindow):
             except ImportError:
                 pass
         
-        # コンボボックス更新
         if hasattr(self, 'character_selector'):
             self.character_selector.clear()
             self.character_selector.addItems(list(voices_dict.keys()))
 
     @Slot(str)
     def on_voice_selected(self, character_name: str):
-        """
-        ボイスカード選択時の処理：音源データのロードと各エンジンへの適用
-        """
-        # 1. UIの選択状態（枠線など）を更新
+        """ボイスカード選択時の処理"""
         if hasattr(self, 'voice_cards'):
             for card in self.voice_cards:
                 if hasattr(card, 'set_selected'):
                     card.set_selected(card.name == character_name)
         
-        # 2. 音源データの存在チェック
         voices_dict = self.voice_manager.voices if hasattr(self, 'voice_manager') else {}
         if character_name not in voices_dict:
             self.statusBar().showMessage(f"エラー: {character_name} のデータが見つかりません")
@@ -3494,10 +3479,8 @@ class MainWindow(QMainWindow):
         path = voice_data["path"]
 
         try:
-            # 3. 歌唱用データのロード (oto.iniの解析)
             self.current_oto_data = self.parse_oto_ini(path)
             
-            # 4. 合成エンジン (vo_se_engine) の更新
             if hasattr(self, 'vo_se_engine') and self.vo_se_engine:
                 if hasattr(self.vo_se_engine, 'set_voice_library'):
                     self.vo_se_engine.set_voice_library(path)
@@ -3506,22 +3489,17 @@ class MainWindow(QMainWindow):
             
             self.current_voice = character_name
 
-            # 5. Talkエンジン（会話用）の更新
             talk_model = os.path.join(path, "talk.htsvoice")
             if os.path.exists(talk_model) and hasattr(self, 'talk_manager') and self.talk_manager:
                 if hasattr(self.talk_manager, 'set_voice'):
                     self.talk_manager.set_voice(talk_model)
 
-            # 6. UIへのフィードバック
             char_color = self.voice_manager.get_character_color(path) if hasattr(self, 'voice_manager') else "#FFFFFF"
             msg = f"【{character_name}】に切り替え完了 ({len(self.current_oto_data)} 音素ロード)"
             self.statusBar().showMessage(msg, 5000)
-            
-            # ログ出力（デバッグ用）
             print(f"Selected voice: {character_name} at {path} (Color: {char_color})")
 
         except Exception as e:
-            from PySide6.QtWidgets import QMessageBox
             QMessageBox.critical(self, "音源ロードエラー", f"音源の読み込み中にエラーが発生しました:\n{e}")
 
     def refresh_voice_list(self):
@@ -3531,35 +3509,34 @@ class MainWindow(QMainWindow):
         print("ボイスリストを更新しました")
 
     def play_selected_voice(self, note_text):
-        if not hasattr(self, 'character_selector'): return
+        if not hasattr(self, 'character_selector'):
+            return
         selected_name = self.character_selector.currentText()
-        voices_path_map = getattr(self, 'voices', {}) # dict形式を想定
+        voices_path_map = getattr(self, 'voices', {})
         voice_path = voices_path_map.get(selected_name, "")
 
         if voice_path.startswith("__INTERNAL__"):
-            # 内蔵音源モード
-            char_id = voice_path.split(":")[1] # "kanase" など
+            char_id = voice_path.split(":")[1]
             internal_key = f"{char_id}_{note_text}"
             if hasattr(self, 'vose_engine') and self.vose_engine:
                 self.vose_engine.play_voice(internal_key)
 
     def get_cached_oto(self, voice_path):
-        import pickle
+        # 冒頭で import pickle 済みのため、ここでの再定義(F811)を削除
         cache_path = os.path.join(voice_path, "oto_cache.vose")
         ini_path = os.path.join(voice_path, "oto.ini")
     
-        # oto.iniが更新されていなければキャッシュを読み込む
         if os.path.exists(cache_path) and os.path.exists(ini_path):
             if os.path.getmtime(cache_path) > os.path.getmtime(ini_path):
                 with open(cache_path, 'rb') as f:
                     return pickle.load(f)
     
-        # キャッシュがない、または古い場合はパースして保存
         oto_data = self.parse_oto_ini(voice_path)
         try:
             with open(cache_path, 'wb') as f:
                 pickle.dump(oto_data, f)
-        except Exception: pass
+        except Exception:
+            pass
         return oto_data
 
     def smart_cache_purge(self):
@@ -3575,13 +3552,14 @@ class MainWindow(QMainWindow):
     @Slot()
     def on_click_auto_lyrics(self):
         """AI自動歌詞配置"""
-        from PySide6.QtWidgets import QInputDialog
+        # 冒頭で import QInputDialog 済みのため、ここでの再定義を削除
         text, ok = QInputDialog.getText(self, "自動歌詞配置", "文章を入力:")
         if not (ok and text):
             return
 
         try:
-            if not hasattr(self, 'analyzer'): return
+            if not hasattr(self, 'analyzer'):
+                return
             trace_data = self.analyzer.analyze(text)
             parsed_notes = self.analyzer.parse_trace_to_notes(trace_data)
 
@@ -3601,7 +3579,6 @@ class MainWindow(QMainWindow):
                 self.timeline_widget.update()
                 self.statusBar().showMessage(f"{len(new_notes)}個の音素を配置しました")
         except Exception as e:
-            from PySide6.QtWidgets import QMessageBox
             QMessageBox.critical(self, "エラー", f"歌詞解析エラー: {e}")
         
         if hasattr(self, 'pro_monitoring') and self.pro_monitoring:
@@ -3610,7 +3587,8 @@ class MainWindow(QMainWindow):
 
     def update_timeline_style(self):
         """タイムラインの見た目を Apple Pro 仕様に固定"""
-        if not hasattr(self, 'timeline_widget'): return
+        if not hasattr(self, 'timeline_widget'):
+            return
         self.timeline_widget.setStyleSheet("background-color: #121212; border: none;")
         self.timeline_widget.note_color = "#FF9F0A"
         self.timeline_widget.note_border_color = "#FFD60A" 
@@ -3630,7 +3608,6 @@ class MainWindow(QMainWindow):
     @Slot()
     def on_click_apply_lyrics_bulk(self):
         """歌詞の一括流し込み"""
-        from PySide6.QtWidgets import QInputDialog
         text, ok = QInputDialog.getMultiLineText(self, "歌詞の一括入力", "歌詞を入力:")
         if not (ok and text):
             return
@@ -3669,12 +3646,12 @@ class MainWindow(QMainWindow):
     @Slot()
     def update_scrollbar_range(self):
         """水平スクロールバーの範囲更新"""
-        if not hasattr(self, 'h_scrollbar'): return
+        if not hasattr(self, 'h_scrollbar'):
+            return
         if not self.timeline_widget.notes_list:
             self.h_scrollbar.setRange(0, 0)
             return
         
-        # タイムライン側のメソッド呼び出し
         max_beats = 0
         if hasattr(self.timeline_widget, 'get_max_beat_position'):
             max_beats = self.timeline_widget.get_max_beat_position()
@@ -3693,9 +3670,9 @@ class MainWindow(QMainWindow):
     @Slot()
     def update_tempo_from_input(self):
         """テンポ入力の反映"""
-        from PySide6.QtWidgets import QMessageBox
         try:
-            if not hasattr(self, 'tempo_input'): return
+            if not hasattr(self, 'tempo_input'):
+                return
             new_tempo = float(self.tempo_input.text())
             if not (30.0 <= new_tempo <= 300.0):
                 raise ValueError("テンポは30-300の範囲で入力してください")
@@ -3704,7 +3681,7 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'vo_se_engine') and self.vo_se_engine:
                 self.vo_se_engine.set_tempo(new_tempo)
             if hasattr(self, 'graph_editor_widget') and self.graph_editor_widget:
-                self.graph_editor_widget.tempo = int(new_tempo) # int型を期待
+                self.graph_editor_widget.tempo = int(new_tempo)
                 
             self.update_scrollbar_range()
             if hasattr(self, 'status_label'):
@@ -3715,7 +3692,8 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def set_current_parameter_layer(self, layer_name: str):
-        if not hasattr(self, 'parameters'): return
+        if not hasattr(self, 'parameters'):
+            return
         if layer_name in self.parameters:
             self.current_param_layer = layer_name
             self.update()
@@ -3740,7 +3718,8 @@ class MainWindow(QMainWindow):
     @Slot()
     def on_notes_modified(self):
         """変更検知（連打防止タイマー）"""
-        if not hasattr(self, 'render_timer'): return
+        if not hasattr(self, 'render_timer'):
+            return
         self.render_timer.stop()
         self.render_timer.start(300)
         self.statusBar().showMessage("変更を検知しました...", 500)
@@ -3764,7 +3743,6 @@ class MainWindow(QMainWindow):
                         self.vo_se_engine.prepare_cache(updated_notes)
                     
                     if hasattr(self.vo_se_engine, 'synthesize_track'):
-                        # self.pitch_data の存在確認
                         pitch = getattr(self, 'pitch_data', [])
                         self.vo_se_engine.synthesize_track(
                             updated_notes, 
@@ -3783,7 +3761,8 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def on_midi_port_changed(self):
-        if not hasattr(self, 'midi_port_selector'): return
+        if not hasattr(self, 'midi_port_selector'):
+            return
         selected_port = self.midi_port_selector.currentData()
         if hasattr(self, 'midi_manager') and self.midi_manager:
             self.midi_manager.stop()
@@ -3791,24 +3770,26 @@ class MainWindow(QMainWindow):
 
         if selected_port and selected_port != "ポートなし":
             try:
-                # MidiInputManager の存在を前提
                 from .midi_io import MidiInputManager # type: ignore
                 self.midi_manager = MidiInputManager(selected_port)
                 self.midi_manager.start()
                 if hasattr(self, 'status_label'):
                     self.status_label.setText(f"MIDI: {selected_port}")
-            except ImportError: pass
+            except ImportError:
+                pass
 
     @Slot(int, int, str)
     def update_gui_with_midi(self, note_number: int, velocity: int, event_type: str):
-        if not hasattr(self, 'status_label'): return
+        if not hasattr(self, 'status_label'):
+            return
         if event_type == 'on':
             self.status_label.setText(f"ノートオン: {note_number} (Velocity: {velocity})")
         elif event_type == 'off':
             self.status_label.setText(f"ノートオフ: {note_number}")
 
     def handle_midi_realtime(self, note_number: int, velocity: int, event_type: str):
-        if not hasattr(self, 'vo_se_engine') or not self.vo_se_engine: return
+        if not hasattr(self, 'vo_se_engine') or not self.vo_se_engine:
+            return
         if event_type == 'on':
             if hasattr(self.vo_se_engine, 'play_realtime_note'):
                 self.vo_se_engine.play_realtime_note(note_number)
@@ -3820,12 +3801,12 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def update_scrollbar_v_range(self):
-        if not hasattr(self, 'timeline_widget'): return
+        if not hasattr(self, 'timeline_widget'):
+            return
         key_h = self.timeline_widget.key_height_pixels
         full_height = 128 * key_h
         viewport_height = self.timeline_widget.height()
         
-        # note_height 属性がない場合、key_h で代用
         n_height = getattr(self.timeline_widget, 'note_height', key_h)
         max_v = 128 * n_height
         
@@ -3860,7 +3841,6 @@ class MainWindow(QMainWindow):
     # ==========================================================================
 
     def keyPressEvent(self, event):
-        from PySide6.QtCore import Qt
         key = event.key()
         mod = event.modifiers()
         
@@ -3884,7 +3864,6 @@ class MainWindow(QMainWindow):
             super().keyPressEvent(event)
 
     def closeEvent(self, event):
-        from PySide6.QtWidgets import QMessageBox
         reply = QMessageBox.question(
             self, 
             '確認', 
@@ -3901,9 +3880,8 @@ class MainWindow(QMainWindow):
             event.accept()
         else:
             event.ignore()
-            return # キャンセルの場合はここで抜ける
+            return
         
-        # 終了時処理
         config = {
             "default_voice": getattr(self, 'current_voice', None),
             "volume": getattr(self, 'volume', 1.0)
@@ -3927,12 +3905,9 @@ class MainWindow(QMainWindow):
 
 def main():
     """アプリケーション起動"""
-    import sys
-    from PySide6.QtWidgets import QApplication
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     
-    # MainWindow クラスが定義されていることを前提とする
     window = MainWindow()
     window.show()
     
