@@ -1424,7 +1424,7 @@ class MainWindow(QMainWindow):
         self.vol_label.setAlignment(Qt.AlignCenter)
         
         # 音量スライダー (0-100で管理)
-        self.vol_slider = QSlider(Qt.Horizontal)
+        self.vol_slider = QSlider(Qt.Orientation.Horizontal)
         self.vol_slider.setRange(0, 100)
         self.vol_slider.setValue(100)
         self.vol_slider.setTickPosition(QSlider.TicksBelow)
@@ -2073,7 +2073,7 @@ class MainWindow(QMainWindow):
         from PySide6.QtCore import Qt
 
         # 左右に分割できるスプリッター
-        self.editor_splitter = QSplitter(Qt.Horizontal)
+        self.editor_splitter = QSplitter(Qt.Orientation.Horizontal)
         
         # --- 左側：トラック管理パネル ---
         self.track_panel = QFrame()
@@ -2265,7 +2265,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(timeline_container)
         
         # 水平スクロールバー
-        self.h_scrollbar = QScrollBar(Qt.Horizontal)
+        self.h_scrollbar = QScrollBar(Qt.Orientation.Horizontal)
         self.h_scrollbar.valueChanged.connect(self.timeline_widget.set_horizontal_offset)
         self.main_layout.addWidget(self.h_scrollbar)
         
