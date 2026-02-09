@@ -127,7 +127,8 @@ class TimelineWidget(QWidget):
             with wave.open(file_path, 'rb') as w:
                 params = w.getparams()
                 n_frames = params.nframes
-                if n_frames == 0: return []
+                if n_frames == 0: 
+                    return []
                 
                 # データを読み込んでnumpy配列化
                 frames = w.readframes(n_frames)
@@ -194,8 +195,10 @@ class TimelineWidget(QWidget):
             x = (i * data_interval_px) - self.scroll_x_offset
             
             # 画面外なら描画スキップ（負荷対策）
-            if x < -data_interval_px: continue
-            if x > self.width(): break
+            if x < -data_interval_px: 
+                continue
+            if x > self.width(): 
+                break
             
             h = peak * max_h
             p.drawLine(int(x), int(mid_y - h/2), int(x), int(mid_y + h/2))
