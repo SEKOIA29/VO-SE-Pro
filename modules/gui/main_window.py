@@ -52,7 +52,7 @@ from PySide6.QtMultimedia import QMediaPlayer
 # AIManager が未使用と出た場合は、クラス内で self.ai = AIManager() のように
 # 使うまで、ここのインポートに警告が出ることがあります
 from .timeline_widget import TimelineWidget
-from .vo_se_engine import VO_SE_Engine
+#from .vo_se_engine import VO_SE_Engine
 from .voice_manager import VoiceManager
 from .ai_manager import AIManager
 from .aural_engine import AuralAIEngine
@@ -858,7 +858,7 @@ class MainWindow(QMainWindow):
 
         # --- インポートしたクラスをインスタンス化して「使用中」にする ---
         self.os_type = platform.system()  # これで platform を使用
-        self.engine = VO_SE_Engine()     # これで VO_SE_Engine を使用
+        #self.engine = VO_SE_Engine()     # これで VO_SE_Engine を使用
         self.ai_manager = AIManager()    # これで AIManager を使用
         
         # UIセットアップ（省略）
