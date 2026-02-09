@@ -15,7 +15,7 @@ from modules.gui.main_window import MainWindow
 # --- [1] リソースパス解決関数 (PyInstaller対応) ---
 def get_resource_path(relative_path):
     if getattr(sys, 'frozen', False):
-        base_path = sys._MEIPASS
+        base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     else:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
