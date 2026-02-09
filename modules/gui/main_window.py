@@ -2275,7 +2275,6 @@ class MainWindow(QMainWindow):
 
     def toggle_playback(self, event=None):
         """Spaceキーまたは再生ボタンが押された時の動作（最終統合版）"""
-        from PySide6.QtMultimedia import QMediaPlayer
 
         if not self.pro_monitoring.is_playing:
             # --- 【再生開始】 ---
