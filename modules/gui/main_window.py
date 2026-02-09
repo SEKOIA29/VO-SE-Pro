@@ -7,6 +7,7 @@ import os
 import sys         # app起動や引数処理に必要
 import time
 import wave  
+import platform
 from scipy.io.wavfile import write as wav_write  
 import json
 import ctypes      # DLL(エンジン)の読み込みに必要
@@ -33,7 +34,8 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QFileDialog, QScrollBar, QInputDialog, QLineEdit,
     QLabel, QSplitter, QComboBox, QProgressBar, QMessageBox, QToolBar,
-    QGridLayout, QFrame, QDialog, QScrollArea, QSizePolicy, QButtonGroup
+    QGridLayout, QFrame, QDialog, QScrollArea, QSizePolicy, QButtonGroup,
+    QListWidget
 )
 from PySide6.QtGui import (
     QAction, QKeySequence, QKeyEvent, QFont, QShortcut
@@ -1873,7 +1875,7 @@ class MainWindow(QMainWindow):
         import platform
         import os
         ext = ".dll" if platform.system() == "Windows" else ".dylib"
-        dll_relative_path = os.path.join("bin", f"libvo_se{ext}")
+        #dll_relative_path = os.path.join("bin", f"libvo_se{ext}")
         
         # 音源の自動ロード
         official_voice_path = os.path.join("assets", "voice", "official")
