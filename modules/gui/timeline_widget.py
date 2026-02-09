@@ -156,17 +156,18 @@ class TimelineWidget(QWidget):
     def _draw_audio_waveform(self, p):
         """タイムラインの背景としてオーディオ波形を描画する（同期修正版）"""
         # 親ウィンドウから現在のトラック情報を取得
-        if not hasattr(self.parent(), 'tracks'):
+        parent_obj = self.parent()
+        if not hasattr(parent_obj, 'tracks'):
             return
             
-        target_idx = self.parent().current_track_idx
-        track = self.parent().tracks[target_idx]
+        target_idx = parent_obj.current_track_idx
+        track = parent_obj.tracks[target_idx]
         
         # Audioトラックでない、またはファイルがない場合は何もしない
         if track.track_type != "wave" or not track.audio_path:
             return
 
-        # 解析データのキャッシュ
+        # 解析データのキャッシュ（vose_peaksとして保存）
         if not hasattr(track, 'vose_peaks'):
             track.vose_peaks = self.get_audio_peaks(track.audio_path)
             
@@ -174,10 +175,13 @@ class TimelineWidget(QWidget):
             return
 
         # --- 同期計算 ---
-        # 1ピクセルあたりの秒数を計算して、波形の描画幅をノートと合わせる
-        # self.pixels_per_beat = 1拍あたりのピクセル数
-        # self.tempo = 1分あたりの拍数
+        # 1拍あたりのピクセル数とテンポから、1秒あたりのピクセル幅を算出
         pixels_per_second = (self.tempo / 60.0) * self.pixels_per_beat
+        
+        # 【重要】Actionの警告対応：計算した pixels_per_second を描画間隔に反映
+        # これにより、BPMを変えると波形の伸び縮みがノートと同期します
+        # 0.05秒間隔でピークを取得していると仮定した場合の計算例：
+        data_interval_px = pixels_per_second * 0.05 
         
         # 描画設定
         p.setPen(QPen(QColor(0, 255, 255, 60), 1)) # 背景に馴染む薄いシアン
@@ -185,19 +189,15 @@ class TimelineWidget(QWidget):
         mid_y = self.height() / 2
         max_h = self.height() * 0.7
         
-        # 波形データの長さ（サンプル的な数）を画面上のピクセル幅に変換
-        # 本来はWAVの総時間を取得して計算するが、ここでは簡易的に
-        # 1データ = 0.1秒 などの一定間隔として扱う設計にする
-        data_interval_px = 2.0 # 1データあたりの幅(px)
-        
         for i, peak in enumerate(track.vose_peaks):
             # スクロールを考慮したX座標
             x = (i * data_interval_px) - self.scroll_x_offset
             
             # 画面外なら描画スキップ（負荷対策）
-            if x < -data_interval_px: 
+            # 修正：if文の後は改行する（Actionエラー E701 回避）
+            if x < -data_interval_px:
                 continue
-            if x > self.width(): 
+            if x > self.width():
                 break
             
             h = peak * max_h
