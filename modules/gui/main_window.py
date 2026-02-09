@@ -916,13 +916,36 @@ class MainWindow(QMainWindow):
 
         # --- 2. エンジン・マネージャー類の初期化 ---
         # 重複を避け、一つの変数名(vo_se_engine)に統一
-        try:
-            from backend.engine import VO_SE_Engine # 仮定
-            self.vo_se_engine = engine if engine else VO_SE_Engine()
         except ImportError:
             class MockEngine: 
+                def __init__(self):
+                    self.lib = None
+                    self.current_time_playback = 0.0
                 def set_active_character(self, name): pass
-            self.vo_se_engine = MockEngine()
+                def synthesize(self, *args, **kwargs): pass
+                def play(self, *args, **kwargs): pass
+                def stop_playback(self, *args, **kwargs): pass
+                def export_to_wav(self, *args, **kwargs): pass
+                def set_voice_library(self, *args, **kwargs): pass
+                def set_oto_data(self, *args, **kwargs): pass
+                def prepare_cache(self, *args, **kwargs): pass
+                def close(self, *args, **kwargs): pass
+                def vose_free_buffer(self, *args, **kwargs): pass
+                def vose_set_formant(self, *args, **kwargs): pass
+                def play_audio(self, *args, **kwargs): pass
+                def get_current_time(self, *args, **kwargs): pass
+                def seek_time(self, *args, **kwargs): pass
+                def preview_single_note(self, *args, **kwargs): pass
+                def enable_realtime_monitor(self, *args, **kwargs): pass
+                def render(self, *args, **kwargs): pass
+                def play_result(self, *args, **kwargs): pass
+                def set_tempo(self, *args, **kwargs): pass
+                def synthesize_track(self, *args, **kwargs): pass
+                def update_notes_data(self, *args, **kwargs): pass
+                def play_realtime_note(self, *args, **kwargs): pass
+                def stop_realtime_note(self, *args, **kwargs): pass
+
+            self.vo_se_engine = MockEngine())
 
         self.dynamics_ai = ai if ai else DynamicsAIEngine()
         self.voice_manager = VoiceManager(self.dynamics_ai)
