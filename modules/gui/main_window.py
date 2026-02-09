@@ -944,14 +944,22 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("VO-SE Pro")
         self.resize(1200, 800)
 
+
+    def refresh_canvas(self):
+        """キャンバス（描画領域）を再描画する"""
+        if hasattr(self, 'timeline_widget'):
+            self.timeline_widget.update()
+
+    def sync_ui_to_selection(self):
+        """選択されたアイテムに合わせてUI表示を同期する"""
+        # ここに選択状態の同期処理を書く
+        pass
+
     def setup_vose_shortcuts(self):
-        """ショートカットキーの設定 (PySide6方式)"""
-       
-        
+        """ショートカットキーの設定 (PySide6方式)"""        
         # Spaceキーで再生/停止
         self.play_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
         self.play_shortcut.activated.connect(self.toggle_playback)
-
 
 
     def perform_startup_sequence(self):
