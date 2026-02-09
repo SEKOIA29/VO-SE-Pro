@@ -41,8 +41,8 @@ class TalkManager(QObject):
         """pyopenjtalkを使用して高品質なWAVを生成"""
         try:
             # 音声合成 (x: 波形データ, sr: サンプリングレート)
-            # font引数にボイスパスを渡すことで声の種類を変更可能
-            x, sr = pyopenjtalk.tts(text, font=self.current_voice_path)
+            # 【修正箇所】font引数を正確な名称である htsvoice に変更
+            x, sr = pyopenjtalk.tts(text, htsvoice=self.current_voice_path)
             
             # 16bit PCMとして書き出し
             sf.write(output_path, x.astype(np.int16), sr)
