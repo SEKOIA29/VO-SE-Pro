@@ -30,19 +30,19 @@ import math
 # 3. GUIライブラリ (PySide6 / Qt)
 # ==========================================================================
 from PySide6.QtCore import (
-    Qt, Signal, Slot, QTimer, QPoint, QRect, QSize, QUrl,
-    QThread, QObject, QEvent
+    Qt, Signal, Slot, QThread
 )
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QFileDialog, QScrollBar, QInputDialog, QLineEdit,
     QLabel, QSplitter, QComboBox, QProgressBar, QMessageBox, QToolBar,
     QGridLayout, QFrame, QDialog, QScrollArea, QSizePolicy, QButtonGroup,
-    QSystemTrayIcon, QMenu
+    QListWidget, QListWidgetItem 
 )
 from PySide6.QtGui import (
     QAction, QKeySequence, QFont, QShortcut
 )
+from PySide6.QtMultimedia import QMediaPlayer #
 
 # ==========================================================================
 # 4. 自作モジュール (Custom VO-SE Modules)
