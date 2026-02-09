@@ -2242,7 +2242,7 @@ class MainWindow(QMainWindow):
     def setup_timeline_area(self):
         """タイムラインとエディタエリアの構築"""
         # スプリッター（上下分割）
-        splitter = QSplitter(Qt.Vertical)
+        splitter = QSplitter(Qt.Orientation.Vertical)
         
         # タイムライン部分（横スクロール付き）
         timeline_container = QWidget()
@@ -2258,7 +2258,7 @@ class MainWindow(QMainWindow):
         timeline_layout.addWidget(self.timeline_widget)
         
         # 垂直スクロールバー
-        self.v_scrollbar = QScrollBar(Qt.Vertical)
+        self.v_scrollbar = QScrollBar(Qt.Orientation.Vertical)
         self.v_scrollbar.valueChanged.connect(self.timeline_widget.set_vertical_offset)
         timeline_layout.addWidget(self.v_scrollbar)
         
