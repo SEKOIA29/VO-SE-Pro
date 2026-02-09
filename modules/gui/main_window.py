@@ -1867,9 +1867,8 @@ class MainWindow(QMainWindow):
 
     def init_engine(self):
         """エンジンの総合初期化"""
-        import platform
         import os
-        ext = ".dll" if platform.system() == "Windows" else ".dylib"
+        #ext = ".dll" if platform.system() == "Windows" else ".dylib"
         #dll_relative_path = os.path.join("bin", f"libvo_se{ext}")
         
         # 音源の自動ロード
