@@ -314,8 +314,9 @@ class TimelineWidget(QWidget):
             self.duplicate_notes()
         elif ctrl and event.key() == Qt.Key.Key_A:
             self.select_all()
-        elif event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_BackSpace):
+        elif event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             self.delete_selected()
+ 
 
     def change_layer(self, name):
         self.current_param_layer = name
