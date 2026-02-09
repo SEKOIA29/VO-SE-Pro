@@ -1,6 +1,7 @@
 # midi_manager.py
 
-import mido
+#import mido
+import mido.backends.rtmidi
 import time
 from PySide6.QtCore import Signal, QObject
 from modules.data.data_models import NoteEvent 
