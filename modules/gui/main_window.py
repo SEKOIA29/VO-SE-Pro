@@ -3698,47 +3698,88 @@ def import_voice_bank(self, zip_path: str):
             QMessageBox.critical(self, "音源ロードエラー", f"音源の読み込み中にエラーが発生しました:\n{str(e)}")
 
     def refresh_voice_list(self):
-        """voice_banksフォルダを再スキャン"""
-        self.scan_utau_voices()
-        self.update_voice_list()
+        """voice_banksフォルダを再スキャン（省略なし完全版）"""
+        # scan_utau_voices が MainWindow にあるか VoiceManager にあるかを確認
+        if hasattr(self, 'scan_utau_voices'):
+            self.scan_utau_voices()
+        elif hasattr(self, 'voice_manager') and hasattr(self.voice_manager, 'scan_utau_voices'):
+            self.voice_manager.scan_utau_voices()
+
+        if hasattr(self, 'update_voice_list'):
+            self.update_voice_list()
+        
         print("ボイスリストを更新しました")
 
-    def play_selected_voice(self, note_text):
-        if not hasattr(self, 'character_selector'):
+    def play_selected_voice(self, note_text: str):
+        """選択されたボイスでプレビュー再生（省略なし完全版）"""
+        if not hasattr(self, 'character_selector') or self.character_selector is None:
             return
+            
         selected_name = self.character_selector.currentText()
+        # self.voices 自体が None の可能性を排除
         voices_path_map = getattr(self, 'voices', {})
+        if voices_path_map is None:
+            voices_path_map = {}
+            
         voice_path = voices_path_map.get(selected_name, "")
 
-        if voice_path.startswith("__INTERNAL__"):
+        if voice_path and voice_path.startswith("__INTERNAL__"):
             char_id = voice_path.split(":")[1]
             internal_key = f"{char_id}_{note_text}"
-            if hasattr(self, 'vose_engine') and self.vose_engine:
-                self.vose_engine.play_voice(internal_key)
+            
+            # vose_engine または vo_se_engine どちらの名前でも対応
+            engine = getattr(self, 'vose_engine', getattr(self, 'vo_se_engine', None))
+            if engine and hasattr(engine, 'play_voice'):
+                engine.play_voice(internal_key)
 
-    def get_cached_oto(self, voice_path):
-        # 冒頭で import pickle 済みのため、ここでの再定義(F811)を削除
+    def get_cached_oto(self, voice_path: str):
+        """ 原音設定のキャッシュ管理。pickleによる高速ロード"""
+        import pickle
+        import os
+
+        # キャッシュファイル(.vose)と元の設定ファイル(.ini)のパス
         cache_path = os.path.join(voice_path, "oto_cache.vose")
         ini_path = os.path.join(voice_path, "oto.ini")
     
+        # キャッシュが存在し、かつ元の.iniより新しい場合のみキャッシュを使用
         if os.path.exists(cache_path) and os.path.exists(ini_path):
-            if os.path.getmtime(cache_path) > os.path.getmtime(ini_path):
-                with open(cache_path, 'rb') as f:
-                    return pickle.load(f)
+            try:
+                if os.path.getmtime(cache_path) > os.path.getmtime(ini_path):
+                    with open(cache_path, 'rb') as f:
+                        data = pickle.load(f)
+                        if data:
+                            return data
+            except (pickle.UnpicklingError, EOFError, AttributeError, ImportError):
+                # キャッシュが壊れている、またはクラス定義が変わった場合は無視して再解析
+                pass
     
+        # キャッシュが使えない場合は再解析
         oto_data = self.parse_oto_ini(voice_path)
+        
+        # 次回のためにキャッシュを保存
         try:
             with open(cache_path, 'wb') as f:
                 pickle.dump(oto_data, f)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"DEBUG: Cache save failed: {e}")
+            
         return oto_data
 
     def smart_cache_purge(self):
-        """[Core i3救済] メモリ最適化"""
-        if hasattr(self, 'voice_manager') and hasattr(self.voice_manager, 'clear_unused_cache'):
-            self.voice_manager.clear_unused_cache()
-            self.statusBar().showMessage("Memory Optimized.", 2000)
+        """[Core i3救済] メモリ最適化。未使用キャッシュの強制解放（省略なし）"""
+        vm = getattr(self, 'voice_manager', None)
+        # 属性の存在を厳密にチェックして Pyright エラーを回避
+        if vm and hasattr(vm, 'clear_unused_cache'):
+            vm.clear_unused_cache()
+            
+            status_bar = self.statusBar()
+            if status_bar:
+                status_bar.showMessage("Memory Optimized.", 2000)
+        else:
+            # メソッドがない場合はガベージコレクションを直接呼ぶ
+            import gc
+            gc.collect()
+            print("DEBUG: Direct memory optimization executed.")
 
     # ==========================================================================
     # 歌詞・ノート操作
