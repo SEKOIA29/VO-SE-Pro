@@ -2251,7 +2251,7 @@ class MainWindow(QMainWindow):
         panel_layout.addWidget(self.ai_analyze_button)
         
         # AI歌詞配置ボタン
-        self.auto_lyrics_button = QPushButton("自動歌詞")
+        self.auto_lyrics_button = QPushButton("自動歌詞配置")
         self.auto_lyrics_button.clicked.connect(self.on_click_auto_lyrics)
         panel_layout.addWidget(self.auto_lyrics_button)
 
@@ -2312,11 +2312,12 @@ class MainWindow(QMainWindow):
         timeline_layout.addWidget(self.timeline_widget)
         
         # 垂直スクロールバー
-        self.v_scrollbar = QScrollBar(Qt.Orientation.Vertical)
+        self.vertical_scroll = QSlider(Qt.Orientation.Vertical, self)
         self.v_scrollbar.valueChanged.connect(self.timeline_widget.set_vertical_offset)
         timeline_layout.addWidget(self.v_scrollbar)
         
         splitter.addWidget(timeline_container)
+        self.vertical_scroll.setRange(0, 1000)
         
         # 水平スクロールバー
         self.h_scrollbar = QScrollBar(Qt.Orientation.Horizontal)
