@@ -873,6 +873,10 @@ class MainWindow(QMainWindow):
         # castを使用して、定義と実体が一致することをPyrightに分からせる
         self.timeline_widget = cast(TimelineWidget, TimelineWidget(self))
 
+        # ---  未定義属性のエラーを消すための宣言 ---
+        self.v_scrollbar = QSlider(Qt.Orientation.Vertical, self) 
+        self.sync_notes = True # timeline_widget側からのアクセス用
+
         # システム初期化
         self.history = HistoryManager()
         self.tracks = [VoseTrack("Vocal 1", "vocal")]
