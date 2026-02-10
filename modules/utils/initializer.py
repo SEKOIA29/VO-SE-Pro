@@ -1,6 +1,11 @@
 import os
 import sys
 
+def get_resource_path(relative_path: str) -> str:
+    # hasattrでチェックすることで Pyright のエラーを回避
+    base_path = getattr(sys, '_MEIPASS', os.path.abspath("."))
+    return os.path.join(base_path, relative_path)
+
 class AppInitializer:
     @staticmethod
     def check_environment():
