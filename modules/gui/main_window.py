@@ -2758,38 +2758,70 @@ def import_voice_bank(self, zip_path: str):
             
 
     def dropEvent(self, event):
-        """ファイルドロップ時の処理：ZIP（音源）、MIDI/JSON（プロジェクト）を自動判別"""
-        files = [u.toLocalFile() for u in event.mimeData().urls()]
+        """
+        ファイルドロップ時の処理：ZIP（音源）、MIDI/JSON（プロジェクト）を自動判別。
+        インデント不整合を修正し、各マネージャーへの橋渡しを安全に行う。
+        """
+        # 1. 安全なファイルリストの取得
+        mime_data = event.mimeData()
+        if not mime_data.hasUrls():
+            return
+            
+        files = [u.toLocalFile() for u in mime_data.urls()]
         
         for file_path in files:
             file_lower = file_path.lower()
             
-            # 1. 音源ライブラリ(ZIP)の場合
+            # --- 1. 音源ライブラリ(ZIP)の場合 ---
             if file_lower.endswith(".zip"):
-                self.statusBar().showMessage(f"音源を導入中: {os.path.basename(file_path)}")
+                status_bar = self.statusBar()
+                if status_bar:
+                    status_bar.showMessage(f"音源を導入中: {os.path.basename(file_path)}")
+                
                 try:
-                    # VoiceManagerのインストール機能を実行
-                    new_voice = self.voice_manager.install_voice_from_zip(file_path)
-                    
-                    # 成功演出：SEを鳴らして通知
-                    # ※ audio_output.play_se が実装されている前提
-                    if hasattr(self, 'audio_output'):
-                        self.audio_output.play_se(get_resource_path("assets/install_success.wav"))
+                    # VoiceManagerの存在確認
+                    v_manager = getattr(self, 'voice_manager', None)
+                    if v_manager and hasattr(v_manager, 'install_voice_from_zip'):
+                        new_voice = v_manager.install_voice_from_zip(file_path)
                         
-                    QMessageBox.information(self, "導入完了", f"音源 '{new_voice}' をインストールしました！")
-                    self.scan_utau_voices() # リストを最新の状態に更新
+                        # 成功演出：SEを鳴らして通知
+                        audio_out = getattr(self, 'audio_output', None)
+                        if audio_out:
+                            se_path = get_resource_path("assets/install_success.wav")
+                            if os.path.exists(se_path):
+                                if hasattr(audio_out, 'play_se'):
+                                    audio_out.play_se(se_path)
+                        
+                        from PySide6.QtWidgets import QMessageBox
+                        QMessageBox.information(self, "導入完了", f"音源 '{new_voice}' をインストールしました！")
+                        
+                        # リストを最新の状態に更新
+                        if hasattr(self, 'scan_utau_voices'):
+                            self.scan_utau_voices()
+                    else:
+                        print("DEBUG: voice_manager or install_voice_from_zip not found.")
+
                 except Exception as e:
-                    QMessageBox.critical(self, "導入失敗", f"インストール中にエラーが発生しました:\n{e}")
+                    from PySide6.QtWidgets import QMessageBox
+                    QMessageBox.critical(self, "導入失敗", f"インストール中にエラーが発生しました:\n{str(e)}")
 
-            # 2. 楽曲データ(MIDI)の場合
+            # --- 2. 楽曲データ(MIDI)の場合 ---
             elif file_lower.endswith(('.mid', '.midi')):
-                self.load_file_from_path(file_path)
-                self.statusBar().showMessage(f"MIDIファイルを読み込みました: {os.path.basename(file_path)}")
+                if hasattr(self, 'load_file_from_path'):
+                    self.load_file_from_path(file_path)
+                
+                status_bar = self.statusBar()
+                if status_bar:
+                    status_bar.showMessage(f"MIDIファイルを読み込みました: {os.path.basename(file_path)}")
 
-            # 3. プロジェクトデータ(JSON)の場合
+            # --- 3. プロジェクトデータ(JSON)の場合 ---
             elif file_lower.endswith('.json'):
-                self.load_file_from_path(file_path)
-                self.statusBar().showMessage(f"プロジェクトを読み込みました: {os.path.basename(file_path)}")
+                if hasattr(self, 'load_file_from_path'):
+                    self.load_file_from_path(file_path)
+                
+                status_bar = self.statusBar()
+                if status_bar:
+                    status_bar.showMessage(f"プロジェクトを読み込みました: {os.path.basename(file_path)}")
 
 
     # ==========================================================================
