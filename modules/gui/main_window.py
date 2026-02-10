@@ -3139,24 +3139,54 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.statusBar().showMessage(f"Migration Failed: {e}")
 
-    def _parse_vsqx(self, path):
-        """XML構造を解析してNoteEventリストを作る (省略なしのロジック骨子)"""
+    def _parse_vsqx(self, path: str):
+        """
+        VOCALOID4 プロジェクトファイル(.vsqx)を解析してNoteEventリストを生成する。
+        Pyrightの reportOptionalMemberAccess を完全に回避した堅牢版。
+        """
         import xml.etree.ElementTree as ET
-        tree = ET.parse(path)
-        root = tree.getroot()
         
         notes = []
-        # VOCALOID特有のネームスペース処理
-        ns = {'v': 'http://www.yamaha.co.jp/vocaloid/schema/vsqx/4.0'} 
-        
-        for v_note in root.findall('.//v:note', ns):
-            note = NoteEvent(
-                lyrics=v_note.find('v:y', ns).text, # 歌詞
-                note_number=int(v_note.find('v:n', ns).text), # 音高
-                duration=int(v_note.find('v:dur', ns).text) / 480.0, # ティックを秒に変換
-                start_time=int(v_note.find('v:t', ns).text) / 480.0
-            )
-            notes.append(note)
+        try:
+            tree = ET.parse(path)
+            root = tree.getroot()
+            
+            # 名前空間の定義（VSQX4の標準）
+            ns = {'v': 'http://www.yamaha.co.jp/vocaloid/schema/vsqx/4.0'} 
+            
+            # 全ての v:note 要素を探索
+            for v_note in root.findall('.//v:note', ns):
+                # 1. 各要素を安全に取得（findの結果がNoneでも止まらないようにする）
+                y_elem = v_note.find('v:y', ns)   # 歌詞
+                n_elem = v_note.find('v:n', ns)   # ノートナンバー
+                dur_elem = v_note.find('v:dur', ns) # 長さ
+                t_elem = v_note.find('v:t', ns)   # 開始時間
+                
+                # 2. すべての必須属性が存在し、かつ .text が存在するかチェック
+                if (y_elem is not None and y_elem.text is not None and
+                    n_elem is not None and n_elem.text is not None and
+                    dur_elem is not None and dur_elem.text is not None and
+                    t_elem is not None and t_elem.text is not None):
+                    
+                    try:
+                        # 3. データを型変換して NoteEvent を作成
+                        # (480.0 で割ってティックから秒に変換)
+                        note = NoteEvent(
+                            lyrics=str(y_elem.text),
+                            note_number=int(n_elem.text),
+                            duration=int(dur_elem.text) / 480.0,
+                            start_time=int(t_elem.text) / 480.0
+                        )
+                        notes.append(note)
+                    except ValueError:
+                        # 数値変換に失敗したデータはスキップ
+                        continue
+                        
+        except (ET.ParseError, FileNotFoundError) as e:
+            # ファイルが壊れている、または存在しない場合の処理
+            print(f"VSQX Parse Error: {e}")
+            return []
+
         return notes
         
     
