@@ -16,6 +16,19 @@ class TimelineWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        # --- MainWindowからアクセスされる属性をすべて定義 ---
+        self.notes_list: List[Any] = []
+        self.sync_notes = True  
+        
+        # カラー設定
+        self.note_color = QColor(100, 150, 255)
+        self.note_border_color = QColor(255, 255, 255)
+        self.text_color = QColor(255, 255, 255)
+        
+        # 再生位置管理
+        self._current_playback_time = 0.0
+
+        
         self.setMinimumSize(400, 200)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         
