@@ -2833,7 +2833,7 @@ def import_voice_bank(self, zip_path: str):
         audio = self.vo_se_engine.synthesize(self.timeline_widget.notes_list)
         self.vo_se_engine.play(audio)
 
-    @Slot()
+    @Slot() 
     def on_play_pause_toggled(self):
         """再生/停止を切り替えるハンドラ（トグル機能）"""
         # --- 1. すでに再生中の場合 → 停止させる ---
