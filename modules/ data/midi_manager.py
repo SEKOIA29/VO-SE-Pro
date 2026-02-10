@@ -1,10 +1,12 @@
 # midi_manager.py
 
+
 import mido
 import mido.backends.rtmidi
 import time
 from typing import List, Optional, Dict, Any, cast
 from PySide6.QtCore import Signal, QObject
+
 # 警告が出ていたインポートパスを、プロジェクト構造に合わせて安全に記述
 try:
     from modules.data.data_models import NoteEvent
@@ -42,19 +44,21 @@ def load_midi_file(filepath: str) -> Optional[List[Dict[str, Any]]]:
             open_notes: Dict[int, tuple[float, int]] = {} 
             
             for msg in track:
-                current_tick += getattr(msg, 'time', 0)
+                # getattrの結果を適切な型にキャストして使用
+                msg_time = cast(int, getattr(msg, 'time', 0))
+                current_tick += msg_time
                 
                 # テンポ変更イベントへの対応
                 if msg.is_meta and msg.type == 'set_tempo':
-                    current_tempo = getattr(msg, 'tempo', 500000)
+                    current_tempo = cast(int, getattr(msg, 'tempo', 500000))
 
                 # Tickから秒への変換
                 current_seconds = mido.tick2second(current_tick, ticks_per_beat, current_tempo)
 
-                # msg.type の取得と属性アクセスを安全に（Pyrightエラー対策）
+                # msg.type の取得と属性アクセスを安全に
                 m_type = str(msg.type)
-                m_note = getattr(msg, 'note', 0)
-                m_velocity = getattr(msg, 'velocity', 0)
+                m_note = cast(int, getattr(msg, 'note', 0))
+                m_velocity = cast(int, getattr(msg, 'velocity', 0))
 
                 if m_type == 'note_on' and m_velocity > 0:
                     open_notes[m_note] = (current_seconds, m_velocity)
@@ -84,13 +88,11 @@ class MidiInputManager:
 
     @staticmethod
     def get_available_ports() -> List[str]:
-        """
-        利用可能なポートを取得。
-        Pyrightのエラーを回避するため、getattrを使用して動的にアクセス。
-        """
+        """利用可能なポートを取得。getattrで動的にアクセス。"""
         get_names = getattr(mido, 'get_input_names', None)
         if get_names and callable(get_names):
-            return list(get_names())
+            # 戻り値を文字列のリストとして明示
+            return list(cast(List[str], get_names()))
         return []
 
     def start(self) -> None:
@@ -126,10 +128,10 @@ class MidiInputManager:
         """外部MIDIメッセージ受信時の処理（型安全版・省略なし）"""
         timestamp = time.time()
         
-        # messageオブジェクトから属性を安全に取得
+        # messageオブジェクトから属性を安全に取得し、型を確定させる
         m_type = str(getattr(message, 'type', 'unknown'))
-        m_note = int(getattr(message, 'note', 0))
-        m_velocity = int(getattr(message, 'velocity', 0))
+        m_note = cast(int, getattr(message, 'note', 0))
+        m_velocity = cast(int, getattr(message, 'velocity', 0))
         
         if m_type == 'note_on' and m_velocity > 0:
             midi_signals.midi_event_signal.emit(m_note, m_velocity, 'on')
