@@ -17,7 +17,10 @@ import shutil      # フォルダ削除やコピーに必要
 import threading
 from copy import deepcopy
 import onnxruntime as ort
-from typing import Dict, Any # Optionalが未使用なら除外 (F401対策)
+from typing import Dict, Any, TYPE_CHECKING, cast# Optionalが未使用なら除外 (F401対策)
+if TYPE_CHECKING:
+    from .timeline_widget import TimelineWidget
+    from .graph_editor_widget import GraphEditorWidget
 
 # ==========================================================================
 # 2. 数値計算・信号処理 (Numerical Processing)
@@ -848,6 +851,15 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
        
         self.playback_thread = None # 今の演奏スレッドを保存する変数
+
+        # reportAssignmentType 対策：明示的な型指定
+        self.timeline_widget: "TimelineWidget"
+        self.graph_editor_widget: "GraphEditorWidget"
+        
+        # 初期化コード内
+        from .timeline_widget import TimelineWidget
+        # castを使用して、定義と実体が一致することをPyrightに分からせる
+        self.timeline_widget = cast(TimelineWidget, TimelineWidget(self))
 
         # システム初期化
         self.history = HistoryManager()
