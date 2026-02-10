@@ -3544,43 +3544,76 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def on_voice_selected(self, character_name: str):
-        """ボイスカード選択時の処理"""
-        if hasattr(self, 'voice_cards'):
+        """
+        ボイスカード選択時の処理。
+        音源データのロード、エンジンの更新、トークマネージャーの設定を同期。
+        """
+        import os  # メソッド内で確実に使えるように念のため
+
+        # 1. UIの表示更新（選択状態のハイライト切り替え）
+        if hasattr(self, 'voice_cards') and self.voice_cards:
             for card in self.voice_cards:
-                if hasattr(card, 'set_selected'):
-                    card.set_selected(card.name == character_name)
+                if card is not None and hasattr(card, 'set_selected'):
+                    # カードの名前と選択された名前が一致すればTrueを渡す
+                    card.set_selected(getattr(card, 'name', '') == character_name)
         
-        voices_dict = self.voice_manager.voices if hasattr(self, 'voice_manager') else {}
+        # 2. 音源データの取得準備
+        # voice_managerが存在しない、またはvoices辞書がない場合を想定
+        voice_mgr = getattr(self, 'voice_manager', None)
+        voices_dict = getattr(voice_mgr, 'voices', {}) if voice_mgr else {}
+        
         if character_name not in voices_dict:
-            self.statusBar().showMessage(f"エラー: {character_name} のデータが見つかりません")
+            status_bar = self.statusBar()
+            if status_bar:
+                status_bar.showMessage(f"エラー: {character_name} のデータが見つかりません")
             return
         
         voice_data = voices_dict[character_name]
-        path = voice_data["path"]
+        path = voice_data.get("path", "")
+        if not path:
+            return
 
         try:
-            self.current_oto_data = self.parse_oto_ini(path)
+            # 3. 原音設定(oto.ini)の解析と保持
+            # parse_oto_iniの戻り値がNoneにならないよう注意
+            oto_data = self.parse_oto_ini(path)
+            self.current_oto_data = oto_data if oto_data else []
             
-            if hasattr(self, 'vo_se_engine') and self.vo_se_engine:
-                if hasattr(self.vo_se_engine, 'set_voice_library'):
-                    self.vo_se_engine.set_voice_library(path)
-                if hasattr(self.vo_se_engine, 'set_oto_data'):
-                    self.vo_se_engine.set_oto_data(self.current_oto_data)
+            # 4. エンジン(vo_se_engine)への音源反映
+            engine = getattr(self, 'vo_se_engine', None)
+            if engine:
+                if hasattr(engine, 'set_voice_library'):
+                    engine.set_voice_library(path)
+                if hasattr(engine, 'set_oto_data'):
+                    engine.set_oto_data(self.current_oto_data)
             
             self.current_voice = character_name
 
+            # 5. トーク用音源(htsvoice)のチェックと設定
             talk_model = os.path.join(path, "talk.htsvoice")
-            if os.path.exists(talk_model) and hasattr(self, 'talk_manager') and self.talk_manager:
-                if hasattr(self.talk_manager, 'set_voice'):
-                    self.talk_manager.set_voice(talk_model)
+            t_manager = getattr(self, 'talk_manager', None)
+            if os.path.exists(talk_model) and t_manager:
+                if hasattr(t_manager, 'set_voice'):
+                    t_manager.set_voice(talk_model)
 
-            char_color = self.voice_manager.get_character_color(path) if hasattr(self, 'voice_manager') else "#FFFFFF"
+            # 6. キャラクターカラーの取得と完了通知
+            char_color = "#FFFFFF"
+            if voice_mgr and hasattr(voice_mgr, 'get_character_color'):
+                char_color = voice_mgr.get_character_color(path)
+            
             msg = f"【{character_name}】に切り替え完了 ({len(self.current_oto_data)} 音素ロード)"
-            self.statusBar().showMessage(msg, 5000)
+            
+            status_bar = self.statusBar()
+            if status_bar:
+                status_bar.showMessage(msg, 5000)
+            
             print(f"Selected voice: {character_name} at {path} (Color: {char_color})")
 
         except Exception as e:
-            QMessageBox.critical(self, "音源ロードエラー", f"音源の読み込み中にエラーが発生しました:\n{e}")
+            # エラー時もstatusBarやQMessageBoxでユーザーに通知（省略なし）
+            print(f"Error loading voice: {e}")
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "音源ロードエラー", f"音源の読み込み中にエラーが発生しました:\n{str(e)}")
 
     def refresh_voice_list(self):
         """voice_banksフォルダを再スキャン"""
@@ -3703,21 +3736,55 @@ class MainWindow(QMainWindow):
             self.pro_monitoring.sync_notes(self.timeline_widget.notes_list)
 
     def parse_ust_dict_to_note(self, d: dict, current_time_sec: float, tempo: float = 120.0):
-        """USTのLengthを秒数に正確に変換"""
+        """
+        USTの辞書データを解析し、NoteEventオブジェクトと次の開始時間を生成する。
+        (length_ticks / 480.0) * (60.0 / tempo) の計算式を完全実装。
+        """
+        # 1. 内部インポート（循環参照防止）
         from .data_models import NoteEvent # type: ignore
-        length_ticks = int(d.get('Length', 480))
-        note_num = int(d.get('NoteNum', 64))
-        lyric = d.get('Lyric', 'あ')
         
-        duration_sec = (length_ticks / 480.0) * (60.0 / tempo)
-        
-        note = NoteEvent(
-            lyrics=lyric, 
-            note_number=note_num, 
-            start_time=current_time_sec,
-            duration=duration_sec
-        )
-        return note, current_time_sec + duration_sec
+        try:
+            # 2. データの抽出（辞書から取得。なければデフォルト値）
+            # get()を使うことで、キーがなくてもクラッシュしないようにガード
+            length_ticks_str = d.get('Length', '480')
+            note_num_str = d.get('NoteNum', '64')
+            lyric = d.get('Lyric', 'あ')
+
+            # 3. 数値への変換
+            # int()変換に失敗した時のために、個別に try-except を入れず
+            # 外側の try で一括キャッチして安全性を確保
+            length_ticks = int(length_ticks_str)
+            note_num = int(note_num_str)
+            
+            # 4. 代表の計算式による秒数変換（省略なし）
+            # ティック数 / 480.0 (四分音符基準) * (60.0 / テンポ) = 実際の秒数
+            duration_sec = (length_ticks / 480.0) * (60.0 / tempo)
+            
+            # 5. NoteEvent オブジェクトの生成
+            # 代表の指定通り、現在の開始時間(current_time_sec)をセット
+            note = NoteEvent(
+                lyrics=lyric, 
+                note_number=note_num, 
+                start_time=current_time_sec,
+                duration=duration_sec
+            )
+            
+            # 6. 「作成したノート」と「次のノートの開始時間」を返却
+            return note, current_time_sec + duration_sec
+
+        except (ValueError, TypeError, Exception) as e:
+            # データが不正だった場合でも、プログラムを止めずに
+            # 「今の時間」をそのまま返して、次のノート解析へ進めるようにする
+            print(f"DEBUG: UST Parse Error in note: {e}")
+            # ダミーのノート（長さ0）を返すか、Noneを返す設計も検討できますが
+            # ここでは処理継続のために最小限のノートを作成して返します
+            dummy_note = NoteEvent(
+                lyrics=" ", 
+                note_number=64, 
+                start_time=current_time_sec,
+                duration=0.0
+            )
+            return dummy_note, current_time_sec
    
     # =========================================================================
     # スクロールバー制御
