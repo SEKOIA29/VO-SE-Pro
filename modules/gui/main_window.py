@@ -2632,9 +2632,6 @@ class MainWindow(QMainWindow):
         ZIP音源インストール完全版（省略なし）
         1. 文字化け修復解凍 2. ゴミ排除 3. AI解析 4. エンジン接続 5. UI更新
         """
-        import zipfile
-        import shutil
-        import os
 
         # 保存先ディレクトリ（voicesフォルダ）
         extract_base_dir = get_resource_path("voices")
