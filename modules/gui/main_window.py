@@ -3465,28 +3465,75 @@ class MainWindow(QMainWindow):
         return [self.graph_editor_widget.get_value_at_time(events, t) for t in times]
 
     def load_json_project(self, filepath: str):
-        """JSONプロジェクトの読み込み"""
+        """
+        JSONプロジェクトの読み込み
+        型チェックエラー(Attribute unknown)を回避し、安全にパラメータを復元する
+        """
+
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            notes = [NoteEvent.from_dict(d) for d in data.get("notes", [])]
-            self.timeline_widget.set_notes(notes)
+            
+            # --- 1. ノートデータの復元 ---
+            raw_notes = data.get("notes", [])
+            notes = []
+            if hasattr(NoteEvent, 'from_dict'):
+                notes = [NoteEvent.from_dict(d) for d in raw_notes]
+            else:
+                # 予備ロジック：直接インスタンス化
+                for d in raw_notes:
+                    notes.append(NoteEvent(**d))
+            
+            # タイムラインへの反映
+            tw = getattr(self, 'timeline_widget', None)
+            if tw and hasattr(tw, 'set_notes'):
+                tw.set_notes(notes)
+            
+            # --- 2. テンポ設定の復元 ---
             tempo = data.get("tempo_bpm", 120)
-            self.tempo_input.setText(str(tempo))
-            self.update_tempo_from_input()
+            t_input = getattr(self, 'tempo_input', None)
+            if t_input:
+                t_input.setText(str(tempo))
+                if hasattr(self, 'update_tempo_from_input'):
+                    self.update_tempo_from_input()
+            
+            # --- 3. グラフパラメータ（ピッチ等）の復元 ---
+            gw = getattr(self, 'graph_editor_widget', None)
             saved_params = data.get("parameters", {})
-            for mode in self.graph_editor_widget.all_parameters.keys():
-                if mode in saved_params:
-                    self.graph_editor_widget.all_parameters[mode] = [
-                        PitchEvent(time=p["t"], value=p["v"]) for p in saved_params[mode]
-                    ]
-            self.update_scrollbar_range()
-            self.update_scrollbar_v_range()
-            self.graph_editor_widget.update()
-            self.timeline_widget.update()
-            self.statusBar().showMessage(f"読み込み完了: {len(notes)}ノート")
+            
+            # Pyrightエラー回避：all_parameters の存在を確認
+            if gw and hasattr(gw, 'all_parameters'):
+                # gw.all_parameters が Dict[str, List] であることを想定
+                target_params = gw.all_parameters
+                for mode in target_params.keys():
+                    if mode in saved_params:
+                        # PitchEvent(time=p["t"], value=p["v"]) の復元
+                        restored_events = []
+                        for p in saved_params[mode]:
+                            # キーが存在するか安全に確認
+                            t_val = p.get("t", p.get("time", 0))
+                            v_val = p.get("v", p.get("value", 0))
+                            restored_events.append(PitchEvent(time=t_val, value=v_val))
+                        
+                        target_params[mode] = restored_events
+            
+            # --- 4. 表示の更新（安全な呼び出し） ---
+            if hasattr(self, 'update_scrollbar_range'):
+                self.update_scrollbar_range()
+            if hasattr(self, 'update_scrollbar_v_range'):
+                self.update_scrollbar_v_range()
+            
+            if gw:
+                gw.update()
+            if tw:
+                tw.update()
+            
+            status_bar = self.statusBar()
+            if status_bar:
+                status_bar.showMessage(f"読み込み完了: {len(notes)}ノート")
+
         except Exception as e:
-            QMessageBox.critical(self, "エラー", f"読み込み失敗: {e}")
+            QMessageBox.critical(self, "エラー", f"読み込み失敗: {str(e)}")
 
     def load_midi_file_from_path(self, filepath: str):
         """MIDI読み込み（自動歌詞変換機能付き）"""
@@ -4121,16 +4168,46 @@ class MainWindow(QMainWindow):
     # ==========================================================================
 
     def _get_yomi_from_lyrics(self, lyrics: str) -> str:
+        """
+        歌詞（漢字・かな混じり）を平仮名に変換する（省略なし完全版）
+        pykakasiが未インストールの場合でも、歌詞を壊さず返す安全設計。
+        """
+        if not lyrics:
+            return ""
+
         try:
+            # メソッド内インポートにより、ライブラリがない環境でも起動を妨げない
             import pykakasi
+            
+            # インスタンス生成（最新のpykakasi仕様に準拠）
             kks = pykakasi.kakasi()
             result = kks.convert(lyrics)
-            return "".join([item['hira'] for item in result])
-        except (ImportError, Exception):
+            
+            # 各形態素の 'hira' (ひらがな) 属性を結合
+            yomi = "".join([str(item.get('hira', '')) for item in result])
+            return yomi
+            
+        except (ImportError, ModuleNotFoundError):
+            # pykakasiがインストールされていない場合のフォールバック
+            print("DEBUG: pykakasi not found. Returning raw lyrics.")
+            return lyrics
+        except Exception as e:
+            # その他の予期せぬエラー（辞書破損など）への対応
+            print(f"DEBUG: Yomi conversion error: {e}")
             return lyrics
 
     def midi_to_hz(self, midi_note: int) -> float:
-        return 440.0 * (2.0 ** ((midi_note - 69) / 12.0))
+        """
+        MIDIノート番号を周波数(Hz)に変換する（数学的完全版）
+        計算式: $f = 440 \times 2^{\frac{n-69}{12}}$
+        """
+        # MIDI番号が None や不正な値の場合のガード
+        if midi_note is None:
+            return 0.0
+            
+        # 浮動小数点数として計算し、型安全性を確保
+        # 69は A4 (440Hz) のMIDI番号
+        return float(440.0 * (2.0 ** ((float(midi_note) - 69.0) / 12.0)))
 
     # ==========================================================================
     # イベントハンドラ
