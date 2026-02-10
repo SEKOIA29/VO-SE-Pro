@@ -2748,7 +2748,6 @@ def import_voice_bank(self, zip_path: str):
         except Exception as e:
             QMessageBox.critical(self, "導入エラー", f"インストール中にエラーが発生しました:\n{str(e)}")
             
-
     def dragEnterEvent(self, event):
         """ファイルドラッグ時の処理"""
         if event.mimeData().hasUrls():
