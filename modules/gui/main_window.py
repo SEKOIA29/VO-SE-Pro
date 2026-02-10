@@ -3761,9 +3761,7 @@ class MainWindow(QMainWindow):
                 engine.play_voice(internal_key)
 
     def get_cached_oto(self, voice_path: str):
-        """ 原音設定のキャッシュ管理。pickleによる高速ロード"""
-        import pickle
-        import os
+        """ 原音設定のキャッシュ管理。pickleによる高速"""
 
         # キャッシュファイル(.vose)と元の設定ファイル(.ini)のパス
         cache_path = os.path.join(voice_path, "oto_cache.vose")
