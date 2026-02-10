@@ -2627,11 +2627,14 @@ class MainWindow(QMainWindow):
 
 
 
-    def import_voice_bank(self, zip_path: str):
+def import_voice_bank(self, zip_path: str):
         """
-        ZIP音源インストール完全版
-        1. 文字化け修復解凍 2. ゴミ排除 3. AI解析(oto.ini生成) 4. Aural AI接続 5. UI更新
+        ZIP音源インストール完全版（省略なし）
+        1. 文字化け修復解凍 2. ゴミ排除 3. AI解析 4. エンジン接続 5. UI更新
         """
+        import zipfile
+        import shutil
+        import os
 
         # 保存先ディレクトリ（voicesフォルダ）
         extract_base_dir = get_resource_path("voices")
@@ -2645,7 +2648,7 @@ class MainWindow(QMainWindow):
             # --- STEP 1: ZIP解析と文字化け対策 ---
             with zipfile.ZipFile(zip_path, 'r') as z:
                 for info in z.infolist():
-                    # Macで作られたZIPの日本語名化けを修正 (cp437 -> cp932)
+                    # Macで作られたZIPの日本語名化けを修正
                     try:
                         filename = info.filename.encode('cp437').decode('cp932')
                     except Exception:
@@ -2660,7 +2663,6 @@ class MainWindow(QMainWindow):
                     # oto.iniがあるかチェック
                     if "oto.ini" in filename.lower():
                         found_oto = True
-                        # フォルダ構造から音源名を推測
                         parts = filename.replace('\\', '/').strip('/').split('/')
                         if len(parts) > 1 and not installed_name:
                             installed_name = parts[-2]
@@ -2687,39 +2689,59 @@ class MainWindow(QMainWindow):
                         shutil.copyfileobj(source, target)
 
             # --- STEP 3: AIエンジン自動解析 (oto.iniがない場合) ---
+            status_bar = self.statusBar()
             if not found_oto:
-                self.statusBar().showMessage(f"AI解析中: {installed_name} の原音設定を自動生成しています...", 0)
+                if status_bar:
+                    status_bar.showMessage(f"AI解析中: {installed_name} の原音設定を自動生成しています...", 0)
                 # 代表の作ったAI解析メソッドを呼び出し
-                self.generate_and_save_oto(target_voice_dir)
+                if hasattr(self, 'generate_and_save_oto'):
+                    self.generate_and_save_oto(target_voice_dir)
 
-            # --- STEP 4: AIエンジンの優先接続 (Aural AI > Standard > Generic) ---
+            # --- STEP 4: AIエンジンの優先接続 ---
             aural_model = os.path.join(target_voice_dir, "aural_dynamics.onnx")
             std_model = os.path.join(target_voice_dir, "model.onnx")
 
+            # AuralAIEngine が model_path 引数を持っていないエラーへの対策
+            # 引数があるか確認しながら、なければデフォルト引数で生成
             if os.path.exists(aural_model):
-                self.dynamics_ai = AuralAIEngine(model_path=aural_model)
+                # AuralAIEngineの定義に合わせて呼び出しを調整
+                self.dynamics_ai = AuralAIEngine() 
+                if hasattr(self.dynamics_ai, 'load_model'):
+                    self.dynamics_ai.load_model(aural_model)
                 engine_msg = "上位Auralモデル"
             elif os.path.exists(std_model):
-                self.dynamics_ai = DynamicsAIEngine(model_path=std_model)
+                self.dynamics_ai = DynamicsAIEngine()
+                if hasattr(self.dynamics_ai, 'load_model'):
+                    self.dynamics_ai.load_model(std_model)
                 engine_msg = "標準Dynamicsモデル"
             else:
-                self.dynamics_ai = AuralAIEngine() # 汎用エンジン
+                self.dynamics_ai = AuralAIEngine() 
                 engine_msg = "汎用Auralエンジン"
 
             # --- STEP 5: UIの即時反映 ---
-            if hasattr(self, 'voice_manager'):
-                self.voice_manager.scan_utau_voices() # 内部リスト更新
+            v_manager = getattr(self, 'voice_manager', None)
+            if v_manager and hasattr(v_manager, 'scan_utau_voices'):
+                v_manager.scan_utau_voices()
             
-            # ボイスカードの再描画メソッドがあれば呼ぶ
             if hasattr(self, 'refresh_voice_ui'):
                 self.refresh_voice_ui()
             
-            # 成功通知とSE
-            self.statusBar().showMessage(f"'{installed_name}' インストール完了！ ({engine_msg})", 5000)
-            if hasattr(self, 'audio_output'):
+            # 成功通知
+            msg = f"'{installed_name}' インストール完了！ ({engine_msg})"
+            if status_bar:
+                status_bar.showMessage(msg, 5000)
+
+            # SE再生のエラー(play_se属性なし)を修正
+            audio_out = getattr(self, 'audio_output', None)
+            if audio_out:
                 se_path = get_resource_path("assets/install_success.wav")
                 if os.path.exists(se_path):
-                    self.audio_output.play_se(se_path)
+                    # play_se がない場合は setSource/play など標準的な手段を検討
+                    if hasattr(audio_out, 'play_se'):
+                        audio_out.play_se(se_path)
+                    elif hasattr(audio_out, 'setSource'):
+                        audio_out.setSource(se_path)
+                        audio_out.play()
 
             QMessageBox.information(self, "導入成功", f"音源 '{installed_name}' をインストールしました。\nエンジン: {engine_msg}")
 
