@@ -6,6 +6,11 @@ import glob
 import sys
 import logging
 
+def get_resource_path(relative_path: str) -> str:
+    # hasattrでチェックすることで Pyright のエラーを回避
+    base_path = getattr(sys, '_MEIPASS', os.path.abspath("."))
+    return os.path.join(base_path, relative_path)
+
 class VoiceManager:
     def __init__(self):
         self.system = platform.system()
