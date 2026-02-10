@@ -33,14 +33,14 @@ import math
 # 3. GUIライブラリ (PySide6 / Qt)
 # ==========================================================================
 from PySide6.QtCore import (
-    Qt, Signal, Slot, QThread
+    Qt, Signal, Slot, QThread, QTimer 
 )
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QFileDialog, QScrollBar, QInputDialog, QLineEdit,
     QLabel, QSplitter, QComboBox, QProgressBar, QMessageBox, QToolBar,
     QGridLayout, QFrame, QDialog, QScrollArea, QSizePolicy, QButtonGroup,
-    QListWidget, QListWidgetItem 
+    QListWidget, QListWidgetItem, QSlider 
 )
 from PySide6.QtGui import (
     QAction, QKeySequence, QFont, QShortcut
