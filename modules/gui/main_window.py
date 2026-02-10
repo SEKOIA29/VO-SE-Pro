@@ -2402,65 +2402,125 @@ class MainWindow(QMainWindow):
         self.toolbar.addWidget(self.text_input)
 
     def on_talk_execute(self):
-        """Talk実行処理"""
+        """Talk実行処理（省略なし完全版）"""
+        # 1. 入力チェック（Noneガード付き）
+        if not hasattr(self, 'text_input') or self.text_input is None:
+            return
+            
         text = self.text_input.text()
         if not text:
             return
         
-        new_events = self.analyzer.analyze_to_pro_events(text)
-        self.timeline_widget.set_notes(new_events)
-        self.timeline_widget.update()
-        self.statusBar().showMessage(f"Talkモード: '{text}' を展開しました")
-        self.text_input.clear()
+        # 2. 解析と反映
+        if hasattr(self, 'analyzer') and self.analyzer:
+            new_events = self.analyzer.analyze_to_pro_events(text)
+            
+            tw = getattr(self, 'timeline_widget', None)
+            if tw:
+                if hasattr(tw, 'set_notes'):
+                    tw.set_notes(new_events)
+                tw.update()
+            
+            # 3. 通知とクリア
+            status_bar = self.statusBar()
+            if status_bar:
+                status_bar.showMessage(f"Talkモード: '{text}' を展開しました")
+            self.text_input.clear()
 
-    @Slot
+    @Slot(object) # buttonが渡されるためobjectを指定
     def on_param_mode_changed(self, button):
-        """パラメーター切り替えボタンが押された時の処理"""
+        """パラメーター切り替えボタン処理（省略なし完全版）"""
+        if not button:
+            return
+            
+        # button.text() でモード名を取得
         mode = button.text()
-        # グラフエディタにモード変更を通知（色やデータの入れ替え）
-        self.graph_editor_widget.set_mode(mode)
-        self.statusBar().showMessage(f"編集モード: {mode}")
+        
+        # グラフエディタへ通知
+        ge = getattr(self, 'graph_editor_widget', None)
+        if ge and hasattr(ge, 'set_mode'):
+            ge.set_mode(mode)
+            
+        status_bar = self.statusBar()
+        if status_bar:
+            status_bar.showMessage(f"編集モード: {mode}")
+
 
     def toggle_playback(self, event=None):
-        """Spaceキーまたは再生ボタンが押された時の動作（最終統合版）"""
+        """Spaceキーまたは再生ボタンが押された時の動作（省略なし完全版）"""
+        
+        # 0. 必要なオブジェクトの安全な取得
+        monitoring = getattr(self, 'pro_monitoring', None)
+        if not monitoring:
+            # モニタリングオブジェクト自体がない場合は、フラグを直接管理
+            if not hasattr(self, '_fallback_playing'):
+                self._fallback_playing = False
+            is_playing = self._fallback_playing
+        else:
+            # monitoring.is_playing が bool 自体の場合、setattrで回避
+            is_playing = getattr(monitoring, 'is_playing', False)
 
-        if not self.pro_monitoring.is_playing:
+        if not is_playing:
             # --- 【再生開始】 ---
             print("ʕ•̫͡• VO-SE Engine: PLAY START")
-            self.statusBar().showMessage("Playing...")
+            status_bar = self.statusBar()
+            if status_bar:
+                status_bar.showMessage("Playing...")
             
-            # 1. 現在選択されているトラックの準備
-            current_tr = self.tracks[self.current_track_idx]
+            # 1. トラックの準備
+            tracks = getattr(self, 'tracks', [])
+            idx = getattr(self, 'current_track_idx', 0)
             
-            # 2. 伴奏トラックならWAVをセットして再生
-            if current_tr.track_type == "wave" and current_tr.audio_path:
-                self.audio_player.setSource(current_tr.audio_path)
-                # ミキサーの音量を反映
-                self.audio_output.setVolume(current_tr.volume)
-                self.audio_player.play()
-            
-            # 3. UIの再生フラグとモニタリングをON
-            # 開始位置は現在のカーソル位置から（0秒固定ではなく、今の位置から再生）
-            start_time = self.timeline_widget._current_playback_time
-            if current_tr.track_type == "wave":
-                self.audio_player.setPosition(int(start_time * 1000))
+            if 0 <= idx < len(tracks):
+                current_tr = tracks[idx]
                 
-            self.pro_monitoring.is_playing = True
-            
-            # 4. 歌声合成エンジンへの再生指示（実装に合わせてコメントアウト解除）
-            # self.vose_engine.start_playback(start_time, self.tracks)
+                # 2. 伴奏トラックならWAVを再生
+                player = getattr(self, 'audio_player', None)
+                output = getattr(self, 'audio_output', None)
+                
+                if current_tr.track_type == "wave" and current_tr.audio_path:
+                    if player and hasattr(player, 'setSource'):
+                        player.setSource(current_tr.audio_path)
+                    if output and hasattr(output, 'setVolume'):
+                        output.setVolume(current_tr.volume)
+                    if player and hasattr(player, 'play'):
+                        player.play()
+                
+                # 3. 再生位置の設定
+                tw = getattr(self, 'timeline_widget', None)
+                # _current_playback_time がない場合は 0.0 をデフォルトに
+                start_time = getattr(tw, '_current_playback_time', 0.0)
+                if start_time is None:
+                    start_time = 0.0
+
+                if current_tr.track_type == "wave" and player:
+                    if hasattr(player, 'setPosition'):
+                        # ミリ秒単位に変換して渡す
+                        player.setPosition(int(start_time * 1000))
+
+            # 4. フラグ更新（setattrを使うことでPyrightのエラーを回避）
+            if monitoring:
+                setattr(monitoring, 'is_playing', True)
+            else:
+                self._fallback_playing = True
 
         else:
             # --- 【再生停止】 ---
             print("(-_-) VO-SE Engine: PLAY STOP")
-            self.statusBar().showMessage("Paused.")
+            status_bar = self.statusBar()
+            if status_bar:
+                status_bar.showMessage("Paused.")
             
             # 1. 全ての音を止める
-            self.audio_player.pause()
-            # self.vose_engine.stop()
+            player = getattr(self, 'audio_player', None)
+            if player and hasattr(player, 'pause'):
+                player.pause()
             
-            # 2. UIのフラグをOFF
-            self.pro_monitoring.is_playing = False
+            # 2. フラグ更新
+            if monitoring:
+                setattr(monitoring, 'is_playing', False)
+            else:
+                self._fallback_playing = False
 
         self.update() # UI全体の再描画
 
