@@ -57,6 +57,8 @@ from .timeline_widget import TimelineWidget
 from .voice_manager import VoiceManager
 from .ai_manager import AIManager
 from .aural_engine import AuralAIEngine
+from .graph_editor_widget import GraphEditorWidget
+from .keyboard_sidebar_widget import KeyboardSidebarWidget
 
 try:
     from .widgets import VoiceCardWidget
@@ -846,6 +848,16 @@ class AnalysisThread(QThread):
 
 class MainWindow(QMainWindow):
     """VO-SE Pro  メインウィンドウ"""
+    
+    # --- Pyrightの reportAttributeAccessIssue 対策：全属性を明示的に宣言 ---
+    timeline_widget: TimelineWidget
+    graph_editor_widget: GraphEditorWidget
+    keyboard_sidebar: KeyboardSidebarWidget
+    render_timer: QTimer
+    playback_timer: QTimer
+    vertical_scroll: QSlider
+    input_fields: Dict[str, Any]
+    parameters: Dict[str, Any]
 
     def __init__(self, parent=None, engine=None, ai=None, config=None):
         super().__init__(parent)
@@ -865,6 +877,10 @@ class MainWindow(QMainWindow):
         self.history = HistoryManager()
         self.tracks = [VoseTrack("Vocal 1", "vocal")]
         self.current_track_idx = 0
+
+        # タイマー類の確実な初期化
+        self.render_timer = QTimer(self)
+        self.playback_timer = QTimer(self)
 
         # --- インポートしたクラスをインスタンス化して「使用中」にする ---
         self.os_type = platform.system()  # これで platform を使用
