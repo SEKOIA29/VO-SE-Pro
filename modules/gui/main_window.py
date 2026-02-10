@@ -3209,28 +3209,54 @@ class MainWindow(QMainWindow):
 
 
 # --- ファイル読み書き・インポート関連 ---
-
     def load_ust_file(self, filepath: str):
-        """UTAUの .ust ファイルを読み込んでタイムラインに配置"""
+        """
+        UTAUの .ust ファイルを読み込んでタイムラインに配置。
+        エンコーディング問題や属性の有無を完全に考慮した完全版。
+        """
         try:
+            # 1. 安全な読み込み（read_file_safelyがNoneを返す可能性を考慮）
             content = self.read_file_safely(filepath)
+            if content is None:
+                return
+
             lines = content.splitlines()
             notes = []
-            current_note = {}
+            current_note: dict[str, str] = {} # 型を明示
+            
             for line in lines:
-                if line.startswith('[#'): 
+                line = line.strip()
+                if line.startswith('[#'): # [#0001] などのセクション開始
                     if current_note:
-                        notes.append(self.parse_ust_dict_to_note(current_note))
+                        # 2. 辞書からノートオブジェクトへの変換（属性チェック付き）
+                        note_obj = self.parse_ust_dict_to_note(current_note)
+                        if note_obj:
+                            notes.append(note_obj)
                     current_note = {}
                 elif '=' in line:
-                    key, val = line.split('=', 1)
-                    current_note[key] = val
+                    parts = line.split('=', 1)
+                    if len(parts) == 2:
+                        key, val = parts
+                        current_note[key] = val
+            
+            # ループ終了後の最後のノートを処理
             if current_note:
-                notes.append(self.parse_ust_dict_to_note(current_note))
-            self.timeline_widget.set_notes(notes)
-            self.statusBar().showMessage(f"UST読み込み完了: {len(notes)}ノート")
+                note_obj = self.parse_ust_dict_to_note(current_note)
+                if note_obj:
+                    notes.append(note_obj)
+
+            # 3. タイムラインへの反映（timeline_widgetの存在チェック）
+            if hasattr(self, 'timeline_widget') and self.timeline_widget:
+                self.timeline_widget.set_notes(notes)
+                
+                # statusBarのNoneガード
+                status_bar = self.statusBar()
+                if status_bar:
+                    status_bar.showMessage(f"UST読み込み完了: {len(notes)}ノート")
+            
         except Exception as e:
-            QMessageBox.critical(self, "エラー", f"UST読み込み失敗: {e}")
+            # QMessageBoxの静的メソッド呼び出し（PySide6の正しい形式）
+            QMessageBox.critical(self, "エラー", f"UST読み込み失敗: {str(e)}")
 
     def save_oto_ini(self, path, content):
         """UTF-8の文字が含まれていてもエラーで落ちずに書き出す"""
