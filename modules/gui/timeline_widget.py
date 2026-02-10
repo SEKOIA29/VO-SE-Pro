@@ -169,7 +169,8 @@ class TimelineWidget(QWidget):
                 if len(samples) < num_peaks:
                     num_peaks = len(samples)
                 
-                if num_peaks <= 0: return []
+                if num_peaks <= 0:
+                    return []
                 
                 chunks = np.array_split(samples, num_peaks)
                 peaks = [float(np.max(np.abs(chunk))) if len(chunk) > 0 else 0.0 for chunk in chunks]
@@ -315,7 +316,8 @@ class TimelineWidget(QWidget):
             prev = curr
 
     def keyPressEvent(self, event: Any) -> None:
-        if event is None: return
+        if event is None:
+            return
         ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
         key = event.key()
         if key == Qt.Key.Key_1:
@@ -442,7 +444,8 @@ class TimelineWidget(QWidget):
         self.update()
 
     def mouseDoubleClickEvent(self, event: Any) -> None:
-        if event is None: return
+        if event is None: 
+            return
         pos_pt = QPoint(int(event.position().x()), int(event.position().y()))
         for n in self.notes_list:
             if self.get_note_rect(n).contains(pos_pt):
