@@ -645,13 +645,36 @@ except ImportError:
 try:
     from .graph_editor_widget import GraphEditorWidget
 except ImportError:
+    # Actions (Pyright) は、インポートに失敗した際のこのクラス定義も厳密にチェックします。
+    # main_window.py から呼び出される全ての属性・メソッドをここで「型」として定義します。
     class GraphEditorWidget(QWidget):
         pitch_data_updated = Signal(list)
-        def __init__(self): 
-            super().__init__()
-            self.tempo = 120
-        def set_pitch_events(self, events): pass
-        def set_current_time(self, t): pass
+        
+        def __init__(self, parent: Optional[QWidget] = None): 
+            super().__init__(parent)
+            self.tempo: float = 120.0
+            # ログ3438行目対策: all_parameters 属性を定義
+            self.all_parameters: Dict[str, Any] = {}
+            # スクロールバー関連のエラー対策
+            self.scroll_x_offset: int = 0
+
+        def set_pitch_events(self, events: Any) -> None: 
+            pass
+
+        def set_current_time(self, t: float) -> None: 
+            pass
+
+        # ログ2401行目対策: 横スクロールオフセット設定
+        def set_horizontal_offset(self, val: int) -> None:
+            pass
+
+        # ログ3498行目 / _sample_range 対策: 値の取得メソッド
+        def get_value_at_time(self, events: Any, t: float) -> float:
+            return 0.5
+
+        # ログ3549行目付近対策: その他想定されるメソッド
+        def update_parameter(self, name: str, value: Any) -> None:
+            pass
 
 try:
     from .voice_manager import VoiceManager
