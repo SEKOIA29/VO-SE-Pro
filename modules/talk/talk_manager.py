@@ -1,9 +1,64 @@
 import os  # F821 対策：絶対に必要なインポートです
+import ctypes
 import soundfile as sf
 import numpy as np
 import pyopenjtalk
 from PySide6.QtCore import QObject
 from typing import Any, List, Dict, Tuple, Optional
+
+class NoteEvent(ctypes.Structure):
+    _fields_ = [
+        ("wav_path", ctypes.c_char_p),      # 検索キー（phoneme）
+        ("pitch_length", ctypes.c_int),      # フレーム数
+        ("pitch_curve", ctypes.POINTER(ctypes.c_double)),
+        ("gender_curve", ctypes.POINTER(ctypes.c_double)),
+        ("tension_curve", ctypes.POINTER(ctypes.c_double)),
+        ("breath_curve", ctypes.POINTER(ctypes.c_double)),
+    ]
+
+class VoseRendererBridge:
+    def __init__(self, dll_path: str):
+        # 代表の書き上げたDLL/soをロード
+        self.lib = ctypes.CDLL(dll_path)
+        
+        # init_official_engine() の定義
+        self.lib.init_official_engine.argtypes = []
+        self.lib.init_official_engine.restype = None
+        
+        # execute_render(NoteEvent* notes, int note_count, const char* output_path)
+        self.lib.execute_render.argtypes = [
+            ctypes.POINTER(NoteEvent), 
+            ctypes.c_int, 
+            ctypes.c_char_p
+        ]
+        self.lib.execute_render.restype = None
+        
+        # エンジン初期化（組み込みボイスの登録）
+        self.lib.init_official_engine()
+
+    def render(self, notes_data: List[dict], output_path: str):
+        """
+        代表、ここが連携の核心です。
+        PythonのリサーチデータをC++の構造体配列に変換して一気に投げます。
+        """
+        note_count = len(notes_data)
+        NotesArray = NoteEvent * note_count
+        c_notes = NotesArray()
+
+        # 各ノートのパラメータをC型に変換
+        for i, data in enumerate(notes_data):
+            c_notes[i].wav_path = data['phoneme'].encode('utf-8')
+            c_notes[i].pitch_length = len(data['pitch'])
+            
+            # double配列をポインタに変換（省略なしでメモリ確保）
+            c_notes[i].pitch_curve = (ctypes.c_double * len(data['pitch']))(*data['pitch'])
+            c_notes[i].gender_curve = (ctypes.c_double * len(data['gender']))(*data['gender'])
+            c_notes[i].tension_curve = (ctypes.c_double * len(data['tension']))(*data['tension'])
+            c_notes[i].breath_curve = (ctypes.c_double * len(data['breath']))(*data['breath'])
+
+        # C++側の究極のレンダリング関数を呼び出し
+        self.lib.execute_render(c_notes, note_count, output_path.encode('utf-8'))
+        
 
 class IntonationAnalyzer:
     def __init__(self) -> None:
@@ -80,6 +135,7 @@ class TalkManager(QObject):
         """
         pyopenjtalkを使用して高品質なWAVを生成する。
         重複インポートを排除し、F811 / F401 エラーを解決した完全防護版。
+        代表の設計した「3段階の合成試行」を1行も省略せず実装しています。
         """
         # 1. 入力チェック
         if not text:
@@ -105,7 +161,7 @@ class TalkManager(QObject):
             if v_path and os.path.exists(v_path):
                 # --- ボイスモデルの適用試行（代表の設計を完全踏襲） ---
                 try:
-                    # 優先順位1: 'htsvoice' (公式推奨)
+                    # 優先順位1: 'htsvoice' (公式推奨キーワード引数)
                     options["htsvoice"] = v_path
                     result = pyopenjtalk.tts(text, **options)
                     
@@ -117,7 +173,7 @@ class TalkManager(QObject):
                 except (TypeError, Exception) as e:
                     print(f"DEBUG: Falling back from 'htsvoice' argument: {e}")
                     try:
-                        # 優先順位2: 'font' (一部のラップ版対策)
+                        # 優先順位2: 'font' (一部のラップ版や古いラッパー対策)
                         options.pop("htsvoice", None)
                         options["font"] = v_path
                         result = pyopenjtalk.tts(text, **options)
@@ -128,7 +184,7 @@ class TalkManager(QObject):
                             raise ValueError("TTS result with 'font' is None")
 
                     except (TypeError, Exception):
-                        # 優先順位3: 位置引数
+                        # 優先順位3: 位置引数 (キーワード引数を一切解さない環境向け)
                         try:
                             options.pop("font", None)
                             # 位置引数として v_path を直接渡す
@@ -140,6 +196,10 @@ class TalkManager(QObject):
                                 raise ValueError("TTS result with positional arg is None")
                         except Exception as final_e:
                             print(f"DEBUG: All synthesis attempts failed: {final_e}")
+                            # 最終手段：デフォルト音声
+                            result = pyopenjtalk.tts(text, **options)
+                            if result is not None and len(result) >= 2:
+                                x, sr = result[0], result[1]
             else:
                 # ボイス指定がない場合はデフォルト音声で合成
                 result = pyopenjtalk.tts(text, **options)
@@ -159,7 +219,7 @@ class TalkManager(QObject):
             # 8. WAVファイルの書き出し
             sf.write(output_path, x_int16, sr)
             
-            # 9. 最終的な確認 (os モジュールの未定義を解決)
+            # 9. 最終的な物理ファイル確認
             if os.path.exists(output_path):
                 print(f"SUCCESS: Synthesized speech saved to {output_path}")
                 return True, output_path
