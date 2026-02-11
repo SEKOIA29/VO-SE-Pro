@@ -574,6 +574,10 @@ except ImportError:
             self.pixels_per_beat = 40
             self.pixels_per_second = 50
             self.lowest_note_display = 21
+            self._current_playback_time = 0.0
+            self.note_color = "#FF0000"
+            self.note_border_color = "#000000"
+            self.text_color = "#FFFFFF"
         def get_notes_data(self): return self.notes_list
         def get_all_notes(self): return self.notes_list
         def set_notes(self, notes): self.notes_list = notes
@@ -590,6 +594,7 @@ except ImportError:
         def beats_to_pixels(self, beats): return beats * self.pixels_per_beat
         def note_to_y(self, note_num): return (127 - note_num) * self.key_height_pixels
         def get_pitch_data(self): return []
+        def get_audio_peaks(self): return []
         def set_pitch_data(self, data): pass
         def add_note_from_midi(self, note_num, velocity): pass
         def update(self): super().update()
