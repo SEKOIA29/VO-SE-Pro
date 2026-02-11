@@ -1,10 +1,10 @@
 import os
-#import sys
+import sys
 import numpy as np
 import soundfile as sf
 import pyopenjtalk
+from typing import Any, List, Dict, Tuple, Optional, cast
 from PySide6.QtCore import QObject
-from typing import Any, List, Dict, Tuple, Optional
 
 class IntonationAnalyzer:
     def __init__(self) -> None:
@@ -67,18 +67,14 @@ class TalkManager(QObject):
         else:
             print(f"WARNING: Voice path not found: {htsvoice_path}")
             return False
+            
 def synthesize(self, text: str, output_path: str, speed: float = 1.0) -> Tuple[bool, str]:
         """
         pyopenjtalkを使用して高品質なWAVを生成する。
-        Pyrightの引数名エラー(reportCallIssue)を完全に回避するため、**kwargs戦略を採用。
-        代表の掟に従い、1行も省略なしの完全防護版。
+        重複インポートを排除し、F811 / F401 エラーを解決した完全防護版。
         """
-        import os
-        import sys
-        import numpy as np
-        import soundfile as sf
-        import pyopenjtalk
-        from typing import Optional, Dict, Any, Tuple
+        # 関数内でのインポートは、外部ライブラリの利用確認のみに留める
+        # (typing関係の再定義エラーを避けるため、冒頭の定義を使用します)
 
         # 1. 入力チェック
         if not text:
@@ -105,11 +101,10 @@ def synthesize(self, text: str, output_path: str, speed: float = 1.0) -> Tuple[b
             if v_path and os.path.exists(v_path):
                 # --- ボイスモデルの適用試行（代表の設計を完全踏襲） ---
                 try:
-                    # 優先順位1: 'htsvoice'
+                    # 優先順位1: 'htsvoice' (公式推奨)
                     options["htsvoice"] = v_path
                     result = pyopenjtalk.tts(text, **options)
                     
-                    # 戻り値の型チェック（ここを省略せずに記述）
                     if result is not None and len(result) >= 2:
                         x, sr = result[0], result[1]
                     else:
@@ -118,7 +113,7 @@ def synthesize(self, text: str, output_path: str, speed: float = 1.0) -> Tuple[b
                 except (TypeError, Exception) as e:
                     print(f"DEBUG: Falling back from 'htsvoice' argument: {e}")
                     try:
-                        # 優先順位2: 'font'
+                        # 優先順位2: 'font' (一部のラップ版対策)
                         options.pop("htsvoice", None)
                         options["font"] = v_path
                         result = pyopenjtalk.tts(text, **options)
@@ -132,6 +127,7 @@ def synthesize(self, text: str, output_path: str, speed: float = 1.0) -> Tuple[b
                         # 優先順位3: 位置引数
                         try:
                             options.pop("font", None)
+                            # 位置引数として v_path を直接渡す
                             result = pyopenjtalk.tts(text, v_path, **options)
                             
                             if result is not None and len(result) >= 2:
@@ -151,7 +147,7 @@ def synthesize(self, text: str, output_path: str, speed: float = 1.0) -> Tuple[b
                 return False, "音声データの生成に失敗しました（データが空です）。"
 
             # 7. 音響的な正規化と16bit変換（代表の指定値 32768 を採用）
-            # ここも省略なしで記述
+            # floatの場合はint16の範囲にクリッピングしてから変換
             x_clipped = np.clip(x, -32768, 32767)
             x_int16 = x_clipped.astype(np.int16)
             
