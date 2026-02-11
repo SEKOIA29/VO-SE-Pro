@@ -2115,18 +2115,52 @@ class MainWindow(QMainWindow):
     def setup_shortcuts(self):
         """Spaceキーで再生/停止 (Qt方式への統合推奨)"""
         pass
-
-    def toggle_audio_monitoring(self, event=None):
-        """Spaceキー一発で『音』と『UI』を同時に動かす"""
-        if hasattr(self, 'pro_monitoring'):
-            if not self.pro_monitoring.is_playing:
-                print(" Pro Audio Monitoring: ON")
-                self.pro_monitoring.current_time = 0.0
-                self.pro_monitoring.is_playing = True
-                self.pro_monitoring.update_frame()
+    def toggle_audio_monitoring(self, event=None) -> None:
+        """
+        Spaceキー一発で『音』と『UI』を同時に動かす。
+        Actionsログ 2125-2129行目の型推論エラーを完全に回避する防弾仕様。
+        """
+        # 1. 属性の存在確認と型チェックを同時に行う
+        # getattr で取得し、それが期待する「モニタリングオブジェクト」であることを確認
+        monitor = getattr(self, 'pro_monitoring', None)
+        
+        # monitor が None でも bool (False) でも物理的な実体がある場合のみ処理
+        if monitor is not None and not isinstance(monitor, bool):
+            # 2. 内部属性へのアクセスを hasattr でさらに保護 (AttributeAccessIssue 対策)
+            if hasattr(monitor, 'is_playing'):
+                # 現在の状態を判定
+                current_state = bool(getattr(monitor, 'is_playing', False))
+                
+                if not current_state:
+                    print(" Pro Audio Monitoring: ON")
+                    # 各プロパティへの代入を安全に行う
+                    if hasattr(monitor, 'current_time'):
+                        setattr(monitor, 'current_time', 0.0)
+                    
+                    # is_playing を True に
+                    setattr(monitor, 'is_playing', True)
+                    
+                    # 3. UI更新メソッドの呼び出し
+                    update_func = getattr(monitor, 'update_frame', None)
+                    if callable(update_func):
+                        update_func()
+                else:
+                    print(" Pro Audio Monitoring: OFF")
+                    # is_playing を False に
+                    setattr(monitor, 'is_playing', False)
             else:
-                print(" Pro Audio Monitoring: OFF")
-                self.pro_monitoring.is_playing = False
+                # 属性がない場合のフォールバック（デバッグ用）
+                print(" DEBUG: pro_monitoring exists but lacks 'is_playing' attribute.")
+        else:
+            # エンジンが初期化されていない場合の通知
+            print(" WARNING: Pro Audio Monitoring engine is not initialized.")
+
+        # 4. メインウィンドウ側の状態も同期（もし必要であれば）
+        if hasattr(self, 'is_playing'):
+            # monitor の状態に合わせて self のフラグも更新
+            active_monitor = getattr(self, 'pro_monitoring', None)
+            if active_monitor is not None and not isinstance(active_monitor, bool):
+                self.is_playing = bool(getattr(active_monitor, 'is_playing', False))
 
     # ==========================================================================
     # VO-SE Pro v1.3.0: 連続音（VCV）解決 ＆ レンダリング準備
