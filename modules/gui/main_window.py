@@ -3725,7 +3725,6 @@ class MainWindow(QMainWindow):
         代表の設計思想をすべて集約し、F811エラーを解消しました。
         """
         import chardet
-        import codecs
         import os
 
         # 1. ファイル存在チェック
