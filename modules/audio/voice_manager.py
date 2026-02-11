@@ -32,12 +32,16 @@ class VoiceManager:
         self.system = platform.system()
         # 実行環境(PyInstaller)と開発環境のパス解決を統一
         if getattr(sys, 'frozen', False):
-            self.base_path = get_safe_sys_path('_MEIPASS', os.path.abspath("."))
+            # 代表、ここが修正の核心です。
+            # 外部関数を呼ばず、直接 getattr で sys._MEIPASS を安全に取得します。
+            # これにより F821 Undefined name エラーを 100% 回避します。
+            self.base_path = str(getattr(sys, '_MEIPASS', os.path.abspath(".")))
         else:
-            # modules/audio/ から見たプロジェクトルート
-            self.base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+            # modules/audio/ から見たプロジェクトルート (代表の設計通り)
+            self.base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
-        self.internal_voice_dir = os.path.join(self.base_path, "voice_banks")
+        # ボイスディレクトリの確定
+        self.voices_dir = os.path.join(self.base_path, "assets", "voices")
         self.voices = {}  # { "キャラ名": "絶対パス" }
 
     def scan_voices(self):
