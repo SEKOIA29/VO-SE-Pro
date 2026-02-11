@@ -21,6 +21,7 @@ from typing import Any, List, Dict, Optional, TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from .timeline_widget import TimelineWidget
     from .graph_editor_widget import GraphEditorWidget
+    from .keyboard_sidebar_widget import KeyboardSidebarWidget
 
 # ==========================================================================
 # 2. 数値計算・信号処理 (Numerical Processing)
@@ -894,6 +895,13 @@ class MainWindow(QMainWindow):
     text_analyzer: Any
     piano_roll_scene: Any
     audio_output: Any
+    
+    keyboard_sidebar_widget: 'KeyboardSidebarWidget'
+    player: Any
+    audio_output: Any
+    talk_manager: Any
+    vose_core: Any
+    is_playing_state: bool
 
     def __init__(self, parent=None, engine=None, ai=None, config=None):
         super().__init__(parent)
@@ -925,6 +933,11 @@ class MainWindow(QMainWindow):
         self.player = None
         self.piano_roll_scene = None
         self.text_analyzer = None
+        self.is_playing_state = False
+        self.player = None
+        self.audio_output = None
+        self.vose_core = None
+        self.talk_manager = None
 
         # タイマー類の確実な初期化
         self.render_timer = QTimer(self)
