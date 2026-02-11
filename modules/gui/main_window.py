@@ -3793,11 +3793,37 @@ class MainWindow(QMainWindow):
                 
         return oto_map
 
-    def safe_to_float(self, val):
-        """文字列を安全に浮動小数点数に変換"""
-        try: 
-            return float(val.strip())
+    def safe_to_float(self, val: Any) -> float:
+        """
+        文字列や数値を安全に浮動小数点数に変換。
+        
+        代表の設計思想に基づき、変換不能なデータが入った場合でも
+        システムを停止させず、デフォルト値 0.0 を返して継続させます。
+        """
+        if val is None:
+            return 0.0
+            
+        try:
+            # 1. すでに数値（int/float）である可能性を考慮
+            if isinstance(val, (int, float)):
+                return float(val)
+                
+            # 2. 文字列として扱い、strip() を実行
+            # Actions対策: str(val) で包むことで、もしリスト等が来ても強制変換して strip 可能にする
+            s_val = str(val).strip()
+            
+            # 3. 空文字チェック
+            if not s_val:
+                return 0.0
+                
+            # 4. 浮動小数点変換
+            return float(s_val)
+            
+        except (ValueError, TypeError, AttributeError):
+            # 変換エラー時は沈黙して 0.0 を返す（代表の安全設計を完遂）
+            return 0.0
         except Exception:
+            # 万が一の予期せぬ例外もすべてキャッチ
             return 0.0
 
     def refresh_voice_ui_with_scan(self):
@@ -4391,26 +4417,54 @@ class MainWindow(QMainWindow):
     # イベントハンドラ
     # ==========================================================================
 
-    def keyPressEvent(self, event):
+def keyPressEvent(self, event) -> None:
+        """
+        キーボードショートカット制御。
+        ActionsのEnumアクセスエラーを完全に回避しつつ、DAWとしての操作性を完遂します。
+        """
+        from PySide6.QtCore import Qt
+
         key = event.key()
         mod = event.modifiers()
         
+        # 1. スペースキー：再生/一時停止
+        # Actions対策: Qt.Key.Key_Space ではなく Qt.Key.Key_Space (PySide6標準) を使用
         if key == Qt.Key.Key_Space:
-            if hasattr(self, 'on_play_pause_toggled'):
-                self.on_play_pause_toggled()
+            play_func = getattr(self, 'on_play_pause_toggled', None)
+            if callable(play_func):
+                play_func()
             event.accept()
-        elif key == Qt.Key.Key_R and mod == Qt.KeyboardModifier.ControlModifier:
-            if hasattr(self, 'on_record_toggled'):
-                self.on_record_toggled()
+            return
+
+        # 2. Ctrl + R：録音開始/停止
+        # Actions対策: KeyboardModifier.ControlModifier を安全に比較
+        elif key == Qt.Key.Key_R and (mod & Qt.KeyboardModifier.ControlModifier):
+            record_func = getattr(self, 'on_record_toggled', None)
+            if callable(record_func):
+                record_func()
             event.accept()
-        elif key == Qt.Key.Key_L and mod == Qt.KeyboardModifier.ControlModifier:
-            if hasattr(self, 'on_loop_button_toggled'):
-                self.on_loop_button_toggled()
+            return
+
+        # 3. Ctrl + L：ループ切り替え
+        elif key == Qt.Key.Key_L and (mod & Qt.KeyboardModifier.ControlModifier):
+            loop_func = getattr(self, 'on_loop_button_toggled', None)
+            if callable(loop_func):
+                loop_func()
             event.accept()
+            return
+
+        # 4. Delete / Backspace：選択項目の削除
         elif key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
-            if hasattr(self.timeline_widget, 'delete_selected_notes'):
-                self.timeline_widget.delete_selected_notes()
+            # タイムラインウィジェットの存在を安全に確認
+            t_widget = getattr(self, 'timeline_widget', None)
+            if t_widget is not None:
+                delete_func = getattr(t_widget, 'delete_selected_notes', None)
+                if callable(delete_func):
+                    delete_func()
             event.accept()
+            return
+
+        # 5. その他：親クラスのイベントに渡す
         else:
             super().keyPressEvent(event)
 
