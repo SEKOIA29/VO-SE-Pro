@@ -1,10 +1,10 @@
 import os
-import sys
+#import sys
 import numpy as np
 import soundfile as sf
 import pyopenjtalk
 from PySide6.QtCore import QObject
-from typing import Any, List, Dict, Tuple, Optional, Union
+from typing import Any, List, Dict, Tuple, Optional
 
 class IntonationAnalyzer:
     def __init__(self) -> None:
