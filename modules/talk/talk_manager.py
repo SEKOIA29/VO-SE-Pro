@@ -6,15 +6,45 @@ import pyopenjtalk
 from PySide6.QtCore import QObject
 from typing import Any, List, Dict, Tuple, Optional
 
+def generate_talk_events(text: str, analyzer: IntonationAnalyzer):
+    """
+    1. analyzerでテキストを「k a n n i ch i w a」に分解
+    2. それぞれの音素を UTAU音源(oto.ini) の中から検索
+    3. 喋りのアクセント（ピッチカーブ）を生成
+    4. C++ execute_render に渡す NoteEvent 配列を作成
+    """
+    phonemes = analyzer.analyze_to_phonemes(text) # 「こんにちは」→ [k, a, n, n, i...]
+    
+    talk_notes = []
+    for p in phonemes:
+        # 代表の C++ g_voice_db から該当する音素を探す
+        event = {
+            'phoneme': p,
+            'pitch': generate_accent_curve(p), # 喋りのイントネーション
+            'gender': [0.5] * length,
+            'tension': [0.5] * length,
+            'breath': [0.0] * length
+        }
+        talk_notes.append(event)
+    
+    return talk_notes
+
 class NoteEvent(ctypes.Structure):
     _fields_ = [
-        ("wav_path", ctypes.c_char_p),      # 検索キー（phoneme）
-        ("pitch_length", ctypes.c_int),      # フレーム数
+        ("wav_path", ctypes.c_char_p),
+        ("pitch_length", ctypes.c_int),
         ("pitch_curve", ctypes.POINTER(ctypes.c_double)),
         ("gender_curve", ctypes.POINTER(ctypes.c_double)),
         ("tension_curve", ctypes.POINTER(ctypes.c_double)),
         ("breath_curve", ctypes.POINTER(ctypes.c_double)),
+        # --- UTAU対応のための追加パラメータ ---
+        ("offset_ms", ctypes.c_double),      # 原音の開始位置
+        ("consonant_ms", ctypes.c_double),   # 固定範囲（子音部）
+        ("cutoff_ms", ctypes.c_double),      # 右ブランク
+        ("pre_utterance_ms", ctypes.c_double), # 先行発声
+        ("overlap_ms", ctypes.c_double)       # オーバーラップ
     ]
+
 
 class VoseRendererBridge:
     def __init__(self, dll_path: str):
@@ -38,7 +68,6 @@ class VoseRendererBridge:
 
     def render(self, notes_data: List[dict], output_path: str):
         """
-        代表、ここが連携の核心です。
         PythonのリサーチデータをC++の構造体配列に変換して一気に投げます。
         """
         note_count = len(notes_data)
