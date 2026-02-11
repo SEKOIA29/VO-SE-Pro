@@ -1,4 +1,4 @@
-
+import os  # F821 対策：絶対に必要なインポートです
 import soundfile as sf
 import numpy as np
 import pyopenjtalk
@@ -63,6 +63,7 @@ class TalkManager(QObject):
         """
         外部からボイスモデル(.htsvoice)を切り替える。
         """
+        # os.path.exists の F821 エラーを解決済み
         if htsvoice_path and os.path.exists(htsvoice_path):
             self.current_voice_path = htsvoice_path
             return True
@@ -85,7 +86,7 @@ class TalkManager(QObject):
             return False, "テキストが空です。"
 
         try:
-            # 2. 出力先ディレクトリの確保
+            # 2. 出力先ディレクトリの確保 (os モジュールの未定義を解決)
             output_dir: str = os.path.dirname(output_path)
             if output_dir:
                 os.makedirs(output_dir, exist_ok=True)
@@ -150,14 +151,15 @@ class TalkManager(QObject):
                 return False, "音声データの生成に失敗しました（データが空です）。"
 
             # 7. 音響的な正規化と16bit変換（代表の指定値 32768 を採用）
-            # floatの場合はint16の範囲にクリッピングしてから変換
-            x_clipped = np.clip(x, -32768, 32767)
+            # x が numpy 配列であることを保証して np.clip を適用
+            x_array: np.ndarray = np.asarray(x)
+            x_clipped = np.clip(x_array, -32768, 32767)
             x_int16 = x_clipped.astype(np.int16)
             
             # 8. WAVファイルの書き出し
             sf.write(output_path, x_int16, sr)
             
-            # 9. 最終的な確認
+            # 9. 最終的な確認 (os モジュールの未定義を解決)
             if os.path.exists(output_path):
                 print(f"SUCCESS: Synthesized speech saved to {output_path}")
                 return True, output_path
