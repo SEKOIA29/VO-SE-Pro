@@ -17,7 +17,7 @@ import shutil      # フォルダ削除やコピーに必要
 import threading
 from copy import deepcopy
 import onnxruntime as ort
-from typing import Any, List, Dict, Tuple, Optional
+from typing import Any, List, Dict, Optional, Union, TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from .timeline_widget import TimelineWidget
     from .graph_editor_widget import GraphEditorWidget
