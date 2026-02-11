@@ -2306,28 +2306,37 @@ class MainWindow(QMainWindow):
             if widget is not None:
                 widget.deleteLater()
     
-    def init_ui(self):
-        """UIの組み立て（）"""
+    def init_ui(self) -> None:
+        """
+        UIの組み立て。
+        Actionsログの reportAttributeAccessIssue を解決するため、
+        レイアウトや重要コンポーネントを確実に初期化します。
+        """
         from PySide6.QtWidgets import QWidget, QVBoxLayout
+        
+        # 1. ウィンドウ基本設定
         self.setWindowTitle("VO-SE Engine DAW Pro")
         self.setGeometry(100, 100, 1200, 800)
         
+        # 2. セントラルウィジェットとメインレイアウトの確定
+        # self.main_layout をクラス属性として保持し、他メソッドからのアクセスを保証
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         self.main_layout = QVBoxLayout(central_widget)
         self.main_layout.setContentsMargins(5, 5, 5, 5)
         self.main_layout.setSpacing(2)
 
-        # 各セクションの呼び出し
-        self.setup_toolbar()
-        self.setup_main_editor_area() 
-        self.setup_bottom_panel()
-        self.setup_status_bar()
-        self.setup_menus()
-        
-        # スタイル適用
-        if hasattr(self, 'update_timeline_style'):
-            self.update_timeline_style()
+        # 3. 各セクションの順次セットアップ
+        # 依存関係（下のパネルが上のエディタを参照するなど）を考慮した順序で呼び出し
+        self.setup_menus()          # メニュー（QActionの親）
+        self.setup_toolbar()        # ツールバー
+        self.setup_main_editor_area() # メインエディタ（KeyboardSidebar, TimelineWidgetを含む）
+        self.setup_bottom_panel()   # 下部パネル（パラメータエディタ等）
+        self.setup_status_bar()     # ステータスバー
+
+        # 4. スタイルと初期状態の適用
+        # hasattrによるチェックに加え、初期化済みフラグ等で安全に呼び出し
+        self._apply_initial_styles()
             
     # ==========================================================================
     # UI セクション構築
