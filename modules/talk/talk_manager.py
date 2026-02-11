@@ -4,6 +4,7 @@ import os
 import numpy as np
 import soundfile as sf
 import pyopenjtalk
+from PySide6.QtCore import QObject, Signal, Slot
 from typing import Any, List, Dict, Tuple, Optional
 
 class IntonationAnalyzer:
