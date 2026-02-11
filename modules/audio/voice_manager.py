@@ -6,17 +6,33 @@ import glob
 import sys
 import logging
 
+
+
 def get_resource_path(relative_path: str) -> str:
-    # hasattrでチェックすることで Pyright のエラーを回避
-    base_path = getattr(sys, '_MEIPASS', os.path.abspath("."))
-    return os.path.join(base_path, relative_path)
+    """
+    リソースファイルの絶対パスを取得する。
+    PyInstallerの _MEIPASS 属性へのアクセスを getattr で安全に行い、
+    Actions の reportAttributeAccessIssue を完全に回避します。
+    """
+    import sys
+    import os
+
+    # 1. getattr を使用して sys._MEIPASS を安全に取得
+    # 第2引数に os.path.abspath(".") を指定することで、通常実行時もカバーします
+    base_path: str = str(getattr(sys, '_MEIPASS', os.path.abspath(".")))
+
+    # 2. 相対パスと結合してフルパスを生成
+    full_path: str = os.path.join(base_path, relative_path)
+
+    # 3. 代表の設計通り、パスを正規化して返却
+    return os.path.normpath(full_path)
 
 class VoiceManager:
     def __init__(self):
         self.system = platform.system()
         # 実行環境(PyInstaller)と開発環境のパス解決を統一
         if getattr(sys, 'frozen', False):
-            self.base_path = sys._MEIPASS
+            self.base_path = get_safe_sys_path('_MEIPASS', os.path.abspath("."))
         else:
             # modules/audio/ から見たプロジェクトルート
             self.base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
