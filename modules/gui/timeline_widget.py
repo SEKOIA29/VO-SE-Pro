@@ -124,19 +124,6 @@ class TimelineWidget(QWidget):
         self.vose_core: Any = None 
         # 代表の設計通り、初期化時にエンジンをセットアップ
         self.init_voice_engine()
-
-    def init_voice_engine(self) -> None:
-        """
-        VOSEコア音声エンジンの初期化。
-        1行も省略せず、実行環境に応じた安全なロードを試みます。
-        """
-        try:
-            # ctypes等を使用したエンジンロードのベース
-            # 代表、ここでのエラーがアプリを落とさないよう防護しています。
-            print("INFO: Initializing VOSE Core Voice Engine...")
-            # self.vose_core = ... (エンジン実装に合わせて拡張)
-        except Exception as e:
-            print(f"WARNING: Voice Engine Init Failed: {e}")
             
 
     # --- 座標 & 解析 ---
