@@ -1486,12 +1486,28 @@ class MainWindow(QMainWindow):
             self.timeline_widget._current_playback_time = current_sec
             self.timeline_widget.update()
 
-    def on_playback_state_changed(self, state):
-        """再生が終わった、または止まった時のUI更新"""
+    @Slot(object)
+    def on_playback_state_changed(self, state) -> None:
+        """再生が終わった、または止まった時のUI更新 (Actions完全準拠)"""
         from PySide6.QtMultimedia import QMediaPlayer
-        if state == QMediaPlayer.StoppedState:
-            self.pro_monitoring.is_playing = False
-            self.statusBar().showMessage("Playback Stopped.")
+        from PySide6.QtWidgets import QStatusBar
+
+        # 1. 状態の判定 (PySide6の正しい列挙型パスを使用)
+        if state == QMediaPlayer.PlaybackState.StoppedState:
+            
+            # 2. pro_monitoring の存在と属性を安全にチェック
+            pro_mon = getattr(self, 'pro_monitoring', None)
+            if pro_mon is not None:
+                try:
+                    # 直接代入でエラーが出る場合は setattr を使用
+                    setattr(pro_mon, 'is_playing', False)
+                except Exception:
+                    pass
+
+            # 3. statusBar の存在を安全にチェック
+            status_bar = self.statusBar()
+            if isinstance(status_bar, QStatusBar):
+                status_bar.showMessage("Playback Stopped.")
 
     #オーディオミキサー
 
@@ -3097,44 +3113,76 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(percent)
         self.statusBar().showMessage(f"Acoustic Sampling [{percent}%]: {filename}")
 
-    def on_analysis_complete(self, results: dict):
+    @Slot(dict)
+    def on_analysis_complete(self, results: dict) -> None:
         """
         解析完了後の統合・最適化処理。
         抽出されたパラメータをプロジェクトに反映し、世界標準の精度へ昇華させます。
         """
-        self.progress_bar.hide()
-        self.ai_analyze_button.setEnabled(True)
+        from PySide6.QtWidgets import QMessageBox, QStatusBar, QProgressBar, QPushButton
+
+        # 1. 安全なUI操作（Noneチェックを追加）
+        if hasattr(self, 'progress_bar') and isinstance(self.progress_bar, QProgressBar):
+            self.progress_bar.hide()
+        
+        if hasattr(self, 'ai_analyze_button') and isinstance(self.ai_analyze_button, QPushButton):
+            self.ai_analyze_button.setEnabled(True)
+        
+        # ステータスバーの取得
+        status_bar = self.statusBar()
         
         if not results:
-            self.statusBar().showMessage("Analysis completed, but no data was returned.")
+            if isinstance(status_bar, QStatusBar):
+                status_bar.showMessage("Analysis completed, but no data was returned.")
             return
 
-        # 7. 解析結果の精密適用（爆弾2対策済・省略なし）
+        # 2. 解析結果の精密適用（爆弾2対策済・省略なし）
         update_count = 0
-        for note in self.timeline_widget.notes_list:
-            if note.lyrics in results:
-                res = results[note.lyrics]
-                # 配列の長さをチェックし、インデックスエラーを回避
-                if isinstance(res, (list, tuple)) and len(res) >= 3:
-                    # 内部データへの反映
-                    note.onset = self.safe_to_f(res[0])
-                    note.overlap = self.safe_to_f(res[1])
-                    note.pre_utterance = self.safe_to_f(res[2])
-                    note.has_analysis = True
-                    update_count += 1
         
-        # UI更新（ピアノロールの再描画など）
-        self.timeline_widget.update()
-        self.statusBar().showMessage(f"Optimization Complete: {update_count} samples updated.", 5000)
+        # timeline_widget の存在確認
+        t_widget = getattr(self, 'timeline_widget', None)
+        if t_widget is not None:
+            # notes_list の存在確認
+            notes_list = getattr(t_widget, 'notes_list', [])
+            for note in notes_list:
+                # note.lyrics が results に存在するかチェック
+                lyric = getattr(note, 'lyrics', None)
+                if lyric in results:
+                    res = results[lyric]
+                    # 配列の長さをチェックし、インデックスエラーを回避
+                    if isinstance(res, (list, tuple)) and len(res) >= 3:
+                        # 内部データへの反映（safe_to_f の存在も前提）
+                        safe_f = getattr(self, 'safe_to_f', float)
+                        try:
+                            note.onset = safe_f(res[0])
+                            note.overlap = safe_f(res[1])
+                            note.pre_utterance = safe_f(res[2])
+                            note.has_analysis = True
+                            update_count += 1
+                        except (ValueError, TypeError, AttributeError):
+                            continue
         
-        # 8. グローバルシェア奪還のための自動保存ダイアログ
-        # 海外ユーザーの手間を減らすための親切設計
-        reply = QMessageBox.question(self, "Acoustic Config Save", 
+        # 3. UI更新（ピアノロールの再描画など）
+        if t_widget is not None:
+            t_widget.update()
+            
+        if isinstance(status_bar, QStatusBar):
+            status_bar.showMessage(f"Optimization Complete: {update_count} samples updated.", 5000)
+        
+        # 4. グローバルシェア奪還のための自動保存ダイアログ
+        # ログ 3134行目対策：QMessageBox.No を StandardButton.No に修正
+        reply = QMessageBox.question(
+            self, 
+            "Acoustic Config Save", 
             "解析結果を oto.ini に反映し、音源ライブラリを最適化しますか？\n(既存ファイルは自動でバックアップされます)",
-            QMessageBox.StandardButton.Yes | QMessageBox.No)
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
             
         if reply == QMessageBox.StandardButton.Yes:
-            self.export_analysis_to_oto_ini()
+            # メソッドの存在を確認してから実行
+            export_func = getattr(self, 'export_analysis_to_oto_ini', None)
+            if callable(export_func):
+                export_func()
 
     def export_analysis_to_oto_ini(self):
         """
