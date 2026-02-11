@@ -4,7 +4,7 @@
 # 1. 標準ライブラリ (Standard Libraries)
 # ==========================================================================
 import os
-#import sys         # app起動や引数処理に必要
+import sys         # app起動や引数処理に必要
 import time
 import wave  
 import platform    # 重複を削除し、1つにまとめました (F811対策)
@@ -4508,16 +4508,33 @@ class MainWindow(QMainWindow):
 # アプリケーションエントリーポイント
 # ==============================================================================
 
-def main():
-    """アプリケーション起動"""
+def main() -> None:
+    """
+    VO-SE Pro アプリケーション起動エントリーポイント。
+    """
+    from PySide6.QtWidgets import QApplication
+
+    # 1. アプリケーションインスタンスの作成
+    # sys.argv を通すことで、コマンドライン引数の受け取りを可能にします
     app = QApplication(sys.argv)
+    
+    # 2. 外観の設定
+    # "Fusion" スタイルは、Windows/Mac/Linuxで最も動作が安定し、
+    # かつDAWらしいプロフェッショナルな見た目を提供します
     app.setStyle("Fusion")
     
+    # 3. メインウィンドウの生成と表示
+    # MainWindowクラスのインスタンス化
     window = MainWindow()
     window.show()
     
+    # 4. イベントループの開始と安全な終了
+    # app.exec() でGUIの待機状態に入り、閉じられたら sys.exit で
+    # OSに終了ステータスを正しく返します
     sys.exit(app.exec())
 
 
 if __name__ == "__main__":
+    # このスクリプトが直接実行された場合のみ main() を呼び出す
+    # 代表、これが「ライブラリ」と「アプリ」を両立させるプロの書き方です
     main()
