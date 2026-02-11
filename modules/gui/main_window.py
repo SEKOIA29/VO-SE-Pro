@@ -4,7 +4,7 @@
 # 1. 標準ライブラリ (Standard Libraries)
 # ==========================================================================
 import os
-import sys         # app起動や引数処理に必要
+#import sys         # app起動や引数処理に必要
 import time
 import wave  
 import platform    # 重複を削除し、1つにまとめました (F811対策)
@@ -17,7 +17,7 @@ import shutil      # フォルダ削除やコピーに必要
 import threading
 from copy import deepcopy
 import onnxruntime as ort
-from typing import Dict, Any, TYPE_CHECKING, cast, Optional, List# Optionalが未使用なら除外 (F401対策)
+from typing import Any, List, Dict, Tuple, Optional
 if TYPE_CHECKING:
     from .timeline_widget import TimelineWidget
     from .graph_editor_widget import GraphEditorWidget
