@@ -3148,49 +3148,117 @@ class MainWindow(QMainWindow):
 
 
 
-    @Slot()
-    def update_playback_cursor(self):
-        """再生カーソルの更新（タイマー同期）"""
-        if not self.is_playing:
+@Slot()
+    def on_save_project_clicked(self) -> None:
+        """
+        プロジェクトの保存処理。
+        Actionsログ 4626行目の 'on_save_project_clicked' 不明エラーを解消します。
+        """
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        import json
+        import os
+
+        # 保存ダイアログを表示
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "プロジェクトを保存",
+            "",
+            "VO-SE Project (*.vose);;JSON Files (*.json);;All Files (*)"
+        )
+
+        if not file_path:
             return
 
-        current_pos = self.player.position()
+        try:
+            # データの構築（Noneガードを徹底）
+            t_widget = getattr(self, 'timeline_widget', None)
+            notes_data = []
+            if t_widget is not None and hasattr(t_widget, 'get_notes'):
+                notes_data = t_widget.get_notes()
 
-        # エンジンから現在時刻を取得
-        if hasattr(self.vo_se_engine, 'get_current_time'):
-            self.current_playback_time = self.vo_se_engine.get_current_time()
-        elif hasattr(self.vo_se_engine, 'current_time_playback'):
-            self.current_playback_time = self.vo_se_engine.current_time_playback
+            project_data = {
+                "version": "1.0.0",
+                "timestamp": 2026, # 代表の現在時間
+                "current_time": float(getattr(self, 'current_playback_time', 0.0)),
+                "notes": notes_data
+            }
 
-        # ループ処理
-        if self.is_looping:
-            p_start, p_end = self.timeline_widget.get_selected_notes_range()
-            if p_end > p_start and self.current_playback_time >= p_end:
-                self.current_playback_time = p_start
-                if hasattr(self.vo_se_engine, 'seek_time'):
-                    self.vo_se_engine.seek_time(p_start)
-                elif hasattr(self.vo_se_engine, 'current_time_playback'):
-                    self.vo_se_engine.current_time_playback = p_start
+            # 書き込み実行
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(project_data, f, ensure_ascii=False, indent=4)
 
-        if current_pos is not None and current_pos >= 0:
-            # ミリ秒(int)から秒(float)へ
-            current_time_sec = current_pos / 1000.0
-            
-            # ログ3026行目対策: 型を明示して渡す
-            if hasattr(self, 'timeline_widget'):
-                self.timeline_widget.set_current_time(float(current_time_sec))
-            
-            if hasattr(self, 'graph_editor_widget'):
-                self.graph_editor_widget.set_current_time(float(current_time_sec))
+            # ステータスバー通知
+            sb = self.statusBar()
+            if sb:
+                sb.showMessage(f"保存完了: {os.path.basename(file_path)}", 3000)
 
-        # GUI更新
-        self.timeline_widget.set_current_time(self.current_playback_time)
-        self.graph_editor_widget.set_current_time(self.current_playback_time)
+        except Exception as e:
+            QMessageBox.critical(self, "保存エラー", f"プロジェクトの保存に失敗しました:\n{str(e)}")
+
+    @Slot()
+    def open_file_dialog_and_load_midi(self) -> None:
+        """
+        MIDIファイルの読み込み。
+        Actionsログ 2431行目の 'open_file_dialog_and_load_midi' 不明エラーを解消します。
+        """
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
         
-        # 時間表示更新
-        minutes = int(self.current_playback_time // 60)
-        seconds = self.current_playback_time % 60
-        self.time_display_label.setText(f"{minutes:02d}:{seconds:06.3f}")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "MIDIファイルを開く",
+            "",
+            "MIDI Files (*.mid *.midi);;All Files (*)"
+        )
+
+        if not file_path:
+            return
+
+        try:
+            # MIDIマネージャーをメソッド内で安全にインポート
+            from modules.data.midi_manager import MidiManager
+            manager = MidiManager()
+            
+            # MIDIロード実行
+            notes = manager.load_midi(file_path)
+
+            if notes:
+                t_widget = getattr(self, 'timeline_widget', None)
+                if t_widget is not None:
+                    # 代表の掟：set_notesメソッドを確実に呼び出し
+                    t_widget.set_notes(notes)
+                    
+                    sb = self.statusBar()
+                    if sb:
+                        sb.showMessage(f"MIDI読込成功: {len(notes)} ノート", 3000)
+            else:
+                QMessageBox.information(self, "MIDI読込", "MIDIファイルに有効なノートが含まれていません。")
+
+        except Exception as e:
+            QMessageBox.critical(self, "MIDIエラー", f"MIDIの読み込み中にエラーが発生しました:\n{str(e)}")
+
+    def stop_and_clear_playback(self) -> None:
+        """
+        再生を停止し、状態をリセットする。
+        Actionsログ 3678行目のエラーを解消します。
+        """
+        # プレイヤーの停止
+        player_obj = getattr(self, 'player', None)
+        if player_obj is not None and not isinstance(player_obj, bool):
+            if hasattr(player_obj, 'stop'):
+                player_obj.stop()
+
+        # フラグのリセット
+        self.is_playing = False
+        self.current_playback_time = 0.0
+        
+        # UIの更新
+        if hasattr(self, 'update_playback_ui'):
+            self.update_playback_ui()
+            
+        # カーソルを先頭へ
+        t_widget = getattr(self, 'timeline_widget', None)
+        if t_widget is not None:
+            t_widget.set_current_time(0.0)
 
     # ==========================================================================
     # REAL-TIME PREVIEW ENGINE (Low-Latency Response)
@@ -3587,55 +3655,111 @@ class MainWindow(QMainWindow):
 
 
 # --- ファイル読み書き・インポート関連 ---
-    def load_ust_file(self, filepath: str):
+    def load_ust_file(self, filepath: str) -> None:
         """
         UTAUの .ust ファイルを読み込んでタイムラインに配置。
-        エンコーディング問題や属性の有無を完全に考慮した完全版。
+        代表の設計に基づき、エンコーディング、型安全、Noneガードを完璧に完遂します。
         """
-        try:
-            # 1. 安全な読み込み（read_file_safelyがNoneを返す可能性を考慮）
-            content = self.read_file_safely(filepath)
-            if content is None:
-                return
+        from PySide6.QtWidgets import QMessageBox
+        import os
 
+        try:
+            # 1. 安全な読み込み（Noneガードを徹底）
+            # self.read_file_safely は str または None を返す設計であることを明示
+            content_raw = self.read_file_safely(filepath)
+            if content_raw is None:
+                return
+            
+            # 型を str に確定させてから処理
+            content: str = str(content_raw)
             lines = content.splitlines()
-            notes = []
-            current_note: dict[str, str] = {} # 型を明示
+            
+            notes: List[Any] = []
+            current_note: Dict[str, str] = {} # 型を明示
             
             for line in lines:
                 line = line.strip()
+                if not line:
+                    continue
+                    
                 if line.startswith('[#'): # [#0001] などのセクション開始
                     if current_note:
-                        # 2. 辞書からノートオブジェクトへの変換（属性チェック付き）
+                        # 2. 辞書からノートオブジェクトへの変換
                         note_obj = self.parse_ust_dict_to_note(current_note)
-                        if note_obj:
+                        if note_obj is not None:
                             notes.append(note_obj)
                     current_note = {}
                 elif '=' in line:
                     parts = line.split('=', 1)
                     if len(parts) == 2:
-                        key, val = parts
+                        key, val = parts[0].strip(), parts[1].strip()
                         current_note[key] = val
             
             # ループ終了後の最後のノートを処理
             if current_note:
-                note_obj = self.parse_ust_dict_to_note(current_note)
-                if note_obj:
-                    notes.append(note_obj)
+                note_obj_last = self.parse_ust_dict_to_note(current_note)
+                if note_obj_last is not None:
+                    notes.append(note_obj_last)
 
-            # 3. タイムラインへの反映（timeline_widgetの存在チェック）
-            if hasattr(self, 'timeline_widget') and self.timeline_widget:
-                self.timeline_widget.set_notes(notes)
+            # 3. タイムラインへの反映
+            t_widget = getattr(self, 'timeline_widget', None)
+            if t_widget is not None:
+                # set_notes への引数は List[Any] であることを保証
+                t_widget.set_notes(notes)
                 
-                # statusBarのNoneガード
+                # statusBarの取得と安全な呼び出し
                 status_bar = self.statusBar()
-                if status_bar:
-                    status_bar.showMessage(f"UST読み込み完了: {len(notes)}ノート")
+                if status_bar is not None:
+                    status_bar.showMessage(f"UST Loaded: {len(notes)} notes from {os.path.basename(filepath)}")
             
         except Exception as e:
-            # QMessageBoxの静的メソッド呼び出し（PySide6の正しい形式）
-            QMessageBox.critical(self, "エラー", f"UST読み込み失敗: {str(e)}")
+            # PySide6の正しい形式での呼び出し
+            QMessageBox.critical(self, "Load Error", f"Failed to load UST:\n{str(e)}")
 
+    def read_file_safely(self, filepath: str) -> Optional[str]:
+        """
+        エンコーディング(Shift-JIS/UTF-8)を考慮してファイルを読み込む。
+        Actionsの reportArgumentType を回避するため戻り値を明示します。
+        """
+        import codecs
+        encodings = ['shift_jis', 'utf-8', 'utf-8-sig', 'cp932']
+        
+        for enc in encodings:
+            try:
+                with codecs.open(filepath, 'r', encoding=enc) as f:
+                    return str(f.read())
+            except (UnicodeDecodeError, OSError):
+                continue
+        return None
+
+    def parse_ust_dict_to_note(self, note_dict: Dict[str, str]) -> Optional[Any]:
+        """
+        USTの辞書データを内部のノート形式に変換。
+        """
+        # 必要なキーが存在するかチェック（USTの最低限の構成）
+        if "Length" not in note_dict or "Lyric" not in note_dict:
+            return None
+            
+        # ここで代表が定義した Note モデル（あるいは辞書）を生成
+        # 例として辞書形式で構築
+        try:
+            length = int(note_dict.get("Length", "480"))
+            lyric = note_dict.get("Lyric", "")
+            note_num = int(note_dict.get("NoteNum", "60"))
+            
+            # プロパティを持つオブジェクトとして返却
+            from dataclasses import dataclass
+            @dataclass
+            class NoteData:
+                length: int
+                lyric: str
+                note_num: int
+                notes: List[Any] = None # 互換性のためのダミー
+
+            return NoteData(length=length, lyric=lyric, note_num=note_num)
+        except (ValueError, TypeError):
+            return None
+            
     def save_oto_ini(self, path, content):
         """UTF-8の文字が含まれていてもエラーで落ちずに書き出す"""
         try:
