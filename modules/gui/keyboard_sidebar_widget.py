@@ -2,48 +2,50 @@
 
 from PySide6.QtWidgets import QWidget
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPaintEvent
-from PySide6.QtCore import Qt, QRect
+# Actions対策: QSize と Slot を追加
+from PySide6.QtCore import Qt, QRect, QSize, Slot
+
+# Actions対策: Optional は型ヒントで使用されているため、
+# 明示的に残すか、使用しない場合は削除します。今回は安全のため残します。
 from typing import Optional
 
 class KeyboardSidebarWidget(QWidget):
-    def __init__(self, key_height_pixels=20, parent=None):
+    def __init__(self, key_height_pixels: float = 20.0, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self.key_height_pixels = key_height_pixels
-        self.scroll_y_offset = 0  
-        self.setFixedWidth(50) 
-
+        
         # 基本設定
-        self.key_height_pixels: float = 20.0  # 1ノートあたりの高さ
-        self.scroll_y_offset: float = 0.0     # 外部（タイムライン）と同期するオフセット
-        self.label_font = QFont("Segoe UI", 8)
+        self.key_height_pixels: float = key_height_pixels  # 1ノートあたりの高さ
+        self.scroll_y_offset: float = 0.0      # 外部（タイムライン）と同期するオフセット
         
         # 最小幅の設定（ピアノロールの鍵盤として適切なサイズ）
         self.setMinimumWidth(60)
-        
+        self.setFixedWidth(60) 
+
         # フォント設定
         self.label_font = QFont("Segoe UI", 7)
         self.label_font.setBold(True)
 
     def sizeHint(self) -> QSize:
-        return QSize(50, 600)
+        # F821: QSize の未定義を解消済み
+        return QSize(60, 600)
 
     @Slot(int)
     def set_vertical_offset(self, offset_pixels: int):
         """
         タイムラインのスクロール位置を受け取り、鍵盤の表示を更新する。
-        引数名と内部変数を一致させ、NameErrorを防止します。
         """
-        # 値が変化した時だけ更新・再描画することで負荷を抑えます
-        if self.scroll_y_offset != offset_pixels:
-            self.scroll_y_offset = offset_pixels
-            # 再描画を指示（Qtのイベントループに描画を予約）
+        # F821: Slot の未定義を解消済み
+        if self.scroll_y_offset != float(offset_pixels):
+            self.scroll_y_offset = float(offset_pixels)
+            # 再描画を指示
             self.update()
 
     @Slot(float)
     def set_key_height_pixels(self, height: float):
-        self.key_height_pixels = height
-        self.update()
-
+        # F821: Slot の未定義を解消済み
+        if self.key_height_pixels != height:
+            self.key_height_pixels = height
+            self.update()
 
     def paintEvent(self, event: QPaintEvent):
         """
@@ -67,10 +69,9 @@ class KeyboardSidebarWidget(QWidget):
                 continue
 
             # y_pos の計算（127が一番上）
-            # 代表の指定通り scroll_y_offset を減算してスクロールを実現
             y_pos = (127 - note_number) * self.key_height_pixels - self.scroll_y_offset
             
-            # 画面外描画のクリッピング（パフォーマンス最適化）
+            # 画面外描画のクリッピング
             if y_pos + self.key_height_pixels < 0 or y_pos > self.height():
                 continue
 
@@ -93,7 +94,6 @@ class KeyboardSidebarWidget(QWidget):
                 painter.drawText(text_rect, align, f"C{octave}")
 
         # --- レイヤー2: 黒鍵 ---
-        # 白鍵より短く描画（幅の65%）
         black_key_width = int(self.width() * 0.65)
         for note_number in range(128):
             pitch_class = note_number % 12
@@ -109,7 +109,6 @@ class KeyboardSidebarWidget(QWidget):
             
             # 黒鍵の塗り
             painter.setBrush(QBrush(QColor(40, 40, 40)))
-            # Qt.GlobalColor.black で型エラーを回避
             painter.setPen(QPen(Qt.GlobalColor.black, 1))
             painter.drawRect(black_rect)
             
@@ -117,7 +116,7 @@ class KeyboardSidebarWidget(QWidget):
             painter.setPen(QPen(QColor(80, 80, 80), 1))
             painter.drawLine(1, int(y_pos)+1, black_key_width-1, int(y_pos)+1)
 
-        # 右側の境界影（タイムラインとの境界を際立たせる）
+        # 右側の境界影
         painter.setPen(QPen(QColor(20, 20, 20, 150), 2))
         painter.drawLine(self.width() - 1, 0, self.width() - 1, self.height())
         
