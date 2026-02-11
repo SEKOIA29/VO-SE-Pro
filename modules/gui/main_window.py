@@ -519,7 +519,7 @@ def get_resource_path(relative_path):
     """内蔵DLLなどのリソースパスを取得"""
     if getattr(sys, 'frozen', False):
         # EXE化した後のパス（一時フォルダ）
-        base_path = sys._MEIPASS
+        base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     else:
         # 開発中（.py実行）のパス
         base_path = os.path.dirname(os.path.abspath(__file__))
