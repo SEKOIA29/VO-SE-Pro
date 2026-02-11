@@ -3779,33 +3779,7 @@ class MainWindow(QMainWindow):
         except Exception:
             return None
             
-    def parse_ust_dict_to_note(self, note_dict: Dict[str, str]) -> Optional[Any]:
-        """
-        USTの辞書データを内部のノート形式に変換。
-        """
-        # 必要なキーが存在するかチェック（USTの最低限の構成）
-        if "Length" not in note_dict or "Lyric" not in note_dict:
-            return None
-            
-        # ここで代表が定義した Note モデル（あるいは辞書）を生成
-        # 例として辞書形式で構築
-        try:
-            length = int(note_dict.get("Length", "480"))
-            lyric = note_dict.get("Lyric", "")
-            note_num = int(note_dict.get("NoteNum", "60"))
-            
-            # プロパティを持つオブジェクトとして返却
-            from dataclasses import dataclass
-            @dataclass
-            class NoteData:
-                length: int
-                lyric: str
-                note_num: int
-                notes: List[Any] = None # 互換性のためのダミー
-
-            return NoteData(length=length, lyric=lyric, note_num=note_num)
-        except (ValueError, TypeError):
-            return None
+   
             
     def save_oto_ini(self, path, content):
         """UTF-8の文字が含まれていてもエラーで落ちずに書き出す"""
