@@ -4417,7 +4417,7 @@ class MainWindow(QMainWindow):
     # イベントハンドラ
     # ==========================================================================
 
-def keyPressEvent(self, event) -> None:
+    def keyPressEvent(self, event) -> None:
         """
         キーボードショートカット制御。
         ActionsのEnumアクセスエラーを完全に回避しつつ、DAWとしての操作性を完遂します。
