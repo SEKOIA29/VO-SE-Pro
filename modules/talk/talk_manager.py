@@ -1,10 +1,7 @@
 
-
-import os
-import numpy as np
 import soundfile as sf
 import pyopenjtalk
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject
 from typing import Any, List, Dict, Tuple, Optional
 
 class IntonationAnalyzer:
@@ -59,6 +56,7 @@ class TalkManager(QObject):
         self.current_voice_path: Optional[str] = None 
         # インストールされているデフォルトの辞書を使用
         self.dict_dir: Optional[str] = None
+        self.is_speaking: bool = False
 
     def set_voice(self, htsvoice_path: str) -> bool:
         """
@@ -70,6 +68,11 @@ class TalkManager(QObject):
         else:
             print(f"WARNING: Voice path not found: {htsvoice_path}")
             return False
+
+    def speak(self, text: str) -> None:
+        if not text:
+            return
+        print(f"Speaking: {text}")
             
     def synthesize(self, text: str, output_path: str, speed: float = 1.0) -> Tuple[bool, str]:
         """
