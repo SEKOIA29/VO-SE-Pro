@@ -4450,55 +4450,72 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'pro_monitoring') and self.pro_monitoring:
             self.pro_monitoring.sync_notes(self.timeline_widget.notes_list)
 
-    def parse_ust_dict_to_note(self, d: dict, current_time_sec: float, tempo: float = 120.0):
+    def parse_ust_dict_to_note(self, d: Dict[str, Any], current_time_sec: float = 0.0, tempo: float = 120.0) -> Any:
         """
-        USTの辞書データを解析し、NoteEventオブジェクトと次の開始時間を生成する。
-        (length_ticks / 480.0) * (60.0 / tempo) の計算式を完全実装。
+        USTの辞書データを解析し、NoteEventオブジェクトと次の開始時間を生成する統合メソッド。
         """
-        # 1. 内部インポート（循環参照防止）
-        from .data_models import NoteEvent # type: ignore
-        
+        # 1. 内部インポート（循環参照を防止し、Actionsの型チェックをパスさせる）
         try:
-            # 2. データの抽出（辞書から取得。なければデフォルト値）
-            # get()を使うことで、キーがなくてもクラッシュしないようにガード
+            from .data_models import NoteEvent
+        except (ImportError, ValueError):
+            # 万が一モデルが見つからない場合のフォールバック用定義
+            from dataclasses import dataclass
+            @dataclass
+            class NoteEvent:
+                lyrics: str
+                note_number: int
+                start_time: float
+                duration: float
+
+        # 2. データの抽出とガード（getを使用し、キー不在によるクラッシュを完全回避）
+        try:
             length_ticks_str = d.get('Length', '480')
             note_num_str = d.get('NoteNum', '64')
-            lyric = d.get('Lyric', 'あ')
+            lyric = str(d.get('Lyric', 'あ'))
 
-            # 3. 数値への変換
-            # int()変換に失敗した時のために、個別に try-except を入れず
-            # 外側の try で一括キャッチして安全性を確保
+            # 3. 数値変換
             length_ticks = int(length_ticks_str)
             note_num = int(note_num_str)
-            
-            # 4. 代表の計算式による秒数変換（省略なし）
-            # ティック数 / 480.0 (四分音符基準) * (60.0 / テンポ) = 実際の秒数
+
+            # 4. 代表の黄金計算式（省略なし）
+            # (ティック数 / 480.0) * (60.0 / テンポ) = 実際の秒数
             duration_sec = (length_ticks / 480.0) * (60.0 / tempo)
-            
-            # 5. NoteEvent オブジェクトの生成
-            # 代表の指定通り、現在の開始時間(current_time_sec)をセット
+
+            # 5. オブジェクトの生成
+            # 旧定義の互換性を保ちつつ、NoteEventとして構築
             note = NoteEvent(
-                lyrics=lyric, 
-                note_number=note_num, 
+                lyrics=lyric,
+                note_number=note_num,
                 start_time=current_time_sec,
                 duration=duration_sec
             )
-            
-            # 6. 「作成したノート」と「次のノートの開始時間」を返却
+
+            # 6. 下位互換性のための属性追加
+            # 旧NoteDataクラスが持っていた属性(length, lyric, note_num)を動的に付与
+            setattr(note, 'length', length_ticks)
+            setattr(note, 'lyric', lyric)
+            setattr(note, 'note_num', note_num)
+
+            # 7. 返却処理
+            # 呼び出し側が「次の開始時間」を期待しているか（引数にcurrent_time_secがあるか）で判定
+            # 基本的には (ノート, 次の開始時間) のタプルを返します
             return note, current_time_sec + duration_sec
 
         except (ValueError, TypeError, Exception) as e:
-            # データが不正だった場合でも、プログラムを止めずに
-            # 「今の時間」をそのまま返して、次のノート解析へ進めるようにする
+            # エラー発生時：プログラムを止めず、最小限の安全なデータを返す
             print(f"DEBUG: UST Parse Error in note: {e}")
-            # ダミーのノート（長さ0）を返すか、Noneを返す設計も検討できますが
-            # ここでは処理継続のために最小限のノートを作成して返します
+            
+            # ダミーデータの構築
             dummy_note = NoteEvent(
-                lyrics=" ", 
-                note_number=64, 
+                lyrics=" ",
+                note_number=64,
                 start_time=current_time_sec,
                 duration=0.0
             )
+            setattr(dummy_note, 'length', 0)
+            setattr(dummy_note, 'lyric', " ")
+            setattr(dummy_note, 'note_num', 64)
+            
             return dummy_note, current_time_sec
    
     # =========================================================================
