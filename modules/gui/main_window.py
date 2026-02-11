@@ -2337,6 +2337,17 @@ class MainWindow(QMainWindow):
         # 4. スタイルと初期状態の適用
         # hasattrによるチェックに加え、初期化済みフラグ等で安全に呼び出し
         self._apply_initial_styles()
+
+    def _apply_initial_styles(self) -> None:
+        """初期スタイル適用の安全な実行"""
+        # ログ 2620 等の「未定義属性アクセス」を防ぐため、メソッドの存在を確実に担保
+        if hasattr(self, 'update_timeline_style'):
+            # 代表が定義したタイムラインの視覚効果を適用
+            self.update_timeline_style()
+        
+        # ステータスバーへの初期メッセージ
+        if self.statusBar():
+            self.statusBar().showMessage("Engine Initialized. Ready for production.")
             
     # ==========================================================================
     # UI セクション構築
