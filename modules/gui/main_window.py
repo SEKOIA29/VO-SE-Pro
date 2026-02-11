@@ -19,9 +19,12 @@ from copy import deepcopy
 import onnxruntime as ort
 from typing import Any, List, Dict, Optional, TYPE_CHECKING, cast
 if TYPE_CHECKING:
-    from .timeline_widget import TimelineWidget
-    from .graph_editor_widget import GraphEditorWidget
-    from .keyboard_sidebar_widget import KeyboardSidebarWidget
+    from modules.gui.timeline_widget import TimelineWidget
+    from modules.gui.graph_editor_widget import GraphEditorWidget
+    from modules.gui.keyboard_sidebar_widget import KeyboardSidebarWidget
+    from modules.backend.audio_player import AudioPlayer
+    from modules.backend.intonation import IntonationAnalyzer
+    from modules.audio.vo_se_engine import VoSeEngine
 
 # ==========================================================================
 # 2. 数値計算・信号処理 (Numerical Processing)
@@ -902,6 +905,17 @@ class MainWindow(QMainWindow):
     talk_manager: Any
     vose_core: Any
     is_playing_state: bool
+    
+    player: Optional['AudioPlayer']
+    audio_output: Any
+    talk_manager: Any
+    vose_core: Optional['VoSeEngine']
+    text_analyzer: Optional['IntonationAnalyzer']
+    is_playing_state: bool
+    current_track_idx: int
+    vol_slider: QSlider
+    vol_label: QLabel
+    # ------------------
 
     def __init__(self, parent=None, engine=None, ai=None, config=None):
         super().__init__(parent)
@@ -2258,7 +2272,7 @@ class MainWindow(QMainWindow):
                 widget.deleteLater()
     
     def init_ui(self):
-        """UIの組み立て（司令塔）"""
+        """UIの組み立て（）"""
         from PySide6.QtWidgets import QWidget, QVBoxLayout
         self.setWindowTitle("VO-SE Engine DAW Pro")
         self.setGeometry(100, 100, 1200, 800)
