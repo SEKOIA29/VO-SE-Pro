@@ -29,23 +29,21 @@ class KeyboardSidebarWidget(QWidget):
 
     @Slot(int)
     def set_vertical_offset(self, offset_pixels: int):
-        self.scroll_y_offset = offset_pixels
-        self.update()
+        """
+        タイムラインのスクロール位置を受け取り、鍵盤の表示を更新する。
+        引数名と内部変数を一致させ、NameErrorを防止します。
+        """
+        # 値が変化した時だけ更新・再描画することで負荷を抑えます
+        if self.scroll_y_offset != offset_pixels:
+            self.scroll_y_offset = offset_pixels
+            # 再描画を指示（Qtのイベントループに描画を予約）
+            self.update()
 
     @Slot(float)
     def set_key_height_pixels(self, height: float):
         self.key_height_pixels = height
         self.update()
 
-    def set_vertical_offset(self, offset: float) -> None:
-        """
-        タイムラインのスクロール位置を受け取り、鍵盤の表示を更新する。
-        2586行目の AttributeAccessIssue を完全に解決します。
-        """
-        if self.scroll_y_offset != offset:
-            self.scroll_y_offset = offset
-            # 再描画を指示
-            self.update()
 
     def paintEvent(self, event: QPaintEvent):
         """
