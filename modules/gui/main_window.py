@@ -876,6 +876,8 @@ class MainWindow(QMainWindow):
         # ---  未定義属性のエラーを消すための宣言 ---
         self.v_scrollbar = QSlider(Qt.Orientation.Vertical, self) 
         self.sync_notes = True # timeline_widget側からのアクセス用
+        self.h_scrollbar = QSlider(Qt.Orientation.Horizontal, self)
+        self.all_parameters = {}
 
         # システム初期化
         self.history = HistoryManager()
@@ -3491,11 +3493,24 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "エラー", f"保存失敗: {e}")
 
     def _sample_range(self, events, note, res):
-        """サンプリング補助関数"""
+        """サンプリング補助関数 (Actionsエラー修正版)"""
+        # 1. note が None でないことを確認 (reportOptionalOperand対策)
+        if note is None:
+            return [0.5] * res
+            
+        # 2. サンプリングポイントの生成
         times = np.linspace(note.start_time, note.start_time + note.duration, res)
+        
+        # 3. events が空の場合の早期リターン
         if not events:
             return [0.5] * res
-        return [self.graph_editor_widget.get_value_at_time(events, t) for t in times]
+            
+        # 4. graph_editor_widget の存在確認と呼び出し
+        if hasattr(self, 'graph_editor_widget') and self.graph_editor_widget is not None:
+            return [self.graph_editor_widget.get_value_at_time(events, t) for t in times]
+        else:
+            # widgetがない場合のフォールバック
+            return [0.5] * res
 
     def load_json_project(self, filepath: str):
         """
