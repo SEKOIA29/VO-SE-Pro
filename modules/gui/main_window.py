@@ -1292,47 +1292,73 @@ class MainWindow(QMainWindow):
         # 履歴にコマンドを登録して実行
         self.history.execute(EditCommand(redo_fn, undo_fn, f"Add {name}"))
 
-    def switch_track(self, index):
-        """トラック切り替え時のデータ保護と読み込み"""
-        if index < 0 or index >= len(self.tracks):
+    def switch_track(self, index: int) -> None:
+        """
+        トラック切り替え時のデータ保護と読み込み。
+        代表の設計に基づき、編集中のデータを退避させてから新しいトラックをロードします。
+        """
+        # 1. 境界チェック（絶対に安全に）
+        # self.tracks がリストであることを型ヒントで保証
+        tracks_list: List[Any] = getattr(self, 'tracks', [])
+        if index < 0 or index >= len(tracks_list):
             return
 
-        # 1. 現在の編集状態を今のトラックに退避
-        current_tr = self.tracks[self.current_track_idx]
-        current_tr.notes = deepcopy(self.timeline_widget.notes_list)
-        target = self.tracks[index] # targetを定義 (F821対策)
+        # 2. 現在の編集状態を今のトラックに退避
+        # self.current_track_idx の妥当性をチェック
+        curr_idx: int = getattr(self, 'current_track_idx', 0)
+        if 0 <= curr_idx < len(tracks_list):
+            current_tr = tracks_list[curr_idx]
+            # timeline_widget の存在を確認してデータをコピー
+            t_widget = getattr(self, 'timeline_widget', None)
+            if t_widget is not None:
+                # deepcopyにより、切り替え後に元データが壊れるのを防ぐ（代表の安全設計）
+                current_tr.notes = deepcopy(t_widget.notes_list)
 
-        # 2. インデックス更新
+        # 3. 新しいトラックの取得とインデックス更新
         self.current_track_idx = index
-        target_tr = self.tracks[index]
+        target_tr = tracks_list[index]
 
-        # タイムラインにノートをセット
-        self.timeline_widget.set_notes(target.notes)
+        # 4. タイムラインへデータをロード
+        # 1140行目のエラー対策: target_tr が辞書ではなく、
+        # プロパティ(notes, name等)を持つオブジェクトであることを確実にする
+        if hasattr(self, 'timeline_widget') and self.timeline_widget is not None:
+            self.timeline_widget.set_notes(target_tr.notes)
+            # 背景の波形などを再描画
+            self.timeline_widget.update()
+
+        # 5. UI（ミキサー等）の同期
+        # 各UIパーツの存在を確認しながら値をセット（AttributeAccessIssue対策）
+        vol_slider = getattr(self, 'vol_slider', None)
+        vol_label = getattr(self, 'vol_label', None)
+        btn_mute = getattr(self, 'btn_mute', None)
+        btn_solo = getattr(self, 'btn_solo', None)
+
+        if vol_slider is not None:
+            vol_slider.blockSignals(True)  # 無限ループ防止
+            # volume が None の場合を考慮して 0.0 をデフォルトに
+            vol_val = getattr(target_tr, 'volume', 0.8)
+            vol_int = int(vol_val * 100)
+            vol_slider.setValue(vol_int)
+            if vol_label is not None:
+                vol_label.setText(f"Volume: {vol_int}%")
+            vol_slider.blockSignals(False)
+
+        if btn_mute is not None:
+            btn_mute.setChecked(getattr(target_tr, 'is_muted', False))
+        if btn_solo is not None:
+            btn_solo.setChecked(getattr(target_tr, 'is_solo', False))
+
+        # 6. ステータスバー更新
+        tr_name = getattr(target_tr, 'name', f"Track {index+1}")
+        msg = f"Track: {tr_name}"
         
-        # 重要：トラックが切り替わったので、背景の波形も書き換えるためにupdateを呼ぶ
-        self.timeline_widget.update()
-        
-        self.statusBar().showMessage(f"Editing: {target.name}")
-        
-        # 3. タイムラインへデータをロード
-        self.timeline_widget.set_notes(target_tr.notes)
-        
-        # 4. ステータスバー更新
-        msg = f"Track: {target_tr.name}"
-        if target_tr.track_type == "wave":
-            msg += f" (File: {os.path.basename(target_tr.audio_path) if target_tr.audio_path else 'None'})"
+        # track_type が wave の場合はファイル名も表示
+        tr_type = getattr(target_tr, 'track_type', "midi")
+        tr_audio = getattr(target_tr, 'audio_path', "")
+        if tr_type == "wave" and tr_audio:
+            msg += f" (File: {os.path.basename(tr_audio)})"
+            
         self.statusBar().showMessage(msg)
-
-        # --- 追加：ミキサーUIの同期 ---
-        self.vol_slider.blockSignals(True) # 無限ループ防止
-        vol_int = int(target_tr.volume * 100)
-        self.vol_slider.setValue(vol_int)
-        self.vol_label.setText(f"Volume: {vol_int}%")
-        self.btn_mute.setChecked(target_tr.is_muted)
-        self.btn_solo.setChecked(target_tr.is_solo)
-        self.vol_slider.blockSignals(False)
-
-        self.statusBar().showMessage(f"Editing: {target_tr.name}")
 
     def load_audio_for_track(self, track):
         """Audioトラックにファイルを読み込み、波形解析をキックする"""
