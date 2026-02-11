@@ -4006,7 +4006,8 @@ class MainWindow(QMainWindow):
                 # 万が一インポートできない場合のフォールバック（Actions対策）
                 class NoteEvent:
                     def __init__(self, **kwargs: Any):
-                        for k, v in kwargs.items(): setattr(self, k, v)
+                        for k, v in kwargs.items(): 
+                            setattr(self, k, v)
 
             new_notes: List[Any] = []
             for d in parsed_notes:
