@@ -1,5 +1,6 @@
 
 import soundfile as sf
+import numpy as np
 import pyopenjtalk
 from PySide6.QtCore import QObject
 from typing import Any, List, Dict, Tuple, Optional
