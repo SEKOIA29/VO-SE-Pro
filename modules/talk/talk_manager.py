@@ -1,10 +1,10 @@
+
+
 import os
-#import sys
 import numpy as np
 import soundfile as sf
 import pyopenjtalk
 from typing import Any, List, Dict, Tuple, Optional
-from PySide6.QtCore import QObject
 
 class IntonationAnalyzer:
     def __init__(self) -> None:
@@ -56,6 +56,8 @@ class TalkManager(QObject):
         super().__init__()
         # デフォルトのHTSボイスパス（初期状態はNoneで内蔵音声を使用）
         self.current_voice_path: Optional[str] = None 
+        # インストールされているデフォルトの辞書を使用
+        self.dict_dir: Optional[str] = None
 
     def set_voice(self, htsvoice_path: str) -> bool:
         """
@@ -68,14 +70,11 @@ class TalkManager(QObject):
             print(f"WARNING: Voice path not found: {htsvoice_path}")
             return False
             
-def synthesize(self, text: str, output_path: str, speed: float = 1.0) -> Tuple[bool, str]:
+    def synthesize(self, text: str, output_path: str, speed: float = 1.0) -> Tuple[bool, str]:
         """
         pyopenjtalkを使用して高品質なWAVを生成する。
         重複インポートを排除し、F811 / F401 エラーを解決した完全防護版。
         """
-        # 関数内でのインポートは、外部ライブラリの利用確認のみに留める
-        # (typing関係の再定義エラーを避けるため、冒頭の定義を使用します)
-
         # 1. 入力チェック
         if not text:
             return False, "テキストが空です。"
@@ -95,7 +94,6 @@ def synthesize(self, text: str, output_path: str, speed: float = 1.0) -> Tuple[b
             options: Dict[str, Any] = {"speed": float(speed)}
             
             # 5. ボイスモデルのパス解決
-            # self.current_voice_path が Optional の可能性があるため、getattrで安全に取得
             v_path: str = str(getattr(self, 'current_voice_path', ""))
             
             if v_path and os.path.exists(v_path):
