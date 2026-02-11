@@ -3010,6 +3010,8 @@ class MainWindow(QMainWindow):
         if not self.is_playing:
             return
 
+        current_pos = self.player.position()
+
         # エンジンから現在時刻を取得
         if hasattr(self.vo_se_engine, 'get_current_time'):
             self.current_playback_time = self.vo_se_engine.get_current_time()
@@ -3025,6 +3027,17 @@ class MainWindow(QMainWindow):
                     self.vo_se_engine.seek_time(p_start)
                 elif hasattr(self.vo_se_engine, 'current_time_playback'):
                     self.vo_se_engine.current_time_playback = p_start
+
+        if current_pos is not None and current_pos >= 0:
+            # ミリ秒(int)から秒(float)へ
+            current_time_sec = current_pos / 1000.0
+            
+            # ログ3026行目対策: 型を明示して渡す
+            if hasattr(self, 'timeline_widget'):
+                self.timeline_widget.set_current_time(float(current_time_sec))
+            
+            if hasattr(self, 'graph_editor_widget'):
+                self.graph_editor_widget.set_current_time(float(current_time_sec))
 
         # GUI更新
         self.timeline_widget.set_current_time(self.current_playback_time)
@@ -3489,6 +3502,15 @@ class MainWindow(QMainWindow):
 
     def get_safe_installed_name(self, filename, zip_path):
         """安全にフォルダ名を取り出す"""
+        if hasattr(self, 'player') and self.player:
+            self.player.stop()
+        
+        self.is_playing = False
+        
+        # タイムライン等のリセット
+        if hasattr(self, 'timeline_widget'):
+            self.timeline_widget.set_current_time(0.0)
+            
         clean_path = os.path.normpath(filename)
         parts = [p for p in clean_path.split(os.sep) if p]
         if len(parts) >= 2:
