@@ -3654,24 +3654,6 @@ class MainWindow(QMainWindow):
             return []
 
         return notes
-        
-    
-    def read_file_safely(self, filepath: str) -> str:
-        """ 文字コードを自動判別し、安全に読み込む"""
-        import chardet
-        try:
-            with open(filepath, 'rb') as f:
-                raw_data = f.read()
-            
-            res = chardet.detect(raw_data)
-            encoding = res['encoding'] if res['encoding'] else 'cp932'
-            
-            # errors='replace' を指定することで、変換できない文字があってもクラッシュさせない
-            return raw_data.decode(encoding, errors='replace')
-        except Exception as e:
-            print(f"File Read Error: {e}")
-            return ""
-
 
 
 # --- ファイル読み書き・インポート関連 ---
@@ -3738,20 +3720,65 @@ class MainWindow(QMainWindow):
 
     def read_file_safely(self, filepath: str) -> Optional[str]:
         """
-        エンコーディング(Shift-JIS/UTF-8)を考慮してファイルを読み込む。
-        Actionsの reportArgumentType を回避するため戻り値を明示します。
+        文字コードを自動判別し、複数の候補でリトライしながら、
+        エラー置換を含めて安全にファイルを読み込む統合メソッド。
+        代表の設計思想をすべて集約し、F811エラーを解消しました。
         """
+        import chardet
         import codecs
-        encodings = ['shift_jis', 'utf-8', 'utf-8-sig', 'cp932']
-        
-        for enc in encodings:
-            try:
-                with codecs.open(filepath, 'r', encoding=enc) as f:
-                    return str(f.read())
-            except (UnicodeDecodeError, OSError):
-                continue
-        return None
+        import os
 
+        # 1. ファイル存在チェック
+        if not os.path.exists(filepath):
+            return None
+
+        raw_data: bytes = b""
+        try:
+            # 2. 最初にバイナリとして読み込み（判別用）
+            with open(filepath, 'rb') as f:
+                raw_data = f.read()
+            
+            if not raw_data:
+                return ""
+        except Exception as e:
+            print(f"Binary Read Error: {e}")
+            return None
+
+        # 3. chardetによる自動判別を試行
+        detected_encoding: Optional[str] = None
+        try:
+            res = chardet.detect(raw_data)
+            detected_encoding = res.get('encoding')
+        except Exception:
+            pass
+
+        # 4. 試行するエンコーディングリストの構築
+        # 自動判別結果を最優先し、次に主要な日本語エンコーディングを配置
+        candidate_encodings = []
+        if detected_encoding:
+            candidate_encodings.append(detected_encoding)
+        
+        # 代表が提示された主要な候補を追加（重複は避ける）
+        for enc in ['shift_jis', 'utf-8', 'utf-8-sig', 'cp932', 'euc-jp']:
+            if enc not in candidate_encodings:
+                candidate_encodings.append(enc)
+
+        # 5. 順次デコードを試行
+        for enc in candidate_encodings:
+            try:
+                # 代表の指定：errors='replace' を使用して、一部の不正文字でのクラッシュを防ぐ
+                # codecs.open よりも bytes.decode の方が replace 処理が安定するためこちらを採用
+                return raw_data.decode(enc, errors='replace')
+            except (UnicodeDecodeError, LookupError):
+                continue
+
+        # 6. すべて失敗した場合の最終手段
+        try:
+            # 最も一般的な cp932 で強制デコード（replaceあり）
+            return raw_data.decode('cp932', errors='replace')
+        except Exception:
+            return None
+            
     def parse_ust_dict_to_note(self, note_dict: Dict[str, str]) -> Optional[Any]:
         """
         USTの辞書データを内部のノート形式に変換。
