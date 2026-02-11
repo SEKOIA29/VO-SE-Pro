@@ -3148,7 +3148,7 @@ class MainWindow(QMainWindow):
 
 
 
-@Slot()
+    @Slot()
     def on_save_project_clicked(self) -> None:
         """
         プロジェクトの保存処理。
@@ -4800,9 +4800,7 @@ def main() -> None:
     """
     VO-SE Pro アプリケーション起動エントリーポイント。
     """
-    # 依存ライブラリをメソッド内で確実に確保
     from PySide6.QtWidgets import QApplication
-    import sys
 
     # 1. アプリケーションインスタンスの作成
     # sys をインポート済みなので、sys.argv へのアクセスが安全です
