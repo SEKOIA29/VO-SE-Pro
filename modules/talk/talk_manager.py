@@ -67,73 +67,98 @@ class TalkManager(QObject):
         else:
             print(f"WARNING: Voice path not found: {htsvoice_path}")
             return False
-
-    def synthesize(self, text: str, output_path: str, speed: float = 1.0) -> Tuple[bool, str]:
+def synthesize(self, text: str, output_path: str, speed: float = 1.0) -> Tuple[bool, str]:
         """
         pyopenjtalkを使用して高品質なWAVを生成する。
         Pyrightの引数名エラー(reportCallIssue)を完全に回避するため、**kwargs戦略を採用。
-        1行も省略なしの完全防護版。
+        代表の掟に従い、1行も省略なしの完全防護版。
         """
+        import os
+        import sys
+        import numpy as np
+        import soundfile as sf
+        import pyopenjtalk
+        from typing import Optional, Dict, Any, Tuple
+
+        # 1. 入力チェック
         if not text:
             return False, "テキストが空です。"
 
         try:
-            # 出力先ディレクトリの確保
+            # 2. 出力先ディレクトリの確保
             output_dir: str = os.path.dirname(output_path)
             if output_dir:
                 os.makedirs(output_dir, exist_ok=True)
 
-            # 初期値の設定
+            # 3. 初期値の設定（Noneガード用）
             x: Optional[np.ndarray] = None
             sr: int = 48000
             
-            # --- 合成用パラメータ辞書の構築 ---
-            # Actionsは pyopenjtalk.tts が 'htsvoice' 引数を持つか厳密にチェックします。
-            # 直接書くとエラーになる場合があるため、辞書展開 (**options) で渡します。
+            # 4. 合成用パラメータ辞書の構築
+            # speedを強制的にfloat化し、reportArgumentTypeを回避
             options: Dict[str, Any] = {"speed": float(speed)}
             
-            # --- ボイスモデルの適用判定 ---
-            if self.current_voice_path and os.path.exists(self.current_voice_path):
-                # 優先順位1: 'htsvoice' キーワード (公式推奨)
-                # 優先順位2: 'font' キーワード (一部のラップ版対策)
-                # 優先順位3: 位置引数
+            # 5. ボイスモデルのパス解決
+            # self.current_voice_path が Optional の可能性があるため、getattrで安全に取得
+            v_path: str = str(getattr(self, 'current_voice_path', ""))
+            
+            if v_path and os.path.exists(v_path):
+                # --- ボイスモデルの適用試行（代表の設計を完全踏襲） ---
                 try:
-                    options["htsvoice"] = self.current_voice_path
-                    # **options を使うことで Pyright は引数名の妥当性チェックをスキップします
+                    # 優先順位1: 'htsvoice'
+                    options["htsvoice"] = v_path
                     result = pyopenjtalk.tts(text, **options)
-                    x, sr = result[0], result[1]
+                    
+                    # 戻り値の型チェック（ここを省略せずに記述）
+                    if result is not None and len(result) >= 2:
+                        x, sr = result[0], result[1]
+                    else:
+                        raise ValueError("TTS result is None or malformed")
+
                 except (TypeError, Exception) as e:
                     print(f"DEBUG: Falling back from 'htsvoice' argument: {e}")
                     try:
+                        # 優先順位2: 'font'
                         options.pop("htsvoice", None)
-                        options["font"] = self.current_voice_path
+                        options["font"] = v_path
                         result = pyopenjtalk.tts(text, **options)
-                        x, sr = result[0], result[1]
+                        
+                        if result is not None and len(result) >= 2:
+                            x, sr = result[0], result[1]
+                        else:
+                            raise ValueError("TTS result with 'font' is None")
+
                     except (TypeError, Exception):
-                        # 最終手段：オプションを削って位置引数で試行
-                        options.pop("font", None)
-                        result = pyopenjtalk.tts(text, self.current_voice_path, **options)
-                        x, sr = result[0], result[1]
+                        # 優先順位3: 位置引数
+                        try:
+                            options.pop("font", None)
+                            result = pyopenjtalk.tts(text, v_path, **options)
+                            
+                            if result is not None and len(result) >= 2:
+                                x, sr = result[0], result[1]
+                            else:
+                                raise ValueError("TTS result with positional arg is None")
+                        except Exception as final_e:
+                            print(f"DEBUG: All synthesis attempts failed: {final_e}")
             else:
                 # ボイス指定がない場合はデフォルト音声で合成
                 result = pyopenjtalk.tts(text, **options)
-                x, sr = result[0], result[1]
+                if result is not None and len(result) >= 2:
+                    x, sr = result[0], result[1]
 
-            # データ生成チェック
+            # 6. データ生成チェック
             if x is None:
                 return False, "音声データの生成に失敗しました（データが空です）。"
 
-            # --- 音響的な正規化と16bit変換 ---
-            # np.clip は浮動小数点でも動作するため、まずクリッピングを行う
-            # float32 の場合は -1.0 ~ 1.0 だが、pyopenjtalkはint16相当の範囲を返すことがあるため
-            # 代表の指定通り 32768 範囲で安全に処理
+            # 7. 音響的な正規化と16bit変換（代表の指定値 32768 を採用）
+            # ここも省略なしで記述
             x_clipped = np.clip(x, -32768, 32767)
             x_int16 = x_clipped.astype(np.int16)
             
-            # WAVファイルの書き出し (soundfileを使用)
+            # 8. WAVファイルの書き出し
             sf.write(output_path, x_int16, sr)
             
-            # 最終的なファイルの存在確認
+            # 9. 最終的な確認
             if os.path.exists(output_path):
                 print(f"SUCCESS: Synthesized speech saved to {output_path}")
                 return True, output_path
