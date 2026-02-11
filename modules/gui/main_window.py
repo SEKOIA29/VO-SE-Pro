@@ -919,52 +919,51 @@ class MainWindow(QMainWindow):
 
     def __init__(self, parent=None, engine=None, ai=None, config=None):
         super().__init__(parent)
-       
-        self.playback_thread = None # 今の演奏スレッドを保存する変数
-
-        # reportAssignmentType 対策：明示的な型指定
-        self.timeline_widget: "TimelineWidget"
-        self.graph_editor_widget: "GraphEditorWidget"
         
-        # 初期化コード内
+        # 1. 外部依存・システム初期化
+        self.os_type = platform.system()
+        # self.engine = engine  # 必要に応じて
+        # self.ai_manager = AIManager() # 適切なクラス名で
+
+        # 2. 演奏・スレッド管理
+        self.playback_thread = None
+        self.is_playing_state = False
+        
+        # 3. GUIコンポーネントの初期化（※Noneでの上書きを禁止）
+        # 宣言と実体化を同時に行い、Pyrightに型を確定させます
         from .timeline_widget import TimelineWidget
-        # castを使用して、定義と実体が一致することをPyrightに分からせる
-        self.timeline_widget = cast(TimelineWidget, TimelineWidget(self))
+        from .graph_editor_widget import GraphEditorWidget # 存在する場合
+        
+        self.timeline_widget: TimelineWidget = cast(TimelineWidget, TimelineWidget(self))
+        # self.graph_editor_widget: GraphEditorWidget = cast(GraphEditorWidget, GraphEditorWidget(self))
 
-        # ---  未定義属性のエラーを消すための宣言 ---
+        # 4. 未定義属性エラーを消すための「確定」宣言
         self.v_scrollbar = QSlider(Qt.Orientation.Vertical, self) 
-        self.sync_notes = True # timeline_widget側からのアクセス用
         self.h_scrollbar = QSlider(Qt.Orientation.Horizontal, self)
-        self.all_parameters = {}
-
-        # システム初期化
-        self.history = HistoryManager()
-        self.tracks = [VoseTrack("Vocal 1", "vocal")]
+        self.sync_notes: bool = True
+        self.all_parameters: Dict[str, Any] = {}
+        
+        # 5. データモデル・マネージャー
+        # self.history = HistoryManager()
+        # self.tracks = [VoseTrack("Vocal 1", "vocal")]
         self.current_track_idx = 0
 
-        self.timeline_widget = cast('TimelineWidget', None) # 後で実体を代入
-        self.canvas = None
-        self.player = None
-        self.piano_roll_scene = None
-        self.text_analyzer = None
-        self.is_playing_state = False
-        self.player = None
-        self.audio_output = None
-        self.vose_core = None
-        self.talk_manager = None
+        # 6. エンジン・コア（Noneで初期化するものは型ヒントを明示）
+        # これにより「Noneには属性がない」というエラー(reportOptionalMemberAccess)を防ぎます
+        self.player: Any = None 
+        self.audio_output: Any = None
+        self.vose_core: Any = None
+        self.talk_manager: Any = None
+        self.text_analyzer: Any = None
+        
+        self.canvas: Any = None
+        self.piano_roll_scene: Any = None
 
-        # タイマー類の確実な初期化
+        # 7. タイマー類の確実な初期化
         self.render_timer = QTimer(self)
         self.playback_timer = QTimer(self)
 
-        # --- インポートしたクラスをインスタンス化して「使用中」にする ---
-        self.os_type = platform.system()  # これで platform を使用
-        #self.engine = VO_SE_Engine()     # これで VO_SE_Engine を使用
-        self.ai_manager = AIManager()    # これで AIManager を使用
-        
-        # UIセットアップ（省略）
-        self.statusBar().showMessage("Ready.")
-
+        # 8. 音素データ
         self.vowel_groups = {
             'a': 'あかさたなはまやらわがざだばぱぁゃ',
             'i': 'いきしちにひみりぎじぢびぴぃ',
@@ -973,8 +972,10 @@ class MainWindow(QMainWindow):
             'o': 'おこそとのほもよろをごぞどぼぽぉょ',
             'n': 'ん'
         }
-        # oto.iniのデータを格納する辞書（空で初期化）
-        self.oto_dict = {}
+        self.oto_dict: Dict[str, Any] = {}
+
+        # UIセットアップ
+        self.statusBar().showMessage("Ready.")
 
         # ==============================================================================
         # --- ここで辞書を定義 ---
