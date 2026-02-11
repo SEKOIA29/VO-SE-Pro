@@ -1537,7 +1537,7 @@ class MainWindow(QMainWindow):
         PySide6の仕様変更(Enum/Multimedia)に対応し、1行も省略せず記述します。
         """
         from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
-        from PySide6.QtWidgets import QSlider, QLabel, QHBoxLayout, QVBoxLayout
+        from PySide6.QtWidgets import QSlider, QLabel, QHBoxLayout
         from PySide6.QtCore import Qt
 
         # --- 1. 再生エンジンの構築 ---
