@@ -3238,28 +3238,48 @@ class MainWindow(QMainWindow):
 
     def stop_and_clear_playback(self) -> None:
         """
-        再生を停止し、状態をリセットする。
-        Actionsログ 3678行目のエラーを解消します。
+        再生を停止し、内部状態とUIを初期状態にリセットする。
+        3678行目のエラーを根絶し、すべての属性アクセスを安全に行います。
         """
-        # プレイヤーの停止
+        # 1. プレイヤーの停止 (AttributeAccessIssue 対策)
+        # self.player が bool (False) や None の場合にメソッドを呼ぼうとしてクラッシュするのを防ぐ
         player_obj = getattr(self, 'player', None)
         if player_obj is not None and not isinstance(player_obj, bool):
+            # stop メソッドが存在するか確認してから実行
             if hasattr(player_obj, 'stop'):
-                player_obj.stop()
+                stop_func = player_obj.stop
+                if callable(stop_func):
+                    stop_func()
 
-        # フラグのリセット
-        self.is_playing = False
-        self.current_playback_time = 0.0
+        # 2. 内部フラグの安全なリセット
+        # Pyright の reportAttributeAccessIssue を防ぐため、確実に属性を更新
+        self.is_playing: bool = False
+        self.current_playback_time: float = 0.0
         
-        # UIの更新
-        if hasattr(self, 'update_playback_ui'):
-            self.update_playback_ui()
+        # 3. UI状態の更新 (メソッド不在エラーを回避)
+        # 循環参照や動的なメソッド追加を考慮し、hasattr でチェック
+        update_ui_func = getattr(self, 'update_playback_ui', None)
+        if callable(update_ui_func):
+            update_ui_func()
             
-        # カーソルを先頭へ
+        # 4. タイムラインカーソルを 0.0 (先頭) へ戻す
+        # timeline_widget が None である可能性を考慮したガード
         t_widget = getattr(self, 'timeline_widget', None)
         if t_widget is not None:
-            t_widget.set_current_time(0.0)
+            # 引数の型を float(0.0) で確定させて呼び出し
+            if hasattr(t_widget, 'set_current_time'):
+                t_widget.set_current_time(0.0)
+                
+        # 5. グラフエディタも同期してリセット
+        g_widget = getattr(self, 'graph_editor_widget', None)
+        if g_widget is not None and hasattr(g_widget, 'set_current_time'):
+            g_widget.set_current_time(0.0)
 
+        # 6. ステータスバーへのリセット通知
+        status_bar = self.statusBar()
+        if status_bar is not None:
+            status_bar.showMessage("Playback stopped and reset to 00:00.000")
+            
     # ==========================================================================
     # REAL-TIME PREVIEW ENGINE (Low-Latency Response)
     # ==========================================================================
@@ -4773,36 +4793,45 @@ class MainWindow(QMainWindow):
 
 
 # ==============================================================================
-# アプリケーションエントリーポイント
+# エントリーポイント
 # ==============================================================================
 
 def main() -> None:
     """
     VO-SE Pro アプリケーション起動エントリーポイント。
     """
+    # 依存ライブラリをメソッド内で確実に確保
     from PySide6.QtWidgets import QApplication
+    import sys
 
     # 1. アプリケーションインスタンスの作成
-    # sys.argv を通すことで、コマンドライン引数の受け取りを可能にします
+    # sys をインポート済みなので、sys.argv へのアクセスが安全です
     app = QApplication(sys.argv)
     
     # 2. 外観の設定
-    # "Fusion" スタイルは、Windows/Mac/Linuxで最も動作が安定し、
-    # かつDAWらしいプロフェッショナルな見た目を提供します
+    # DAWとしての統一感を出すため、Fusionスタイルを適用
     app.setStyle("Fusion")
     
     # 3. メインウィンドウの生成と表示
-    # MainWindowクラスのインスタンス化
-    window = MainWindow()
-    window.show()
-    
-    # 4. イベントループの開始と安全な終了
-    # app.exec() でGUIの待機状態に入り、閉じられたら sys.exit で
-    # OSに終了ステータスを正しく返します
-    sys.exit(app.exec())
-
+    # クラス MainWindow が定義済みであることを前提にインスタンス化
+    try:
+        # 代表、ここで MainWindow を呼び出します
+        window = MainWindow()
+        window.show()
+        
+        # 4. イベントループの開始と安全な終了
+        # 戻り値を sys.exit に渡すことで、正常終了(0)を保証します
+        exit_code = app.exec()
+        sys.exit(exit_code)
+        
+    except NameError as e:
+        # MainWindow が見つからない場合のデバッグ用
+        print(f"CRITICAL ERROR: MainWindow class is not defined. {e}")
+        sys.exit(1)
+    except Exception as e:
+        # その他の予期せぬ起動エラーの捕捉
+        print(f"APPLICATION ERROR: {str(e)}")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    # このスクリプトが直接実行された場合のみ main() を呼び出す
-    # 代表、これが「ライブラリ」と「アプリ」を両立させるプロの書き方です
     main()
