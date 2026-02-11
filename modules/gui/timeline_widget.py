@@ -1,18 +1,32 @@
-# timeline_widget.py
 import json
 import os
 import ctypes
 import wave
 import numpy as np
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union, Protocol, runtime_checkable
 
 from PySide6.QtWidgets import QWidget, QApplication, QInputDialog, QLineEdit
 from PySide6.QtCore import Qt, QRect, Signal, Slot, QPoint, QSize
-from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QFont, QLinearGradient
+from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QFont, QLinearGradient, QMouseEvent, QPaintEvent
 
-# データモデルのインポート（型チェック用）
+# --- 1. データモデルの安全なインポートと型定義 ---
+# Protocolを使用して、NoteEventが持つべき属性を型チェッカーに約束させます
+@runtime_checkable
+class NoteEventProtocol(Protocol):
+    start_time: float
+    duration: float
+    note_number: int
+    lyrics: str
+    is_selected: bool
+    phoneme: str
+    onset: float
+    overlap: float
+    pre_utterance: float
+    has_analysis: bool
+    def to_dict(self) -> Dict[str, Any]: ...
+
 try:
-    from .data_models import NoteEvent # type: ignore
+    from .data_models import NoteEvent
 except ImportError:
     # Actions対策: 本物の NoteEvent とシグネチャを合わせ、
     # 属性アクセス(reportAttributeAccessIssue)を完全に封殺します。
@@ -31,7 +45,7 @@ except ImportError:
             self.is_selected: bool = False
             self.phoneme: str = ""
             
-            # 1. 解析用パラメータ（main_window.py との整合性維持）
+            # 解析用パラメータ（main_window.py との整合性維持）
             self.onset: float = 0.0
             self.overlap: float = 0.0
             self.pre_utterance: float = 0.0
@@ -53,12 +67,17 @@ except ImportError:
                 "pre_utterance": getattr(self, "pre_utterance", 0.0)
             }
 
-# janomeのインポート
+# --- 2. Janome Tokenizer の安全なインポート ---
+# Protocol定義により、ダミーでも本物でも tokenize メソッドの存在を保証
+class TokenizerProtocol(Protocol):
+    def tokenize(self, text: str) -> List[Any]: ...
+
 try:
     from janome.tokenizer import Tokenizer
 except ImportError:
     class Tokenizer:
         def tokenize(self, text: str) -> List[Any]: return []
+
 
 class TimelineWidget(QWidget):
     # シグナル名の統一（MainWindow側での接続エラーを確実に防ぐ）
@@ -111,11 +130,13 @@ class TimelineWidget(QWidget):
         self.selection_rect: QRect = QRect()
         
         # Tokenizerの初期化 (Noneチェックを行いActionsエラーを回避)
+        self.tokenizer: Any = None
         try:
-            from .tokenizer import Tokenizer # type: ignore
-            self.tokenizer: Any = Tokenizer()
-        except (ImportError, ModuleNotFoundError):
-            # 万が一Tokenizerが見つからない場合も、ダミーオブジェクトで動作を継続
+            # 型チェックを通過させるため、一度ローカル変数に受ける等の工夫も可だが
+            # ここではクラス定義の try-except ブロックで保証された Tokenizer を使用
+            self.tokenizer = Tokenizer()
+        except Exception:
+            # 万が一の予備
             class DummyTokenizer:
                 def tokenize(self, text: str) -> List[str]: return [text]
             self.tokenizer = DummyTokenizer()
@@ -240,14 +261,19 @@ class TimelineWidget(QWidget):
 
     def _draw_audio_waveform(self, p: QPainter) -> None:
         """タイムラインの背景としてオーディオ波形を描画する（同期修正版）"""
+        # 親オブジェクトへのアクセスを安全に行う
         parent_obj = self.parent()
-        if parent_obj is None or not hasattr(parent_obj, 'tracks'):
+        if parent_obj is None:
             return
             
-        target_idx = int(getattr(parent_obj, 'current_track_idx', 0))
-        tracks = getattr(parent_obj, 'tracks', [])
+        # getattrを使用して動的属性アクセスによる型エラーを回避
+        target_idx_val = getattr(parent_obj, 'current_track_idx', 0)
+        tracks_val = getattr(parent_obj, 'tracks', [])
         
-        if not isinstance(tracks, list) or target_idx >= len(tracks):
+        target_idx: int = int(target_idx_val)
+        tracks: List[Any] = list(tracks_val) if isinstance(tracks_val, list) else []
+        
+        if target_idx >= len(tracks):
             return
             
         track = tracks[target_idx]
@@ -258,11 +284,12 @@ class TimelineWidget(QWidget):
         if track_type != "wave" or not audio_path:
             return
 
+        # ピークデータのキャッシュ確認
         if not hasattr(track, 'vose_peaks'):
             setattr(track, 'vose_peaks', self.get_audio_peaks(audio_path))
             
         vose_peaks = getattr(track, 'vose_peaks', [])
-        if not vose_peaks:
+        if not vose_peaks or not isinstance(vose_peaks, list):
             return
 
         pixels_per_second = (self.tempo / 60.0) * self.pixels_per_beat
@@ -283,7 +310,7 @@ class TimelineWidget(QWidget):
             h = peak * max_h
             p.drawLine(int(x), int(mid_y - h/2), int(x), int(mid_y + h/2))
 
-    def paintEvent(self, event: Any) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.fillRect(self.rect(), QColor(18, 18, 18))
@@ -317,10 +344,10 @@ class TimelineWidget(QWidget):
         }
         for name, data in self.parameters.items():
             if name != self.current_param_layer:
-                self._draw_curve(p, data, colors[name], 40, 1)
+                self._draw_curve(p, data, colors.get(name, QColor(255, 255, 255)), 40, 1)
         
         current_layer_data = self.parameters.get(self.current_param_layer, {})
-        self._draw_curve(p, current_layer_data, colors[self.current_param_layer], 220, 2)
+        self._draw_curve(p, current_layer_data, colors.get(self.current_param_layer, QColor(255, 255, 255)), 220, 2)
 
         # --- 5. ノート描画 ---
         for n in self.notes_list:
