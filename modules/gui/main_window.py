@@ -74,6 +74,34 @@ except ImportError:
 # ==========================================================================
 os.environ["OMP_NUM_THREADS"] = "1"
 
+
+def prepare_c_note_event(python_note: Dict[str, Any]) -> NoteEvent:
+    """
+    UI上のノート情報(Dict)を、C++が解読可能な NoteEvent 構造体に変換する。
+    """
+    # 1. データの確保
+    pitch_data = python_note.get('pitch_curve', [0.0])
+    gender_data = python_note.get('gender_curve', [0.5] * len(pitch_data))
+    tension_data = python_note.get('tension_curve', [0.5] * len(pitch_data))
+    breath_data = python_note.get('breath_curve', [0.0] * len(pitch_data))
+
+    # 2. ctypesによるポインタ化 (省略なしの実装)
+    pitch_ptr = (ctypes.c_double * len(pitch_data))(*pitch_data)
+    gender_ptr = (ctypes.c_double * len(gender_data))(*gender_data)
+    tension_ptr = (ctypes.c_double * len(tension_data))(*tension_data)
+    breath_ptr = (ctypes.c_double * len(breath_data))(*breath_data)
+
+    # 3. 構造体の生成
+    return NoteEvent(
+        wav_path=python_note.get('phoneme', '').encode('utf-8'),
+        pitch_curve=cast(ctypes.POINTER(ctypes.c_double), pitch_ptr),
+        pitch_length=len(pitch_data),
+        gender_curve=cast(ctypes.POINTER(ctypes.c_double), gender_ptr),
+        tension_curve=cast(ctypes.POINTER(ctypes.c_double), tension_ptr),
+        breath_curve=cast(ctypes.POINTER(ctypes.c_double), breath_ptr)
+    )
+
+
 # ==========================================================================
 # ハイブリッド・エンジン自動判別システム
 # ==========================================================================
@@ -624,20 +652,23 @@ try:
 except ImportError:
     class NoteEvent(ctypes.Structure):
         _fields_ = [
-            ("wav_path", ctypes.c_char_p),
+            ("wav_path", ctypes.c_char_p),      # 原音キー(phoneme)
             ("pitch_curve", ctypes.POINTER(ctypes.c_double)),
             ("pitch_length", ctypes.c_int),
             ("gender_curve", ctypes.POINTER(ctypes.c_double)),
             ("tension_curve", ctypes.POINTER(ctypes.c_double)),
             ("breath_curve", ctypes.POINTER(ctypes.c_double)),
+            # 必要に応じて UTAU用パラメータ(offset等)をここに追加
         ]
+
         def __init__(self, **kwargs):
             super().__init__()
+            # Python側での管理用属性（ctypesのフィールド外）
             self.lyrics = kwargs.get('lyrics', '')
             self.duration = kwargs.get('duration', 0.5)
             self.note_number = kwargs.get('note_number', 60)
             self.phonemes = kwargs.get('phonemes', '')
-
+            self.start_tick = kwargs.get('start_tick', 0)
     
     class PitchEvent:
         def __init__(self, time=0.0, pitch=0.0):
