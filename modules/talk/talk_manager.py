@@ -10,7 +10,8 @@ try:
     from .intonation_analyzer import IntonationAnalyzer
 except ImportError:
     # 循環参照対策が必要な場合のスタブ
-    class IntonationAnalyzer: pass
+    class IntonationAnalyzer: 
+        pass
 
 def generate_talk_events(text: str, analyzer: "IntonationAnalyzer") -> List[Dict[str, Any]]:
     """
