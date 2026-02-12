@@ -968,7 +968,7 @@ class MainWindow(QMainWindow):
 
         # --- 未定義属性のエラーを消すための宣言 ---
         self.v_scrollbar = QSlider(Qt.Orientation.Vertical, self) 
-        self.sync_notes: bool = True # timeline_widget側からのアクセス用
+        self.sync_notes: bool = True# timeline_widget側からのアクセス用
         self.h_scrollbar = QSlider(Qt.Orientation.Horizontal, self)
         self.all_parameters: Dict[str, Any] = {}
 
@@ -1163,7 +1163,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Engine Ready: {self.active_device}", 5000)
 
     def log_startup(self, message):
-        """標準出力へのログ記録（2026年開発者モード用）"""
+        """標準出力へのログ記録）""" 
         timestamp = time.strftime('%H:%M:%S')
         print(f"[{timestamp}] [BOOT] {message}")
         """起動ログ（デバッグ用）"""
