@@ -238,7 +238,7 @@ class TalkManager(QObject):
                         try:
                             options.pop("font", None)
                             # 位置引数として v_path を直接渡す
-                            result = pyopenjtalk.tts(text, v_path, **options)
+                            self.talk_manager.synthesize(text, path, speed=float(self.speed_input.text() or 1.0))
                             
                             if result is not None and len(result) >= 2:
                                 x, sr = result[0], result[1]
