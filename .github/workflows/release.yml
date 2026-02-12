@@ -30,14 +30,19 @@ jobs:
           python-version: '3.10'
           cache: 'pip'
 
-      # 1. 先にライブラリをインストール！（これで Pyright が納得します）
+      # 1. 先にライブラリをインストール
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install PySide6 numpy sounddevice soundfile mido janome Pillow pyinstaller ruff pyright
+          # 1. 必要なライブラリを網羅（pykakasi を追加）
+          pip install PySide6 numpy sounddevice soundfile mido janome Pillow pyinstaller ruff pyright scipy onnxruntime chardet pykakasi
+          
+          # 2. pyopenjtalk のインストールと辞書のセットアップ
+          # 型チェックを通すため、公式のバイナリを優先
           pip install pyopenjtalk --only-binary :all: || pip install pyopenjtalk
-          pip install numpy scipy PySide6 onnxruntime mido chardet
-
+          
+          # 3. pyopenjtalk が動くために必要な辞書データの準備（これがないと実行時エラーになります）
+          python -c "import pyopenjtalk; pyopenjtalk.create_user_dict('user.dic', 'user.csv') if hasattr(pyopenjtalk, 'create_user_dict') else print('Skip dict creation')"
       # 2. その後に Ruff でチェック
       - name: Lint with Ruff
         run: |
