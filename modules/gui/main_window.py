@@ -4510,7 +4510,9 @@ class MainWindow(QMainWindow):
             
         self.timeline_widget.update()
         if hasattr(self, 'pro_monitoring') and self.pro_monitoring:
-            self.pro_monitoring.sync_notes(self.timeline_widget.notes_list)
+           self.sync_notes = True
+           if hasattr(self, 'timeline_widget'):
+              self.refresh_canvas() # 再描画で同期を視覚化
 
     def parse_ust_dict_to_note(self, d: Dict[str, Any], current_time_sec: float = 0.0, tempo: float = 120.0) -> Any:
         """
