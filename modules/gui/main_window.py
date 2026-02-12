@@ -4511,6 +4511,7 @@ class MainWindow(QMainWindow):
         self.timeline_widget.update()
         if hasattr(self, 'pro_monitoring') and self.pro_monitoring:
            self.sync_notes = True
+           self.bg_color: QColor = QColor("#FFFFFF")
            if hasattr(self, 'timeline_widget'):
               self.refresh_canvas() # 再描画で同期を視覚化
 
