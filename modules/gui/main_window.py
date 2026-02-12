@@ -4512,8 +4512,12 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'pro_monitoring') and self.pro_monitoring:
            self.sync_notes = True
            self.bg_color: QColor = QColor("#FFFFFF")
-           if hasattr(self, 'timeline_widget'):
-              self.refresh_canvas() # 再描画で同期を視覚化
+           if hasattr(self, 'pro_monitoring') and self.pro_monitoring:
+              self.sync_notes = True
+              # QColorを明示的に型ヒントとコンストラクタで使用
+              self.bg_color: QColor = QColor("#FFFFFF")
+              if hasattr(self, 'timeline_widget'):
+                 self.refresh_canvas()
 
     def parse_ust_dict_to_note(self, d: Dict[str, Any], current_time_sec: float = 0.0, tempo: float = 120.0) -> Any:
         """
