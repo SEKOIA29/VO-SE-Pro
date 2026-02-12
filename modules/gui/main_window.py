@@ -4892,6 +4892,69 @@ self.playback_thread = None # 今の演奏スレッドを保存する変数
         
         print("Application closing...")
 
+# ==============================================================================
+# レリタリング実行メゾット
+# ==============================================================================
+
+    @Slot()
+    def request_render(self) -> None:
+        """
+        タイムライン上の全ノートをスキャンし、代表のC++エンジンでWAVを生成する。
+        歌唱モードとトークモードを自動判別して NoteEvent を構築します。
+        """
+        import os
+        from typing import List
+        
+        # 1. 保存先の決定
+        output_wav = os.path.join(os.getcwd(), "output", "render_result.wav")
+        os.makedirs(os.path.dirname(output_wav), exist_ok=True)
+
+        # 2. タイムラインから全ノートを取得（省略なしで走査）
+        # 各ノートは {'phoneme': 'a', 'pitch': [...], 'gender': [...], etc. } の辞書を想定
+        raw_notes = self.timeline_widget.get_all_notes_data()
+        if not raw_notes:
+            self.statusBar().showMessage("エラー: レンダリングするノートがありません。")
+            return
+
+        self.statusBar().showMessage("レンダリング中...")
+
+        # 3. C++側の構造体配列を作成
+        # 前述の prepare_c_note_event を使用して構造体配列を構築
+        try:
+            note_count = len(raw_notes)
+            NotesArrayType = NoteEvent * note_count
+            c_notes = NotesArrayType()
+
+            for i, note_data in enumerate(raw_notes):
+                # UIからの生データを C++ NoteEvent 構造体に変換
+                c_event = prepare_c_note_event(note_data)
+                c_notes[i] = c_event
+
+            # 4. 代表のC++エンジン (DLL/so) を呼び出し
+            # ここで UTAUトーク も 歌唱 も一気に処理されます
+            if self.vose_core:
+                self.vose_core.execute_render(c_notes, note_count, output_wav.encode('utf-8'))
+                
+                self.statusBar().showMessage(f"レンダリング完了: {output_wav}")
+                # 自動再生へ（省略なしの実装）
+                self.play_rendered_audio(output_wav)
+            else:
+                self.statusBar().showMessage("エラー: VOSE Coreエンジンがロードされていません。")
+
+        except Exception as e:
+            self.statusBar().showMessage(f"レンダリング失敗: {str(e)}")
+            print(f"Render Error: {e}")
+
+    def play_rendered_audio(self, wav_path: str) -> None:
+        """生成されたWAVをAudioPlayerで再生する"""
+        if self.player and os.path.exists(wav_path):
+            # PySide6.QtMultimedia.QMediaPlayer を想定
+            from PySide6.QtCore import QUrl
+            self.player.setSource(QUrl.fromLocalFile(wav_path))
+            self.player.play()
+
+
+
 
 # ==============================================================================
 # エントリーポイント
