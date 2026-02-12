@@ -77,6 +77,41 @@ os.environ["OMP_NUM_THREADS"] = "1"
 
 
 try:
+    from .data_models import NoteEvent
+except ImportError:
+    class NoteEvent(ctypes.Structure):
+        _fields_ = [
+            ("wav_path", ctypes.c_char_p),      # 原音キー(phoneme)
+            ("pitch_curve", ctypes.POINTER(ctypes.c_double)),
+            ("pitch_length", ctypes.c_int),
+            ("gender_curve", ctypes.POINTER(ctypes.c_double)),
+            ("tension_curve", ctypes.POINTER(ctypes.c_double)),
+            ("breath_curve", ctypes.POINTER(ctypes.c_double)),
+            # 必要に応じて UTAU用パラメータ(offset等)をここに追加
+        ]
+
+        def __init__(self, **kwargs):
+            super().__init__()
+            # Python側での管理用属性（ctypesのフィールド外）
+            self.lyrics = kwargs.get('lyrics', '')
+            self.duration = kwargs.get('duration', 0.5)
+            self.note_number = kwargs.get('note_number', 60)
+            self.phonemes = kwargs.get('phonemes', '')
+            self.start_tick = kwargs.get('start_tick', 0)
+    
+    class PitchEvent:
+        def __init__(self, time=0.0, pitch=0.0):
+            self.time = time
+            self.pitch = pitch
+        
+        def to_dict(self):
+            return {'time': self.time, 'pitch': self.pitch}
+        
+        @staticmethod
+        def from_dict(d):
+            return PitchEvent(d.get('time', 0.0), d.get('pitch', 0.0))
+
+try:
     from .graph_editor_widget import GraphEditorWidget
 except ImportError:
     # Actions (Pyright) は、インポートに失敗した際のこのクラス定義も厳密にチェックします。
@@ -684,40 +719,6 @@ except ImportError:
         def start(self): pass
         def stop(self): pass
 
-try:
-    from .data_models import NoteEvent
-except ImportError:
-    class NoteEvent(ctypes.Structure):
-        _fields_ = [
-            ("wav_path", ctypes.c_char_p),      # 原音キー(phoneme)
-            ("pitch_curve", ctypes.POINTER(ctypes.c_double)),
-            ("pitch_length", ctypes.c_int),
-            ("gender_curve", ctypes.POINTER(ctypes.c_double)),
-            ("tension_curve", ctypes.POINTER(ctypes.c_double)),
-            ("breath_curve", ctypes.POINTER(ctypes.c_double)),
-            # 必要に応じて UTAU用パラメータ(offset等)をここに追加
-        ]
-
-        def __init__(self, **kwargs):
-            super().__init__()
-            # Python側での管理用属性（ctypesのフィールド外）
-            self.lyrics = kwargs.get('lyrics', '')
-            self.duration = kwargs.get('duration', 0.5)
-            self.note_number = kwargs.get('note_number', 60)
-            self.phonemes = kwargs.get('phonemes', '')
-            self.start_tick = kwargs.get('start_tick', 0)
-    
-    class PitchEvent:
-        def __init__(self, time=0.0, pitch=0.0):
-            self.time = time
-            self.pitch = pitch
-        
-        def to_dict(self):
-            return {'time': self.time, 'pitch': self.pitch}
-        
-        @staticmethod
-        def from_dict(d):
-            return PitchEvent(d.get('time', 0.0), d.get('pitch', 0.0))
 
 try:
     from .voice_manager import VoiceManager
