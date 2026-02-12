@@ -86,9 +86,11 @@ class TimelineWidget(QWidget):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """
         タイムライン・ピアノロールのメインウィジェット。
-        代表の設計に基づき、多レイヤー編集と音声エンジン連携を完遂します。
+        多レイヤー編集と音声エンジン連携を完遂します。
         """
         super().__init__(parent)
+
+        self.notes: list = []
         
         # --- 基本的な表示設定 ---
         self.setMinimumSize(400, 200)
@@ -145,6 +147,18 @@ class TimelineWidget(QWidget):
         self.vose_core: Any = None 
         # 代表の設計通り、初期化時にエンジンをセットアップ
         self.init_voice_engine()
+
+    def get_max_beat_position(self) -> int:
+        """最大ビート位置を返す"""
+        return 480 * 4 # デフォルト値
+
+    def add_note_from_midi(self, pitch: int, start: int, duration: int):
+        """MIDIデータからノートを追加"""
+        pass
+
+    def get_all_notes_data(self) -> list:
+        """全ノートデータをリストで返す"""
+        return self.notes
             
 
     # --- 座標 & 解析 ---
