@@ -37,7 +37,7 @@ import math
 # 3. GUIライブラリ (PySide6 / Qt)
 # ==========================================================================
 from PySide6.QtCore import (
-    Qt, Signal, Slot, QThread, QTimer 
+    Qt, Signal, Slot, QThread, QTimer, QColor
 )
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -4509,15 +4509,15 @@ class MainWindow(QMainWindow):
             notes[i].lyrics = lyric_list[i]
             
         self.timeline_widget.update()
+        
         if hasattr(self, 'pro_monitoring') and self.pro_monitoring:
-           self.sync_notes = True
-           self.bg_color: QColor = QColor("#FFFFFF")
-           if hasattr(self, 'pro_monitoring') and self.pro_monitoring:
-              self.sync_notes = True
-              # QColorを明示的に型ヒントとコンストラクタで使用
-              self.bg_color: QColor = QColor("#FFFFFF")
-              if hasattr(self, 'timeline_widget'):
-                 self.refresh_canvas()
+            self.sync_notes = True
+            
+            # QColorを明示的に使用（
+            self.bg_color: QColor = QColor("#FFFFFF")
+            
+            if hasattr(self, 'timeline_widget'):
+                self.refresh_canvas() # 再描画で同期を視覚化
 
     def parse_ust_dict_to_note(self, d: Dict[str, Any], current_time_sec: float = 0.0, tempo: float = 120.0) -> Any:
         """
