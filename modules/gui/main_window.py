@@ -947,11 +947,12 @@ class MainWindow(QMainWindow):
     vol_slider: QSlider
     vol_label: QLabel
     # ------------------
+    
 
     def __init__(self, parent=None, engine=None, ai=None, config=None):
         super().__init__(parent)
         
-self.playback_thread = None # 今の演奏スレッドを保存する変数
+        self.playback_thread = None # 今の演奏スレッドを保存する変数
 
         # --- F401 / reportAssignmentType 対策：インポートと実体化 ---
         from .timeline_widget import TimelineWidget
