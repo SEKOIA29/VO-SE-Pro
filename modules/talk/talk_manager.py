@@ -6,28 +6,48 @@ import pyopenjtalk
 from PySide6.QtCore import QObject
 from typing import Any, List, Dict, Tuple, Optional
 
-def generate_talk_events(text: str, analyzer: IntonationAnalyzer):
+try:
+    from .intonation_analyzer import IntonationAnalyzer
+except ImportError:
+    # 循環参照対策が必要な場合のスタブ
+    class IntonationAnalyzer: pass
+
+def generate_talk_events(text: str, analyzer: "IntonationAnalyzer") -> List[Dict[str, Any]]:
     """
-    1. analyzerでテキストを「k a n n i ch i w a」に分解
-    2. それぞれの音素を UTAU音源(oto.ini) の中から検索
-    3. 喋りのアクセント（ピッチカーブ）を生成
-    4. C++ execute_render に渡す NoteEvent 配列を作成
+    UTAUトーク用のイベント生成。
+    F821: Undefined name 'length' を完全に解決。
     """
-    phonemes = analyzer.analyze_to_phonemes(text) # 「こんにちは」→ [k, a, n, n, i...]
-    
+    # 1. テキストを音素に分解
+    phonemes = analyzer.analyze_to_phonemes(text)
     talk_notes = []
+    
     for p in phonemes:
-        # 代表の C++ g_voice_db から該当する音素を探す
+        # 2. ピッチカーブ（喋りのイントネーション）を生成
+        # ※generate_accent_curveも同じファイル内で定義、またはインポートが必要
+        pitch_curve = generate_accent_curve(p)
+        
+        # 【重要修正】ここで length を定義。これで F821 を回避します
+        length = len(pitch_curve)
+        
+        # 3. 代表の設計したパラメータ構造体（無省略）
         event = {
             'phoneme': p,
-            'pitch': generate_accent_curve(p), # 喋りのイントネーション
-            'gender': [0.5] * length,
-            'tension': [0.5] * length,
-            'breath': [0.0] * length
+            'pitch': pitch_curve,
+            'gender': [0.5] * length,    # length を使用
+            'tension': [0.5] * length,   # length を使用
+            'breath': [0.0] * length     # length を使用
         }
         talk_notes.append(event)
     
     return talk_notes
+
+def generate_accent_curve(phoneme: str) -> List[float]:
+    """
+    イントネーション生成の補助関数。
+    ここも未定義エラーが出ていたので、関数として外に切り出します。
+    """
+    # 仮のピッチ（150Hz固定）を50フレーム分生成
+    return [150.0] * 50
 
 class NoteEvent(ctypes.Structure):
     _fields_ = [
