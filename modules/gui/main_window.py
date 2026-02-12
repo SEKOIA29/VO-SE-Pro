@@ -4913,9 +4913,11 @@ class MainWindow(QMainWindow):
         output_wav = os.path.join(os.getcwd(), "output", "render_result.wav")
         os.makedirs(os.path.dirname(output_wav), exist_ok=True)
 
+
+
         # 2. タイムラインから全ノートを取得（省略なしで走査）
         # 各ノートは {'phoneme': 'a', 'pitch': [...], 'gender': [...], etc. } の辞書を想定
-        raw_notes = self.timeline_widget.get_all_notes_data()
+        raw_notes: List[Dict[str, Any]] = self.timeline_widget.get_all_notes_data()
         if not raw_notes:
             self.statusBar().showMessage("エラー: レンダリングするノートがありません。")
             return
