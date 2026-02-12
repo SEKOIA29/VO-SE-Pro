@@ -238,7 +238,17 @@ class TalkManager(QObject):
                         try:
                             options.pop("font", None)
                             # 位置引数として v_path を直接渡す
-                            self.talk_manager.synthesize(text, path, speed=float(self.speed_input.text() or 1.0))
+                            except (TypeError, Exception):
+                            # 優先順位3: 位置引数 (キーワード引数を一切解さない環境向け)
+                            try:
+                                options.pop("font", None)
+                                result = pyopenjtalk.tts(text, v_path, **options)     
+                                
+                                if result is not None and len(result) >= 2:
+                                    x, sr = result[0], result[1]
+                                else:
+                                    raise ValueError("TTS result with positional arg is None")
+                            
                             
                             if result is not None and len(result) >= 2:
                                 x, sr = result[0], result[1]
