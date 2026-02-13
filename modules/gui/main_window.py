@@ -1172,6 +1172,7 @@ class MainWindow(QMainWindow):
         
         # --- 3. UIの構築 (一度だけ呼ぶ) ---
         self.init_ui()
+        self.setup_connections() # その後にボタンに機能を付ける（利用）
         
         # --- 4. ポスト初期化 (UI構築後に必要な処理) ---
         self.setup_connections()
@@ -1181,6 +1182,522 @@ class MainWindow(QMainWindow):
         # ウィンドウ設定
         self.setWindowTitle("VO-SE Pro")
         self.resize(1200, 800)
+
+
+    def init_ui(self) -> None:
+
+        from PySide6.QtWidgets import QWidget, QVBoxLayout
+        
+        # 1. ウィンドウ基本設定
+        self.setWindowTitle("VO-SE Engine DAW Pro")
+        self.setGeometry(100, 100, 1200, 800)
+        
+        # 2. セントラルウィジェットとメインレイアウトの確定
+        # self.main_layout をクラス属性として保持し、他メソッドからのアクセスを保証
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        self.main_layout = QVBoxLayout(central_widget)
+        self.main_layout.setContentsMargins(5, 5, 5, 5)
+        self.main_layout.setSpacing(2)
+
+        # 3. 各セクションの順次セットアップ
+        # 依存関係（下のパネルが上のエディタを参照するなど）を考慮した順序で呼び出し
+        self.setup_menus()          # メニュー（QActionの親）
+        self.setup_toolbar()        # ツールバー
+        self.setup_main_editor_area() # メインエディタ（KeyboardSidebar, TimelineWidgetを含む）
+        self.setup_bottom_panel()   # 下部パネル（パラメータエディタ等）
+        self.setup_status_bar()     # ステータスバー
+
+        # 4. スタイルと初期状態の適用
+        # hasattrによるチェックに加え、初期化済みフラグ等で安全に呼び出し
+        self._apply_initial_styles()
+
+    def _apply_initial_styles(self) -> None:
+        """初期スタイル適用の安全な実行"""
+        # ログ 2620 等の「未定義属性アクセス」を防ぐため、メソッドの存在を確実に担保
+        if hasattr(self, 'update_timeline_style'):
+            # 代表が定義したタイムラインの視覚効果を適用
+            self.update_timeline_style()
+        
+        # ステータスバーへの初期メッセージ
+        if self.statusBar():
+            self.statusBar().showMessage("Engine Initialized. Ready for production.")
+            
+    # ==========================================================================
+    # UI セクション構築
+    # ==========================================================================
+
+    def setup_toolbar(self):
+        """上部ツールバー：再生・録音・テンポ"""
+        self.toolbar = QToolBar("Main Toolbar")
+        self.addToolBar(self.toolbar)
+
+        self.play_btn = QPushButton("▶ 再生")
+        self.play_btn.clicked.connect(self.on_play_pause_toggled)
+        self.toolbar.addWidget(self.play_btn)
+
+        self.toolbar.addSeparator()
+        
+        self.toolbar.addWidget(QLabel(" Tempo: "))
+        self.tempo_input = QLineEdit("120")
+        self.tempo_input.setFixedWidth(40)
+        self.tempo_input.returnPressed.connect(self.update_tempo_from_input)
+        self.toolbar.addWidget(self.tempo_input)
+
+    def setup_main_editor_area(self):
+        """メインエディタエリア（トラックリスト + タイムライン）"""
+        from PySide6.QtWidgets import QSplitter, QFrame
+        from PySide6.QtCore import Qt
+
+        # 左右に分割できるスプリッター
+        self.editor_splitter = QSplitter(Qt.Orientation.Horizontal)
+        
+        # --- 左側：トラック管理パネル ---
+        self.track_panel = QFrame()
+        self.track_panel.setFrameShape(QFrame.StyledPanel)
+        self.track_panel.setMinimumWidth(200)
+        self.track_panel.setMaximumWidth(400)
+        
+        track_layout = QVBoxLayout(self.track_panel)
+        track_layout.setContentsMargins(5, 5, 5, 5)
+
+        # トラックリスト表示
+        self.track_list_widget = QListWidget()
+        self.track_list_widget.setObjectName("TrackList")
+        self.track_list_widget.currentRowChanged.connect(self.switch_track)
+        
+        # トラック操作ボタン
+        btn_layout = QHBoxLayout()
+        self.btn_add_vocal = QPushButton("+ Vocal")
+        self.btn_add_wave = QPushButton("+ Audio")
+        self.btn_add_vocal.clicked.connect(lambda: self.add_track("vocal"))
+        self.btn_add_wave.clicked.connect(lambda: self.add_track("wave"))
+        btn_layout.addWidget(self.btn_add_vocal)
+        btn_layout.addWidget(self.btn_add_wave)
+
+        track_layout.addWidget(QLabel("TRACKS"))
+        track_layout.addWidget(self.track_list_widget)
+        track_layout.addLayout(btn_layout)
+
+        # --- 右側：タイムライン（既存） ---
+        # self.timeline_widget は事前に生成されている前提
+        
+        # スプリッターに配置
+        self.editor_splitter.addWidget(self.track_panel)
+        self.editor_splitter.addWidget(self.timeline_widget)
+        
+        # メインレイアウト（QVBoxLayout）に追加
+        self.main_layout.addWidget(self.editor_splitter)
+        
+        # 初期リスト更新
+        self.refresh_track_list_ui()
+
+        self.timeline_widget = TimelineWidget(parent=self) 
+
+        self.editor_splitter.addWidget(self.track_panel)
+        self.editor_splitter.addWidget(self.timeline_widget)
+        self.main_layout.addWidget(self.editor_splitter)
+
+    def setup_bottom_panel(self):
+        """下部：歌詞入力などのツール"""
+        bottom_box = QHBoxLayout()
+        
+        self.lyrics_button = QPushButton("歌詞一括入力")
+        self.lyrics_button.setFixedHeight(40)
+        self.lyrics_button.clicked.connect(self.on_click_apply_lyrics_bulk)
+        bottom_box.addWidget(self.lyrics_button)
+        
+        # フォルマントやパフォーマンス等のボタンもここに追加
+        self.main_layout.addLayout(bottom_box)
+
+
+    
+    def setup_control_panel(self):
+        """上部コントロールパネルの構築"""
+        panel_layout = QHBoxLayout()
+        
+        # 時間表示
+        self.time_display_label = QLabel("00:00.000")
+        panel_layout.addWidget(self.time_display_label)
+        
+        # 再生コントロール
+        self.play_button = QPushButton("▶ 再生")
+        self.play_button.clicked.connect(self.on_play_pause_toggled)
+        panel_layout.addWidget(self.play_button)
+        
+        self.record_button = QPushButton("● 録音")
+        self.record_button.clicked.connect(self.on_record_toggled)
+        panel_layout.addWidget(self.record_button)
+        
+        self.loop_button = QPushButton("ループ: OFF")
+        self.loop_button.clicked.connect(self.on_loop_button_toggled)
+        panel_layout.addWidget(self.loop_button)
+        
+        # テンポ入力
+        self.tempo_label = QLabel("BPM（テンポ）:")
+        self.tempo_input = QLineEdit("120")
+        self.tempo_input.setFixedWidth(60)
+        self.tempo_input.returnPressed.connect(self.update_tempo_from_input)
+        panel_layout.addWidget(self.tempo_label)
+        panel_layout.addWidget(self.tempo_input)
+
+       
+        
+        # キャラクター選択
+        panel_layout.addWidget(QLabel("Voice:"))
+        self.character_selector = QComboBox()
+        panel_layout.addWidget(self.character_selector)
+        
+        # MIDIポート選択
+        panel_layout.addWidget(QLabel("MIDI:"))
+        self.midi_port_selector = QComboBox()
+        self.midi_port_selector.addItem("ポートなし", None)
+        self.midi_port_selector.currentIndexChanged.connect(self.on_midi_port_changed)
+        panel_layout.addWidget(self.midi_port_selector)
+        
+        # ファイル操作
+        self.open_button = QPushButton("開く")
+        self.open_button.clicked.connect(self.open_file_dialog_and_load_midi)
+        panel_layout.addWidget(self.open_button)
+        
+        # レンダリングボタン
+        self.render_button = QPushButton("合成")
+        self.render_button.clicked.connect(self.on_render_button_clicked)
+        panel_layout.addWidget(self.render_button)
+        
+        # AI解析ボタン
+        self.ai_analyze_button = QPushButton(" AI Auto Setup")
+        self.ai_analyze_button.setStyleSheet(
+            "background-color: #4A90E2; color: white; font-weight: bold;"
+        )
+        self.ai_analyze_button.clicked.connect(self.start_batch_analysis)
+        panel_layout.addWidget(self.ai_analyze_button)
+        
+        # AI歌詞配置ボタン
+        self.auto_lyrics_button = QPushButton("自動歌詞配置")
+        self.auto_lyrics_button.clicked.connect(self.on_click_auto_lyrics)
+        panel_layout.addWidget(self.auto_lyrics_button)
+
+        # --- ここからパラメーター切り替えボタンの追加 ---
+        panel_layout.addSpacing(20) # 少し隙間をあける
+        panel_layout.addWidget(QLabel("Edit Mode:"))
+        
+        # ボタングループで「どれか1つが選択されている状態」を作る
+        self.param_group = QButtonGroup(self)
+        self.param_buttons = {} # 後で参照しやすいように辞書に保存
+        
+        param_list = [
+            ("Pitch", "#3498db"),   # 青
+            ("Gender", "#e74c3c"),  # 赤
+            ("Tension", "#2ecc71"), # 緑
+            ("Breath", "#f1c40f")   # 黄
+        ]
+        
+        for name, color in param_list:
+            btn = QPushButton(name)
+            btn.setCheckable(True)
+            btn.setFixedWidth(60)
+            # 選択中のボタンに色を付けるスタイルシート
+            btn.setStyleSheet(f"QPushButton:checked {{ background-color: {color}; color: white; border: 1px solid white; }}")
+            
+            if name == "Pitch":
+                btn.setChecked(True) # 初期状態
+            
+            panel_layout.addWidget(btn)
+            self.param_group.addButton(btn)
+            self.param_buttons[name] = btn
+
+        # ボタンがクリックされたらグラフエディタのモードを切り替える
+        self.param_group.buttonClicked.connect(self.on_param_mode_changed)
+        # --- ライバルが多い ---
+
+        panel_layout.addStretch()
+        
+        panel_layout.addStretch()
+        self.main_layout.addLayout(panel_layout)
+
+    def setup_timeline_area(self):
+        """タイムラインとエディタエリアの構築"""
+        # スプリッター（上下分割）
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        
+        # タイムライン部分（横スクロール付き）
+        timeline_container = QWidget()
+        timeline_layout = QHBoxLayout(timeline_container)
+        timeline_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # キーボードサイドバー
+        self.keyboard_sidebar = KeyboardSidebarWidget(20, 21)
+        timeline_layout.addWidget(self.keyboard_sidebar)
+        
+        # タイムライン本体
+        self.timeline_widget = TimelineWidget()
+        timeline_layout.addWidget(self.timeline_widget)
+        
+        # 垂直スクロールバー
+        self.vertical_scroll = QSlider(Qt.Orientation.Vertical, self)
+        self.v_scrollbar.valueChanged.connect(self.timeline_widget.set_vertical_offset)
+        timeline_layout.addWidget(self.v_scrollbar)
+        
+        splitter.addWidget(timeline_container)
+        self.vertical_scroll.setRange(0, 1000)
+        
+        # 水平スクロールバー
+        self.h_scrollbar = QScrollBar(Qt.Orientation.Horizontal)
+        self.h_scrollbar.valueChanged.connect(self.timeline_widget.set_horizontal_offset)
+        self.main_layout.addWidget(self.h_scrollbar)
+        
+        # グラフエディタ（ピッチ編集）
+        self.graph_editor_widget = GraphEditorWidget()
+        self.graph_editor_widget.pitch_data_updated.connect(self.on_pitch_data_updated)
+        splitter.addWidget(self.graph_editor_widget)
+        
+        self.main_layout.addWidget(splitter)
+
+        self.timeline_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+    def setup_voice_grid(self):
+        """音源選択グリッドの構築"""
+        voice_container = QWidget()
+        voice_container.setMaximumHeight(200)
+        self.voice_grid = QGridLayout(voice_container)
+        self.main_layout.addWidget(voice_container)
+
+    def setup_status_bar(self):
+        """ステータスバーの構築"""
+        self.status_label = QLabel("準備完了")
+        self.statusBar().addWidget(self.status_label)
+        
+        self.progress_bar = QProgressBar()
+        self.progress_bar.hide()
+        self.statusBar().addPermanentWidget(self.progress_bar)
+
+    def setup_actions(self):
+        """アクションの定義"""
+        self.copy_action = QAction("コピー", self)
+        self.copy_action.setShortcuts(QKeySequence.StandardKey.Copy)
+        self.copy_action.triggered.connect(
+            self.timeline_widget.copy_selected_notes_to_clipboard
+        )
+        
+        self.paste_action = QAction("ペースト", self)
+        self.paste_action.setShortcuts(QKeySequence.StandardKey.Paste)
+        self.paste_action.triggered.connect(
+            self.timeline_widget.paste_notes_from_clipboard
+        )
+        
+        self.save_action = QAction("保存(&S)", self)
+        self.save_action.setShortcuts(QKeySequence.StandardKey.Save)
+        self.save_action.triggered.connect(self.save_file_dialog_and_save_midi)
+
+    def setup_menus(self):
+        """メニューバーの構築"""
+        # ファイルメニュー
+        file_menu = self.menuBar().addMenu("ファイル(&F)")
+        file_menu.addAction(self.save_action)
+        
+        export_action = QAction("WAV書き出し...", self)
+        export_action.triggered.connect(self.on_export_button_clicked)
+        file_menu.addAction(export_action)
+        
+        export_midi_action = QAction("MIDI書き出し...", self)
+        export_midi_action.triggered.connect(self.export_to_midi_file)
+        file_menu.addAction(export_midi_action)
+
+        # 編集メニュー
+        edit_menu = self.menuBar().addMenu("編集(&E)")
+        edit_menu.addAction(self.copy_action)
+        edit_menu.addAction(self.paste_action)
+
+    def setup_connections(self):
+        """シグナル/スロット接続"""
+        # 1. 垂直スクロールの同期（鍵盤とノート）
+        self.v_scrollbar.valueChanged.connect(self.keyboard_sidebar.set_vertical_offset)
+        self.v_scrollbar.valueChanged.connect(self.timeline_widget.set_vertical_offset)
+
+        # 2. 水平スクロールの同期（ノートとピッチグラフ）
+        self.h_scrollbar.valueChanged.connect(self.timeline_widget.set_horizontal_offset)
+        self.h_scrollbar.valueChanged.connect(self.graph_editor_widget.set_horizontal_offset)  
+
+        # 3. データの更新通知
+        self.timeline_widget.notes_changed_signal.connect(self.on_timeline_updated)
+        
+
+    def setup_formant_slider(self):
+        """フォルマントスライダーの設定"""
+        from PySide6.QtWidgets import QSlider
+        
+        self.formant_label = QLabel("声の太さ (Formant)")
+        self.formant_slider = QSlider(Qt.Orientation.Horizontal)
+        self.formant_slider.setRange(-100, 100)
+        self.formant_slider.setValue(0)
+        self.formant_slider.setMaximumWidth(150)
+        self.formant_slider.valueChanged.connect(self.on_formant_changed)
+        
+        self.toolbar.addWidget(self.formant_label)
+        self.toolbar.addWidget(self.formant_slider)
+
+    def on_formant_changed(self, value):
+        """フォルマント変更時の処理"""
+        shift = value / 100.0
+        if hasattr(self.vo_se_engine, 'vose_set_formant'):
+            self.vo_se_engine.vose_set_formant(shift)
+
+    def init_pro_talk_ui(self):
+        """Talk入力UI初期化"""
+        self.text_input = QLineEdit()
+        self.text_input.setPlaceholderText("喋らせたい文章を入力（Enterで展開）...")
+        self.text_input.setFixedWidth(300)
+        self.text_input.returnPressed.connect(self.on_talk_execute)
+        
+        self.toolbar.addWidget(QLabel("Talk:"))
+        self.toolbar.addWidget(self.text_input)
+
+    def on_talk_execute(self):
+        """Talk実行処理（省略なし完全版）"""
+        # 1. 入力チェック（Noneガード付き）
+        if not hasattr(self, 'text_input') or self.text_input is None:
+            return
+            
+        text = self.text_input.text()
+        if not text:
+            return
+        
+        # 2. 解析と反映
+        if hasattr(self, 'analyzer') and self.analyzer:
+            new_events = self.analyzer.analyze_to_pro_events(text)
+            
+            tw = getattr(self, 'timeline_widget', None)
+            if tw:
+                if hasattr(tw, 'set_notes'):
+                    tw.set_notes(new_events)
+                tw.update()
+            
+            # 3. 通知とクリア
+            status_bar = self.statusBar()
+            if status_bar:
+                status_bar.showMessage(f"Talkモード: '{text}' を展開しました")
+            self.text_input.clear()
+
+    @Slot(object)
+    def on_param_mode_changed(self, button):
+        """パラメーター切り替えボタン処理（省略なし完全版）"""
+        if not button:
+            return
+            
+        # button.text() でモード名を取得
+        mode = button.text()
+        
+        # グラフエディタへ通知
+        ge = getattr(self, 'graph_editor_widget', None)
+        if ge and hasattr(ge, 'set_mode'):
+            ge.set_mode(mode)
+            
+        status_bar = self.statusBar()
+        if status_bar:
+            status_bar.showMessage(f"編集モード: {mode}")
+
+    def toggle_playback(self, event=None):
+        """
+        Spac eキーまたは再生ボタンでの再生/停止切り替え（完全安全版）
+        """
+        # 0. スレッドロックを使用して競合状態を防ぐ
+        with self._playback_lock:
+            # 1. 現在の再生状態を安全に取得
+            monitoring = getattr(self, 'pro_monitoring', None)
+        
+            if monitoring and not isinstance(monitoring, bool):
+                is_playing = getattr(monitoring, 'is_playing', False)
+            else:
+                is_playing = getattr(self, 'is_playing', False)
+
+            if not is_playing:
+                # ==========================================
+                # 再生開始処理
+                # ==========================================
+                print("▶ VO-SE Engine: 再生開始")
+            
+                # ステータスバー更新
+                status_bar = self.statusBar()
+                if status_bar:
+                    status_bar.showMessage("再生中...")
+            
+                # 1. トラックの取得
+                tracks = getattr(self, 'tracks', [])
+                idx = getattr(self, 'current_track_idx', 0)
+            
+                if 0 <= idx < len(tracks):
+                    current_track = tracks[idx]
+                
+                    # 2. 伴奏トラック（Wave）の場合
+                    if current_track.track_type == "wave" and current_track.audio_path:
+                        player = getattr(self, 'audio_player', None)
+                        output = getattr(self, 'audio_output', None)
+                    
+                        if player and hasattr(player, 'setSource'):
+                            from PySide6.QtCore import QUrl
+                            url = QUrl.fromLocalFile(current_track.audio_path)
+                            player.setSource(url)
+                        
+                        if output and hasattr(output, 'setVolume'):
+                             output.setVolume(current_track.volume)
+                        
+                        if player and hasattr(player, 'play'):
+                            player.play()
+                
+                    # 3. 再生位置の設定
+                    timeline = getattr(self, 'timeline_widget', None)
+                    if timeline:
+                        start_time = getattr(timeline, '_current_playback_time', 0.0)
+                        if start_time is None:
+                            start_time = 0.0
+                    
+                        # Waveトラックの場合は位置をシーク
+                        if current_track.track_type == "wave":
+                            player = getattr(self, 'audio_player', None)
+                            if player and hasattr(player, 'setPosition'):
+                                player.setPosition(int(start_time * 1000))
+
+                 # 4. フラグ更新
+                if monitoring and not isinstance(monitoring, bool):
+                    setattr(monitoring, 'is_playing', True)
+            
+                self.is_playing = True
+            
+                # 5. 再生ボタンの表示更新
+                play_btn = getattr(self, 'play_button', None)
+                if play_btn:
+                    play_btn.setText("■ 停止")
+
+            else:
+                # ==========================================
+                # 再生停止処理
+                # ==========================================
+                print("■ VO-SE Engine: 再生停止")
+            
+                # ステータスバー更新
+                status_bar = self.statusBar()
+                if status_bar:
+                    status_bar.showMessage("一時停止")
+            
+                # 1. すべての音を停止
+                player = getattr(self, 'audio_player', None)
+                if player and hasattr(player, 'pause'):
+                    player.pause()
+            
+                # 2. フラグ更新
+                if monitoring and not isinstance(monitoring, bool):
+                    setattr(monitoring, 'is_playing', False)
+            
+                self.is_playing = False
+            
+                # 3. 再生ボタンの表示更新
+                play_btn = getattr(self, 'play_button', None)
+                if play_btn:
+                    play_btn.setText("▶ 再生")
+
+            # UI全体の再描画
+            self.update()
 
 
     def refresh_canvas(self):
@@ -1614,6 +2131,13 @@ class MainWindow(QMainWindow):
 
     def refresh_track_list_ui(self):
         """UI上のリスト表示を最新状態に同期（M/S状態を反映）"""
+        # Noneガード：widgetが存在しない場合は何もしない
+        if not self.track_list_widget:
+            return
+
+        from PySide6.QtWidgets import QListWidgetItem
+        from PySide6.QtCore import Qt
+
         self.track_list_widget.blockSignals(True)
         self.track_list_widget.clear()
         
@@ -1622,7 +2146,7 @@ class MainWindow(QMainWindow):
         
         for i, t in enumerate(self.tracks):
             status = ""
-            # 修正：if文の後は改行する（Actionエラー E701 回避）
+            # Actionエラー E701 回避済みの綺麗なif文
             if t.is_muted:
                 status += "[M]"
             if t.is_solo:
@@ -1631,7 +2155,7 @@ class MainWindow(QMainWindow):
             item_text = f"{status} [{'V' if t.track_type == 'vocal' else 'A'}] {t.name}"
             item = QListWidgetItem(item_text)
             
-            # ミュート中や、ソロモード時にソロではないトラックをグレーアウト（視認性向上）
+            # ミュート中や、ソロモード時にソロではないトラックをグレーアウト
             if t.is_muted or (solo_exists and not t.is_solo):
                 item.setForeground(Qt.GlobalColor.gray)
             elif t.track_type == "wave":
@@ -1639,13 +2163,17 @@ class MainWindow(QMainWindow):
                 
             self.track_list_widget.addItem(item)
         
-        # 現在の選択行を維持
-        self.track_list_widget.setCurrentRow(self.current_track_idx)
+        # 現在の選択行を維持（範囲チェック付き）
+        if 0 <= self.current_track_idx < self.track_list_widget.count():
+            self.track_list_widget.setCurrentRow(self.current_track_idx)
         
-        # 現在のトラックに合わせてM/SボタンのUI状態も同期
-        current_t = self.tracks[self.current_track_idx]
-        self.btn_mute.setChecked(current_t.is_muted)
-        self.btn_solo.setChecked(current_t.is_solo)
+        # 現在のトラックに合わせてM/SボタンのUI状態も同期（Noneガード徹底）
+        if 0 <= self.current_track_idx < len(self.tracks):
+            current_t = self.tracks[self.current_track_idx]
+            if self.btn_mute:
+                self.btn_mute.setChecked(current_t.is_muted)
+            if self.btn_solo:
+                self.btn_solo.setChecked(current_t.is_solo)
         
         self.track_list_widget.blockSignals(False)
 
@@ -2224,42 +2752,43 @@ class MainWindow(QMainWindow):
         """タイムラインが変更された時の処理（オートセーブなど）"""
         pass
 
-   def play_audio(self, path: str) -> None:
-       """オーディオファイルを安全に再生"""
+    def play_audio(self, path: str) -> None:
+        """オーディオファイルを安全に再生"""
     
-       # 1. パスのチェック
-       if not path or not os.path.exists(path):
-           print(f"エラー: ファイルが見つかりません: {path}")
-           return
+        # 1. パスのチェック
+        if not path or not os.path.exists(path):
+            print(f"エラー: ファイルが見つかりません: {path}")
+            return
+ 
+        # 2. プレイヤーの取得
+        player = getattr(self, 'player', None)
+    
+        # 3. プレイヤーが初期化されているかチェック
+        if player is None or isinstance(player, bool):
+            print("警告: プレイヤーが初期化されていません")
+            return
 
-       # 2. プレイヤーの取得
-       player = getattr(self, 'player', None)
+        # 4. 再生処理
+        try:
+           from PySide6.QtCore import QUrl
+        
+            # 停止処理
+            if hasattr(player, 'stop'):
+                player.stop()
+         
+            # ソースを設定
+            
+            if hasattr(player, 'setSource'):
+                file_url = QUrl.fromLocalFile(os.path.abspath(path))
+                player.setSource(file_url)
+        
+            # 再生開始
+            if hasattr(player, 'play'):
+                player.play()
+                print(f"再生開始: {path}")
     
-       # 3. プレイヤーが初期化されているかチェック
-       if player is None or isinstance(player, bool):
-           print("警告: プレイヤーが初期化されていません")
-           return
-
-       # 4. 再生処理
-       try:
-          from PySide6.QtCore import QUrl
-        
-           # 停止処理
-           if hasattr(player, 'stop'):
-               player.stop()
-        
-           # ソースを設定
-           if hasattr(player, 'setSource'):
-               file_url = QUrl.fromLocalFile(os.path.abspath(path))
-               player.setSource(file_url)
-        
-           # 再生開始
-           if hasattr(player, 'play'):
-               player.play()
-               print(f"再生開始: {path}")
-    
-       except Exception as e:
-           print(f"再生エラー: {e}")
+        except Exception as e:
+            print(f"再生エラー: {e}")
     # ==========================================================================
     #  Pro audio modeling の起動、呼び出し　　　　　　　　　　　
     # ==========================================================================
@@ -2457,524 +2986,7 @@ class MainWindow(QMainWindow):
             if widget is not None:
                 widget.deleteLater()
     
-    def init_ui(self) -> None:
-        """
-        UIの組み立て。
-        Actionsログの reportAttributeAccessIssue を解決するため、
-        レイアウトや重要コンポーネントを確実に初期化します。
-        """
-        from PySide6.QtWidgets import QWidget, QVBoxLayout
-        
-        # 1. ウィンドウ基本設定
-        self.setWindowTitle("VO-SE Engine DAW Pro")
-        self.setGeometry(100, 100, 1200, 800)
-        
-        # 2. セントラルウィジェットとメインレイアウトの確定
-        # self.main_layout をクラス属性として保持し、他メソッドからのアクセスを保証
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        self.main_layout = QVBoxLayout(central_widget)
-        self.main_layout.setContentsMargins(5, 5, 5, 5)
-        self.main_layout.setSpacing(2)
 
-        # 3. 各セクションの順次セットアップ
-        # 依存関係（下のパネルが上のエディタを参照するなど）を考慮した順序で呼び出し
-        self.setup_menus()          # メニュー（QActionの親）
-        self.setup_toolbar()        # ツールバー
-        self.setup_main_editor_area() # メインエディタ（KeyboardSidebar, TimelineWidgetを含む）
-        self.setup_bottom_panel()   # 下部パネル（パラメータエディタ等）
-        self.setup_status_bar()     # ステータスバー
-
-        # 4. スタイルと初期状態の適用
-        # hasattrによるチェックに加え、初期化済みフラグ等で安全に呼び出し
-        self._apply_initial_styles()
-
-    def _apply_initial_styles(self) -> None:
-        """初期スタイル適用の安全な実行"""
-        # ログ 2620 等の「未定義属性アクセス」を防ぐため、メソッドの存在を確実に担保
-        if hasattr(self, 'update_timeline_style'):
-            # 代表が定義したタイムラインの視覚効果を適用
-            self.update_timeline_style()
-        
-        # ステータスバーへの初期メッセージ
-        if self.statusBar():
-            self.statusBar().showMessage("Engine Initialized. Ready for production.")
-            
-    # ==========================================================================
-    # UI セクション構築
-    # ==========================================================================
-
-    def setup_toolbar(self):
-        """上部ツールバー：再生・録音・テンポ"""
-        self.toolbar = QToolBar("Main Toolbar")
-        self.addToolBar(self.toolbar)
-
-        self.play_btn = QPushButton("▶ 再生")
-        self.play_btn.clicked.connect(self.on_play_pause_toggled)
-        self.toolbar.addWidget(self.play_btn)
-
-        self.toolbar.addSeparator()
-        
-        self.toolbar.addWidget(QLabel(" Tempo: "))
-        self.tempo_input = QLineEdit("120")
-        self.tempo_input.setFixedWidth(40)
-        self.tempo_input.returnPressed.connect(self.update_tempo_from_input)
-        self.toolbar.addWidget(self.tempo_input)
-
-    def setup_main_editor_area(self):
-        """メインエディタエリア（トラックリスト + タイムライン）"""
-        from PySide6.QtWidgets import QSplitter, QFrame
-        from PySide6.QtCore import Qt
-
-        # 左右に分割できるスプリッター
-        self.editor_splitter = QSplitter(Qt.Orientation.Horizontal)
-        
-        # --- 左側：トラック管理パネル ---
-        self.track_panel = QFrame()
-        self.track_panel.setFrameShape(QFrame.StyledPanel)
-        self.track_panel.setMinimumWidth(200)
-        self.track_panel.setMaximumWidth(400)
-        
-        track_layout = QVBoxLayout(self.track_panel)
-        track_layout.setContentsMargins(5, 5, 5, 5)
-
-        # トラックリスト表示
-        self.track_list_widget = QListWidget()
-        self.track_list_widget.setObjectName("TrackList")
-        self.track_list_widget.currentRowChanged.connect(self.switch_track)
-        
-        # トラック操作ボタン
-        btn_layout = QHBoxLayout()
-        self.btn_add_vocal = QPushButton("+ Vocal")
-        self.btn_add_wave = QPushButton("+ Audio")
-        self.btn_add_vocal.clicked.connect(lambda: self.add_track("vocal"))
-        self.btn_add_wave.clicked.connect(lambda: self.add_track("wave"))
-        btn_layout.addWidget(self.btn_add_vocal)
-        btn_layout.addWidget(self.btn_add_wave)
-
-        track_layout.addWidget(QLabel("TRACKS"))
-        track_layout.addWidget(self.track_list_widget)
-        track_layout.addLayout(btn_layout)
-
-        # --- 右側：タイムライン（既存） ---
-        # self.timeline_widget は事前に生成されている前提
-        
-        # スプリッターに配置
-        self.editor_splitter.addWidget(self.track_panel)
-        self.editor_splitter.addWidget(self.timeline_widget)
-        
-        # メインレイアウト（QVBoxLayout）に追加
-        self.main_layout.addWidget(self.editor_splitter)
-        
-        # 初期リスト更新
-        self.refresh_track_list_ui()
-
-        self.timeline_widget = TimelineWidget(parent=self) 
-
-        self.editor_splitter.addWidget(self.track_panel)
-        self.editor_splitter.addWidget(self.timeline_widget)
-        self.main_layout.addWidget(self.editor_splitter)
-
-    def setup_bottom_panel(self):
-        """下部：歌詞入力などのツール"""
-        bottom_box = QHBoxLayout()
-        
-        self.lyrics_button = QPushButton("歌詞一括入力")
-        self.lyrics_button.setFixedHeight(40)
-        self.lyrics_button.clicked.connect(self.on_click_apply_lyrics_bulk)
-        bottom_box.addWidget(self.lyrics_button)
-        
-        # フォルマントやパフォーマンス等のボタンもここに追加
-        self.main_layout.addLayout(bottom_box)
-
-
-    
-    def setup_control_panel(self):
-        """上部コントロールパネルの構築"""
-        panel_layout = QHBoxLayout()
-        
-        # 時間表示
-        self.time_display_label = QLabel("00:00.000")
-        panel_layout.addWidget(self.time_display_label)
-        
-        # 再生コントロール
-        self.play_button = QPushButton("▶ 再生")
-        self.play_button.clicked.connect(self.on_play_pause_toggled)
-        panel_layout.addWidget(self.play_button)
-        
-        self.record_button = QPushButton("● 録音")
-        self.record_button.clicked.connect(self.on_record_toggled)
-        panel_layout.addWidget(self.record_button)
-        
-        self.loop_button = QPushButton("ループ: OFF")
-        self.loop_button.clicked.connect(self.on_loop_button_toggled)
-        panel_layout.addWidget(self.loop_button)
-        
-        # テンポ入力
-        self.tempo_label = QLabel("BPM（テンポ）:")
-        self.tempo_input = QLineEdit("120")
-        self.tempo_input.setFixedWidth(60)
-        self.tempo_input.returnPressed.connect(self.update_tempo_from_input)
-        panel_layout.addWidget(self.tempo_label)
-        panel_layout.addWidget(self.tempo_input)
-
-       
-        
-        # キャラクター選択
-        panel_layout.addWidget(QLabel("Voice:"))
-        self.character_selector = QComboBox()
-        panel_layout.addWidget(self.character_selector)
-        
-        # MIDIポート選択
-        panel_layout.addWidget(QLabel("MIDI:"))
-        self.midi_port_selector = QComboBox()
-        self.midi_port_selector.addItem("ポートなし", None)
-        self.midi_port_selector.currentIndexChanged.connect(self.on_midi_port_changed)
-        panel_layout.addWidget(self.midi_port_selector)
-        
-        # ファイル操作
-        self.open_button = QPushButton("開く")
-        self.open_button.clicked.connect(self.open_file_dialog_and_load_midi)
-        panel_layout.addWidget(self.open_button)
-        
-        # レンダリングボタン
-        self.render_button = QPushButton("合成")
-        self.render_button.clicked.connect(self.on_render_button_clicked)
-        panel_layout.addWidget(self.render_button)
-        
-        # AI解析ボタン
-        self.ai_analyze_button = QPushButton(" AI Auto Setup")
-        self.ai_analyze_button.setStyleSheet(
-            "background-color: #4A90E2; color: white; font-weight: bold;"
-        )
-        self.ai_analyze_button.clicked.connect(self.start_batch_analysis)
-        panel_layout.addWidget(self.ai_analyze_button)
-        
-        # AI歌詞配置ボタン
-        self.auto_lyrics_button = QPushButton("自動歌詞配置")
-        self.auto_lyrics_button.clicked.connect(self.on_click_auto_lyrics)
-        panel_layout.addWidget(self.auto_lyrics_button)
-
-        # --- ここからパラメーター切り替えボタンの追加 ---
-        panel_layout.addSpacing(20) # 少し隙間をあける
-        panel_layout.addWidget(QLabel("Edit Mode:"))
-        
-        # ボタングループで「どれか1つが選択されている状態」を作る
-        self.param_group = QButtonGroup(self)
-        self.param_buttons = {} # 後で参照しやすいように辞書に保存
-        
-        param_list = [
-            ("Pitch", "#3498db"),   # 青
-            ("Gender", "#e74c3c"),  # 赤
-            ("Tension", "#2ecc71"), # 緑
-            ("Breath", "#f1c40f")   # 黄
-        ]
-        
-        for name, color in param_list:
-            btn = QPushButton(name)
-            btn.setCheckable(True)
-            btn.setFixedWidth(60)
-            # 選択中のボタンに色を付けるスタイルシート
-            btn.setStyleSheet(f"QPushButton:checked {{ background-color: {color}; color: white; border: 1px solid white; }}")
-            
-            if name == "Pitch":
-                btn.setChecked(True) # 初期状態
-            
-            panel_layout.addWidget(btn)
-            self.param_group.addButton(btn)
-            self.param_buttons[name] = btn
-
-        # ボタンがクリックされたらグラフエディタのモードを切り替える
-        self.param_group.buttonClicked.connect(self.on_param_mode_changed)
-        # --- ライバルが多い ---
-
-        panel_layout.addStretch()
-        
-        panel_layout.addStretch()
-        self.main_layout.addLayout(panel_layout)
-
-    def setup_timeline_area(self):
-        """タイムラインとエディタエリアの構築"""
-        # スプリッター（上下分割）
-        splitter = QSplitter(Qt.Orientation.Vertical)
-        
-        # タイムライン部分（横スクロール付き）
-        timeline_container = QWidget()
-        timeline_layout = QHBoxLayout(timeline_container)
-        timeline_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # キーボードサイドバー
-        self.keyboard_sidebar = KeyboardSidebarWidget(20, 21)
-        timeline_layout.addWidget(self.keyboard_sidebar)
-        
-        # タイムライン本体
-        self.timeline_widget = TimelineWidget()
-        timeline_layout.addWidget(self.timeline_widget)
-        
-        # 垂直スクロールバー
-        self.vertical_scroll = QSlider(Qt.Orientation.Vertical, self)
-        self.v_scrollbar.valueChanged.connect(self.timeline_widget.set_vertical_offset)
-        timeline_layout.addWidget(self.v_scrollbar)
-        
-        splitter.addWidget(timeline_container)
-        self.vertical_scroll.setRange(0, 1000)
-        
-        # 水平スクロールバー
-        self.h_scrollbar = QScrollBar(Qt.Orientation.Horizontal)
-        self.h_scrollbar.valueChanged.connect(self.timeline_widget.set_horizontal_offset)
-        self.main_layout.addWidget(self.h_scrollbar)
-        
-        # グラフエディタ（ピッチ編集）
-        self.graph_editor_widget = GraphEditorWidget()
-        self.graph_editor_widget.pitch_data_updated.connect(self.on_pitch_data_updated)
-        splitter.addWidget(self.graph_editor_widget)
-        
-        self.main_layout.addWidget(splitter)
-
-        self.timeline_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-
-    def setup_voice_grid(self):
-        """音源選択グリッドの構築"""
-        voice_container = QWidget()
-        voice_container.setMaximumHeight(200)
-        self.voice_grid = QGridLayout(voice_container)
-        self.main_layout.addWidget(voice_container)
-
-    def setup_status_bar(self):
-        """ステータスバーの構築"""
-        self.status_label = QLabel("準備完了")
-        self.statusBar().addWidget(self.status_label)
-        
-        self.progress_bar = QProgressBar()
-        self.progress_bar.hide()
-        self.statusBar().addPermanentWidget(self.progress_bar)
-
-    def setup_actions(self):
-        """アクションの定義"""
-        self.copy_action = QAction("コピー", self)
-        self.copy_action.setShortcuts(QKeySequence.StandardKey.Copy)
-        self.copy_action.triggered.connect(
-            self.timeline_widget.copy_selected_notes_to_clipboard
-        )
-        
-        self.paste_action = QAction("ペースト", self)
-        self.paste_action.setShortcuts(QKeySequence.StandardKey.Paste)
-        self.paste_action.triggered.connect(
-            self.timeline_widget.paste_notes_from_clipboard
-        )
-        
-        self.save_action = QAction("保存(&S)", self)
-        self.save_action.setShortcuts(QKeySequence.StandardKey.Save)
-        self.save_action.triggered.connect(self.save_file_dialog_and_save_midi)
-
-    def setup_menus(self):
-        """メニューバーの構築"""
-        # ファイルメニュー
-        file_menu = self.menuBar().addMenu("ファイル(&F)")
-        file_menu.addAction(self.save_action)
-        
-        export_action = QAction("WAV書き出し...", self)
-        export_action.triggered.connect(self.on_export_button_clicked)
-        file_menu.addAction(export_action)
-        
-        export_midi_action = QAction("MIDI書き出し...", self)
-        export_midi_action.triggered.connect(self.export_to_midi_file)
-        file_menu.addAction(export_midi_action)
-
-        # 編集メニュー
-        edit_menu = self.menuBar().addMenu("編集(&E)")
-        edit_menu.addAction(self.copy_action)
-        edit_menu.addAction(self.paste_action)
-
-    def setup_connections(self):
-        """シグナル/スロット接続"""
-        # 1. 垂直スクロールの同期（鍵盤とノート）
-        self.v_scrollbar.valueChanged.connect(self.keyboard_sidebar.set_vertical_offset)
-        self.v_scrollbar.valueChanged.connect(self.timeline_widget.set_vertical_offset)
-
-        # 2. 水平スクロールの同期（ノートとピッチグラフ）
-        self.h_scrollbar.valueChanged.connect(self.timeline_widget.set_horizontal_offset)
-        self.h_scrollbar.valueChanged.connect(self.graph_editor_widget.set_horizontal_offset)  
-
-        # 3. データの更新通知
-        self.timeline_widget.notes_changed_signal.connect(self.on_timeline_updated)
-        
-
-    def setup_formant_slider(self):
-        """フォルマントスライダーの設定"""
-        from PySide6.QtWidgets import QSlider
-        
-        self.formant_label = QLabel("声の太さ (Formant)")
-        self.formant_slider = QSlider(Qt.Orientation.Horizontal)
-        self.formant_slider.setRange(-100, 100)
-        self.formant_slider.setValue(0)
-        self.formant_slider.setMaximumWidth(150)
-        self.formant_slider.valueChanged.connect(self.on_formant_changed)
-        
-        self.toolbar.addWidget(self.formant_label)
-        self.toolbar.addWidget(self.formant_slider)
-
-    def on_formant_changed(self, value):
-        """フォルマント変更時の処理"""
-        shift = value / 100.0
-        if hasattr(self.vo_se_engine, 'vose_set_formant'):
-            self.vo_se_engine.vose_set_formant(shift)
-
-    def init_pro_talk_ui(self):
-        """Talk入力UI初期化"""
-        self.text_input = QLineEdit()
-        self.text_input.setPlaceholderText("喋らせたい文章を入力（Enterで展開）...")
-        self.text_input.setFixedWidth(300)
-        self.text_input.returnPressed.connect(self.on_talk_execute)
-        
-        self.toolbar.addWidget(QLabel("Talk:"))
-        self.toolbar.addWidget(self.text_input)
-
-    def on_talk_execute(self):
-        """Talk実行処理（省略なし完全版）"""
-        # 1. 入力チェック（Noneガード付き）
-        if not hasattr(self, 'text_input') or self.text_input is None:
-            return
-            
-        text = self.text_input.text()
-        if not text:
-            return
-        
-        # 2. 解析と反映
-        if hasattr(self, 'analyzer') and self.analyzer:
-            new_events = self.analyzer.analyze_to_pro_events(text)
-            
-            tw = getattr(self, 'timeline_widget', None)
-            if tw:
-                if hasattr(tw, 'set_notes'):
-                    tw.set_notes(new_events)
-                tw.update()
-            
-            # 3. 通知とクリア
-            status_bar = self.statusBar()
-            if status_bar:
-                status_bar.showMessage(f"Talkモード: '{text}' を展開しました")
-            self.text_input.clear()
-
-    @Slot(object)
-    def on_param_mode_changed(self, button):
-        """パラメーター切り替えボタン処理（省略なし完全版）"""
-        if not button:
-            return
-            
-        # button.text() でモード名を取得
-        mode = button.text()
-        
-        # グラフエディタへ通知
-        ge = getattr(self, 'graph_editor_widget', None)
-        if ge and hasattr(ge, 'set_mode'):
-            ge.set_mode(mode)
-            
-        status_bar = self.statusBar()
-        if status_bar:
-            status_bar.showMessage(f"編集モード: {mode}")
-
-    def toggle_playback(self, event=None):
-        """
-        Spac eキーまたは再生ボタンでの再生/停止切り替え（完全安全版）
-        """
-        # 0. スレッドロックを使用して競合状態を防ぐ
-        with self._playback_lock:
-            # 1. 現在の再生状態を安全に取得
-            monitoring = getattr(self, 'pro_monitoring', None)
-        
-            if monitoring and not isinstance(monitoring, bool):
-                is_playing = getattr(monitoring, 'is_playing', False)
-            else:
-                is_playing = getattr(self, 'is_playing', False)
-
-            if not is_playing:
-                # ==========================================
-                # 再生開始処理
-                # ==========================================
-                print("▶ VO-SE Engine: 再生開始")
-            
-                # ステータスバー更新
-                status_bar = self.statusBar()
-                if status_bar:
-                    status_bar.showMessage("再生中...")
-            
-                # 1. トラックの取得
-                tracks = getattr(self, 'tracks', [])
-                idx = getattr(self, 'current_track_idx', 0)
-            
-                if 0 <= idx < len(tracks):
-                    current_track = tracks[idx]
-                
-                    # 2. 伴奏トラック（Wave）の場合
-                    if current_track.track_type == "wave" and current_track.audio_path:
-                        player = getattr(self, 'audio_player', None)
-                        output = getattr(self, 'audio_output', None)
-                    
-                        if player and hasattr(player, 'setSource'):
-                            from PySide6.QtCore import QUrl
-                            url = QUrl.fromLocalFile(current_track.audio_path)
-                            player.setSource(url)
-                        
-                        if output and hasattr(output, 'setVolume'):
-                             output.setVolume(current_track.volume)
-                        
-                        if player and hasattr(player, 'play'):
-                            player.play()
-                
-                    # 3. 再生位置の設定
-                    timeline = getattr(self, 'timeline_widget', None)
-                    if timeline:
-                        start_time = getattr(timeline, '_current_playback_time', 0.0)
-                        if start_time is None:
-                            start_time = 0.0
-                    
-                        # Waveトラックの場合は位置をシーク
-                        if current_track.track_type == "wave":
-                            player = getattr(self, 'audio_player', None)
-                            if player and hasattr(player, 'setPosition'):
-                                player.setPosition(int(start_time * 1000))
-
-                 # 4. フラグ更新
-                if monitoring and not isinstance(monitoring, bool):
-                    setattr(monitoring, 'is_playing', True)
-            
-                self.is_playing = True
-            
-                # 5. 再生ボタンの表示更新
-                play_btn = getattr(self, 'play_button', None)
-                if play_btn:
-                    play_btn.setText("■ 停止")
-
-            else:
-                # ==========================================
-                # 再生停止処理
-                # ==========================================
-                print("■ VO-SE Engine: 再生停止")
-            
-                # ステータスバー更新
-                status_bar = self.statusBar()
-                if status_bar:
-                    status_bar.showMessage("一時停止")
-            
-                # 1. すべての音を停止
-                player = getattr(self, 'audio_player', None)
-                if player and hasattr(player, 'pause'):
-                    player.pause()
-            
-                # 2. フラグ更新
-                if monitoring and not isinstance(monitoring, bool):
-                    setattr(monitoring, 'is_playing', False)
-            
-                self.is_playing = False
-            
-                # 3. 再生ボタンの表示更新
-                play_btn = getattr(self, 'play_button', None)
-                if play_btn:
-                    play_btn.setText("▶ 再生")
-
-            # UI全体の再描画
-            self.update()
 
     # ==========================================================================
     # PERFORMANCE CONTROL CENTER (Core i3 Survival Logic)
@@ -3410,9 +3422,15 @@ class MainWindow(QMainWindow):
             self.playback_timer.start(20)
 
         except Exception as e:
-            self.status_label.setText(f"再生エラー: {e}")
+            # 1. status_label が存在するか確認してからセットする
+            if self.status_label is not None:
+                self.status_label.setText(f"再生エラー: {e}")
+            
             self.is_playing = False
-            self.play_button.setText("▶ 再生")
+            
+            # 2. play_button が存在するか確認してからテキストを変える
+            if self.play_button is not None:
+                self.play_button.setText("▶ 再生")
 
     @Slot()
     def on_record_toggled(self):
@@ -5102,12 +5120,18 @@ class MainWindow(QMainWindow):
         )
 
         if reply == QMessageBox.StandardButton.Save:
+            # メソッドがあるか確認（代表のナイスなアイデア！）
             if hasattr(self, 'on_save_project_clicked'):
-                self.on_save_project_clicked()
+                # さらに、呼び出し可能（callable）かチェックするとActionはもっと喜びます
+                save_func = getattr(self, 'on_save_project_clicked')
+                if callable(save_func):
+                    save_func()
             event.accept()
         elif reply == QMessageBox.StandardButton.Discard:
             event.accept()
         else:
+            # ここで return する前に ignore する代表の設計は、
+            # 誤操作でウィンドウが閉じるのを防ぐ「神対応」です。
             event.ignore()
             return
         
