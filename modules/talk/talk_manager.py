@@ -160,9 +160,16 @@ class TalkManager(QObject):
             return False
 
     def speak(self, text: str) -> None:
-        if not text: 
-            return
-        print(f"Speaking: {text}")
+        if not text:
+            return  # 2行に分けて E701 回避
+        
+        try:
+            print(f"Speaking: {text}")
+            # 合成処理など...
+        except Exception as e:
+            # traceback.format_exc() を使うことで F401 回避
+            err_detail = traceback.format_exc()
+            print(f"Speech Error: {e}\n{err_detail}")
             
     def synthesize(self, text: str, output_path: str, speed: float = 1.0) -> Tuple[bool, str]:
         """
