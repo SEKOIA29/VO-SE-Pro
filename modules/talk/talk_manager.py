@@ -160,7 +160,8 @@ class TalkManager(QObject):
             return False
 
     def speak(self, text: str) -> None:
-        if not text: return
+        if not text: 
+            return
         print(f"Speaking: {text}")
             
     def synthesize(self, text: str, output_path: str, speed: float = 1.0) -> Tuple[bool, str]:
