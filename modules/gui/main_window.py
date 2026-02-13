@@ -976,18 +976,41 @@ class MainWindow(QMainWindow):
         self.history = HistoryManager()
         self.tracks = [VoseTrack("Vocal 1", "vocal")]
         self.current_track_idx = 0
+        # ウィジェット類の初期化
+        self.timeline_widget = None 
+        self.graph_editor_widget = None
+        self.keyboard_sidebar = None
 
-        # 各種コンポーネントの初期化（Noneではなく型を維持）
-        self.canvas: Any = None
-        self.player: Any = None
-        self.piano_roll_scene: Any = None
-        self.text_analyzer: Any = None
-        self.is_playing_state: bool = False
-        self.audio_output: Any = None
-        self.vose_core: Any = None
-        self.talk_manager: Any = None
+        # オーディオ関連の初期化
+        self.player = None
+        self.audio_output = None
+        self.audio_player = None
 
-        # タイマー類の確実な初期化
+        # エンジン類の初期化
+        self.vo_se_engine = engine
+        self.dynamics_ai = ai
+        self.voice_manager = None
+
+        # 状態フラグの初期化
+        self.is_playing = False
+        self.is_recording = False
+        self.is_looping = False
+
+        # データの初期化
+        self.tracks = []
+        self.current_track_idx = 0
+        self.notes = []
+ 
+        #  UIコンポーネントの初期化
+        self.v_scrollbar = None
+        self.h_scrollbar = None
+        self.play_button = None
+
+        # スレッド管理の初期化
+        self.playback_thread = None
+        self._playback_lock = threading.Lock()
+
+        # タイマーの初期化
         self.render_timer = QTimer(self)
         self.playback_timer = QTimer(self)
 
