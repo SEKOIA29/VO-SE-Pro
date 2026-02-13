@@ -3261,7 +3261,7 @@ class MainWindow(QMainWindow):
         audio = self.vo_se_engine.synthesize(self.timeline_widget.notes_list)
         self.vo_se_engine.play(audio)
 
-        def tart_playback_locked_s(self):
+    def tart_playback_locked_s(self):
         """
         再生を開始（スレッドロック保持中のみ呼び出し）
         注意: このメソッドは _playback_lock を取得した状態で呼び出す
