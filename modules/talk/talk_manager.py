@@ -184,8 +184,6 @@ class TalkManager(QObject):
     def synthesize(self, text: str, output_path: str, speed: float = 1.0) -> Tuple[bool, str]:
         """
         pyopenjtalkを使用して高品質なWAVを生成する。
-        重複インポートを排除し、F811 / F401 エラーを解決した完全防護版。
-        代表の設計した「3段階の合成試行」を1行も省略せず実装しています。
         """
         # 1. 入力チェック
         if not text:
@@ -206,7 +204,8 @@ class TalkManager(QObject):
             options: Dict[str, Any] = {"speed": float(speed)}
             
             # 5. ボイスモデルのパス解決
-            v_path: str = str(getattr(self, 'current_voice_path', ""))
+            # getattrを使って安全に取得し、文字列型を保証
+            v_path: str = str(getattr(self, 'current_voice_path', "") or "")
             
             if v_path and os.path.exists(v_path):
                 # --- ボイスモデルの適用試行（代表の設計を完全踏襲） ---
@@ -224,6 +223,7 @@ class TalkManager(QObject):
                     print(f"DEBUG: Falling back from 'htsvoice' argument: {e}")
                     try:
                         # 優先順位2: 'font' (一部のラップ版や古いラッパー対策)
+                        # 辞書から htsvoice を消して font に入れ替える
                         options.pop("htsvoice", None)
                         options["font"] = v_path
                         result = pyopenjtalk.tts(text, **options)
@@ -238,28 +238,25 @@ class TalkManager(QObject):
                         try:
                             options.pop("font", None)
                             # 位置引数として v_path を直接渡す
-                            except (TypeError, Exception):
-                            # 優先順位3: 位置引数 (キーワード引数を一切解さない環境向け)
-                            try:
-                                options.pop("font", None)
-                                result = pyopenjtalk.tts(text, v_path, **options)     
-                                
-                                if result is not None and len(result) >= 2:
-                                    x, sr = result[0], result[1]
-                                else:
-                                    raise ValueError("TTS result with positional arg is None")
-                            
+                            # 修正: self.talk_manager.synthesize ではなく pyopenjtalk.tts を呼ぶ
+                            result = pyopenjtalk.tts(text, v_path, **options)      
                             
                             if result is not None and len(result) >= 2:
                                 x, sr = result[0], result[1]
                             else:
                                 raise ValueError("TTS result with positional arg is None")
+                        
                         except Exception as final_e:
                             print(f"DEBUG: All synthesis attempts failed: {final_e}")
                             # 最終手段：デフォルト音声
+                            # オプションからパス指定を削除して再試行
+                            options.pop("font", None)
+                            options.pop("htsvoice", None)
                             result = pyopenjtalk.tts(text, **options)
+                            
                             if result is not None and len(result) >= 2:
                                 x, sr = result[0], result[1]
+
             else:
                 # ボイス指定がない場合はデフォルト音声で合成
                 result = pyopenjtalk.tts(text, **options)
@@ -287,7 +284,6 @@ class TalkManager(QObject):
                 return False, f"ファイルの書き出しに失敗しました: {output_path}"
             
         except Exception as e:
-            import traceback
             full_error: str = f"Critical synthesis error: {str(e)}\n{traceback.format_exc()}"
             print(full_error)
             return False, full_error
