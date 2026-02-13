@@ -1688,7 +1688,7 @@ class MainWindow(QMainWindow):
         self.vol_slider = QSlider(Qt.Orientation.Horizontal)
         self.vol_slider.setRange(0, 100)
         self.vol_slider.setValue(100)
-        self.vol_slider.setTickPosition(QSlider.TicksBelow)
+        self.vol_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.vol_slider.setTickInterval(10)
         
         # 値が変わった時の連動
