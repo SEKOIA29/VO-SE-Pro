@@ -3855,66 +3855,76 @@ class MainWindow(QMainWindow):
         except Exception as e:
             # PySide6の正しい形式での呼び出し
             QMessageBox.critical(self, "Load Error", f"Failed to load UST:\n{str(e)}")
-
     def read_file_safely(self, filepath: str) -> Optional[str]:
         """
-        文字コードを自動判別し、複数の候補でリトライしながら、
-        エラー置換を含めて安全にファイルを読み込む統合メソッド。
-        代表の設計思想をすべて集約し、F811エラーを解消しました。
-      
+        文字コードを自動判別してファイルを安全に読み込む。
+        日本語テキストファイル（Shift-JIS、UTF-8等）に完全対応。
+        """
         import chardet
         import os
 
         # 1. ファイル存在チェック
         if not os.path.exists(filepath):
+            print(f"エラー: ファイルが見つかりません: {filepath}")
             return None
 
-        raw_data: bytes = b""
         try:
-            # 2. 最初にバイナリとして読み込み（判別用）
+            # 2. バイナリモードで読み込み
             with open(filepath, 'rb') as f:
                 raw_data = f.read()
-            
+        
+            # 空ファイルの処理
             if not raw_data:
                 return ""
-        except Exception as e:
-            print(f"Binary Read Error: {e}")
-            return None
-
-        # 3. chardetによる自動判別を試行
-        detected_encoding: Optional[str] = None
-        try:
-            res = chardet.detect(raw_data)
-            detected_encoding = res.get('encoding')
-        except Exception:
-            pass
-
-        # 4. 試行するエンコーディングリストの構築
-        # 自動判別結果を最優先し、次に主要な日本語エンコーディングを配置
-        candidate_encodings = []
-        if detected_encoding:
-            candidate_encodings.append(detected_encoding)
-        
-        # 代表が提示された主要な候補を追加（重複は避ける）
-        for enc in ['shift_jis', 'utf-8', 'utf-8-sig', 'cp932', 'euc-jp']:
-            if enc not in candidate_encodings:
-                candidate_encodings.append(enc)
-
-        # 5. 順次デコードを試行
-        for enc in candidate_encodings:
+            
+            # 3. chardetによる文字コード自動検出
+            detected_encoding: Optional[str] = None
             try:
-                # 代表の指定：errors='replace' を使用して、一部の不正文字でのクラッシュを防ぐ
-                # codecs.open よりも bytes.decode の方が replace 処理が安定するためこちらを採用
-                return raw_data.decode(enc, errors='replace')
-            except (UnicodeDecodeError, LookupError):
-                continue
+                detection_result = chardet.detect(raw_data)
+                detected_encoding = detection_result.get('encoding')
+                confidence = detection_result.get('confidence', 0)
+            
+                # 検出精度が低い場合は無視
+                if confidence < 0.7:
+                    detected_encoding = None
+            except Exception as e:
+                print(f"文字コード検出エラー: {e}")
+                detected_encoding = None
+        
+            # 4. 試行するエンコーディングリストの構築
+            candidate_encodings = []
+        
+            # 検出結果があれば最優先
+            if detected_encoding:
+                candidate_encodings.append(detected_encoding)
+        
+            # 日本語環境で一般的なエンコーディングを順に追加
+            for enc in ['shift_jis', 'utf-8', 'utf-8-sig', 'cp932', 'euc-jp', 'iso-2022-jp']:
+                if enc not in candidate_encodings:
+                    candidate_encodings.append(enc)
 
-        # 6. すべて失敗した場合の最終手段
-        try:
-            # 最も一般的な cp932 で強制デコード（replaceあり）
+            # 5. 順次デコードを試行
+            for encoding in candidate_encodings:
+                try:
+                    # errors='replace' で不正な文字を '?' に置き換え
+                    decoded_text = raw_data.decode(encoding, errors='replace')
+                
+                    # デコード成功時はログ出力
+                    print(f"ファイル読み込み成功: {filepath} ({encoding})")
+                    return decoded_text
+                
+                except (UnicodeDecodeError, LookupError) as e:
+                    # このエンコーディングは失敗、次を試す
+                    continue
+
+            # 6. すべて失敗した場合の最終手段
+            print(f"警告: すべてのエンコーディングで失敗。cp932で強制デコード: {filepath}")
             return raw_data.decode('cp932', errors='replace')
-        except Exception:
-          """
+        
+        except Exception as e:
+            print(f"ファイル読み込みエラー: {filepath} - {e}")
+            import traceback
+            traceback.print_exc()
             return None
             
    
