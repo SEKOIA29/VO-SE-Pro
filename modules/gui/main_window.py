@@ -3822,7 +3822,7 @@ class MainWindow(QMainWindow):
         文字コードを自動判別し、複数の候補でリトライしながら、
         エラー置換を含めて安全にファイルを読み込む統合メソッド。
         代表の設計思想をすべて集約し、F811エラーを解消しました。
-        """
+      
         import chardet
         import os
 
@@ -3875,6 +3875,7 @@ class MainWindow(QMainWindow):
             # 最も一般的な cp932 で強制デコード（replaceあり）
             return raw_data.decode('cp932', errors='replace')
         except Exception:
+          """
             return None
             
    
