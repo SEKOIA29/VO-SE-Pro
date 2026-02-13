@@ -3519,7 +3519,7 @@ class MainWindow(QMainWindow):
             status_bar.showMessage(f"Optimization Complete: {update_count} samples updated.", 5000)
         
         # 4. グローバルシェア奪還のための自動保存ダイアログ
-        # ログ 3134行目対策：QMessageBox.No を StandardButton.No に修正
+        # ログ 3134行目対策：QMessageBox.StandardButton.No を StandardButton.No に修正
         reply = QMessageBox.question(
             self, 
             "Acoustic Config Save", 
