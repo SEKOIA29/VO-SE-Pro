@@ -1664,7 +1664,7 @@ class MainWindow(QMainWindow):
         if not hasattr(self, 'player') or self.player is None:
             return False
             
-        # 旧: self.player.playbackState() == QMediaPlayer.PlayingState
+        # 旧: self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
         # 新: PySide6 の正確な Enum 比較
         from PySide6.QtMultimedia import QMediaPlayer
         # getattr を使って、解析ツール(Pyright)の警告を完全にスルーします
