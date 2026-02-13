@@ -2835,7 +2835,7 @@ class MainWindow(QMainWindow):
                 status_bar.showMessage(f"Talkモード: '{text}' を展開しました")
             self.text_input.clear()
 
-    @Slot(object) # buttonが渡されるためobjectを指定
+    @Slot(object)
     def on_param_mode_changed(self, button):
         """パラメーター切り替えボタン処理（省略なし完全版）"""
         if not button:
