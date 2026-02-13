@@ -956,70 +956,93 @@ class MainWindow(QMainWindow):
     def __init__(self, parent=None, engine=None, ai=None, config=None):
         super().__init__(parent)
         
-        self.playback_thread = None # 今の演奏スレッドを保存する変数
-
-        # --- F401 / reportAssignmentType 対策：インポートと実体化 ---
-        from .timeline_widget import TimelineWidget
-        from .graph_editor_widget import GraphEditorWidget
+        # ==========================================
+        # 重要：すべての属性を事前に初期化
+        # これにより AttributeError を防ぎます
+        # ==========================================
         
-        # 宣言と実体化を同時に行う。これで「imported but unused」を解消
-        self.timeline_widget: TimelineWidget = TimelineWidget(self)
-        self.graph_editor_widget: GraphEditorWidget = GraphEditorWidget(self)
-
-        # --- 未定義属性のエラーを消すための宣言 ---
-        self.v_scrollbar = QSlider(Qt.Orientation.Vertical, self) 
-        self.sync_notes: bool = True# timeline_widget側からのアクセス用
-        self.h_scrollbar = QSlider(Qt.Orientation.Horizontal, self)
-        self.all_parameters: Dict[str, Any] = {}
-
-        # システム初期化
-        self.history = HistoryManager()
-        self.tracks = [VoseTrack("Vocal 1", "vocal")]
-        self.current_track_idx = 0
-        # ウィジェット類の初期化
-        self.timeline_widget = None 
-        self.graph_editor_widget = None
-        self.keyboard_sidebar = None
-
-        # オーディオ関連の初期化
-        self.player = None
-        self.audio_output = None
-        self.audio_player = None
-
-        # エンジン類の初期化
-        self.vo_se_engine = engine
-        self.dynamics_ai = ai
-        self.voice_manager = None
-
-        # 状態フラグの初期化
-        self.is_playing = False
-        self.is_recording = False
-        self.is_looping = False
-
-        # データの初期化
-        self.tracks = []
-        self.current_track_idx = 0
-        self.notes = []
- 
-        #  UIコンポーネントの初期化
-        self.v_scrollbar = None
-        self.h_scrollbar = None
-        self.play_button = None
-
-        # スレッド管理の初期化
-        self.playback_thread = None
+        # --- ウィジェット類 ---
+        self.timeline_widget: Optional['TimelineWidget'] = None
+        self.graph_editor_widget: Optional['GraphEditorWidget'] = None
+        self.keyboard_sidebar: Optional['KeyboardSidebarWidget'] = None
+        
+        # --- オーディオ関連 ---
+        self.player: Optional[Any] = None
+        self.audio_output: Optional[Any] = None
+        self.audio_player: Optional[Any] = None
+        
+        # --- エンジン類 ---
+        self.vo_se_engine: Optional[Any] = engine
+        self.vose_core: Optional[Any] = None
+        self.dynamics_ai: Optional[Any] = ai
+        self.voice_manager: Optional[Any] = None
+        self.analyzer: Optional[Any] = None
+        self.text_analyzer: Optional[Any] = None
+        
+        # --- 状態フラグ ---
+        self.is_playing_state: bool = False
+        self.is_playing: bool = False
+        self.is_recording: bool = False
+        self.is_looping: bool = False
+        self.is_looping_selection: bool = False
+        
+        # --- データ管理 ---
+        self.tracks: List[VoseTrack] = [VoseTrack("Vocal 1", "vocal")]
+        self.current_track_idx: int = 0
+        self.notes: List[Any] = []
+        self.pitch_data: List[Any] = []
+        self.playing_notes: Dict[int, Any] = {}
+        self.oto_dict: Dict[str, Any] = {}
+        self.current_oto_data: List[Any] = []
+        
+        # --- 音源・音声 ---
+        self.current_voice: str = "標準ボイス"
+        self.volume: float = 0.8
+        self.current_playback_time: float = 0.0
+        
+        # --- UI要素 ---
+        self.v_scrollbar: Optional[QSlider] = None
+        self.h_scrollbar: Optional[QScrollBar] = None
+        self.vertical_scroll: Optional[QSlider] = None
+        self.tempo_input: Optional[QLineEdit] = None
+        self.play_button: Optional[QPushButton] = None
+        self.play_btn: Optional[QPushButton] = None
+        self.record_button: Optional[QPushButton] = None
+        self.loop_button: Optional[QPushButton] = None
+        self.render_button: Optional[QPushButton] = None
+        self.status_label: Optional[QLabel] = None
+        self.vol_slider: Optional[QSlider] = None
+        self.vol_label: Optional[QLabel] = None
+        self.btn_mute: Optional[QPushButton] = None
+        self.btn_solo: Optional[QPushButton] = None
+        self.track_list_widget: Optional[QListWidget] = None
+        self.progress_bar: Optional[QProgressBar] = None
+        self.character_selector: Optional[QComboBox] = None
+        self.midi_port_selector: Optional[QComboBox] = None
+        self.toolbar: Optional[QToolBar] = None
+        
+        # --- レイアウト ---
+        self.main_layout: Optional[QVBoxLayout] = None
+        self.voice_grid: Optional[QGridLayout] = None
+        self.voice_cards: List[Any] = []
+        
+        # --- スレッド管理 ---
+        self.playback_thread: Optional[threading.Thread] = None
         self._playback_lock = threading.Lock()
-
-        # タイマーの初期化
+        self.analysis_thread: Optional[Any] = None
+        
+        # --- タイマー ---
         self.render_timer = QTimer(self)
         self.playback_timer = QTimer(self)
-
-        # --- 外部クラスの使用（F401解消の核心） ---
-        self.os_type = platform.system()
-        # ここで AIManager を使用することで、行62の F401 を解決
-        self.ai_manager = AIManager() 
         
-        # 歌声合成用の母音グループ定義
+        # --- その他 ---
+        self.history = HistoryManager()
+        self.config_manager = ConfigHandler()
+        self.config = config if config else self.config_manager.load_config()
+        self.all_parameters: Dict[str, Any] = {}
+        self.sync_notes: bool = True
+        
+        # 母音グループ定義
         self.vowel_groups = {
             'a': 'あかさたなはまやらわがざだばぱぁゃ',
             'i': 'いきしちにひみりぎじぢびぴぃ',
@@ -1028,12 +1051,53 @@ class MainWindow(QMainWindow):
             'o': 'おこそとのほもよろをごぞどぼぽぉょ',
             'n': 'ん'
         }
-        self.oto_dict: Dict[str, Any] = {}
-
-        # UIセットアップ呼び出し（省略なし）
+        
+        # パートナー情報
+        self.confirmed_partners: Dict[int, str] = {}
+        
+        # デバイス情報
+        self.active_device: str = "CPU (Standard)"
+        self.active_provider: str = "CPUExecutionProvider"
+        
+        # ==========================================
+        # ここから初期化処理を開始
+        # ==========================================
+        
+        # エンジン初期化
+        if not self.vo_se_engine:
+            try:
+                from modules.backend.vo_se_engine import VoSeEngine
+                self.vo_se_engine = VoSeEngine()
+            except ImportError:
+                print("警告: VoSeEngine をインポートできませんでした")
+        
+        if not self.dynamics_ai:
+            try:
+                from modules.utils.dynamics_ai import DynamicsAIEngine
+                self.dynamics_ai = DynamicsAIEngine()
+            except ImportError:
+                print("警告: Engine をインポートできませんでした")
+        
+        # マネージャー初期化
+        self.voice_manager = VoiceManager(self.dynamics_ai)
+        self.analyzer = IntonationAnalyzer()
+        self.audio_player = AudioPlayer(volume=self.volume)
+        self.audio_output = AudioOutput()
+        
+        # UI構築
         self.init_ui()
-        self.statusBar().showMessage("Ready.")
-
+        
+        # 接続設定
+        self.setup_connections()
+        self.setup_vose_shortcuts()
+        
+        # 起動シーケンス
+        self.perform_startup_sequence()
+        
+        # ウィンドウ設定
+        self.setWindowTitle("VO-SE Pro")
+        self.resize(1200, 800)
+        
         # ==============================================================================
         # --- ここで辞書を定義 ---
         self.confirmed_partners = {
@@ -1047,33 +1111,6 @@ class MainWindow(QMainWindow):
        
         # ==============================================================================
 
-        
-        # --- 1. 基礎データ・設定の初期化 ---
-        self.config_manager = ConfigHandler()
-        self.config = config if config else self.config_manager.load_config()
-        
-        # 内部状態
-        self.is_playing = False
-        self.is_recording = False
-        self.is_looping = False
-        self.current_playback_time = 0.0
-        self.volume = self.config.get("volume", 0.8)
-        self.current_voice = self.config.get("default_voice", "標準ボイス")
-        
-        # データモデル
-        self.notes = [] 
-        self.pitch_data = []
-        self.playing_notes = {}
-        
-        # 母音グループの定義
-        self.vowel_groups = {
-            'a': 'あかさたなはまやらわがざだばぱぁゃ',
-            'i': 'いきしちにひみりぎじぢびぴぃ',
-            'u': 'うくすつぬふむゆるぐずづぶぷぅゅ',
-            'e': 'えけせてねへめれげぜでべぺぇ',
-            'o': 'おこそとのほもよろをごぞどぼぽぉょ',
-            'n': 'ん'
-        }
 
         # --- 2. エンジン・マネージャー類の初期化 ---
         # 重複を避け、一つの変数名(vo_se_engine)に統一
