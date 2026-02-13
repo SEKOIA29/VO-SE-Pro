@@ -3261,6 +3261,75 @@ class MainWindow(QMainWindow):
         audio = self.vo_se_engine.synthesize(self.timeline_widget.notes_list)
         self.vo_se_engine.play(audio)
 
+        def tart_playback_locked_s(self):
+        """
+        再生を開始（スレッドロック保持中のみ呼び出し）
+        注意: このメソッドは _playback_lock を取得した状態で呼び出す
+        """
+        # 既に再生中の場合は何もしない
+        if self.playback_thread and self.playback_thread.is_alive():
+            print("警告: 既に再生スレッドが実行中です")
+            return
+    
+        # 再生フラグを立てる
+        self.is_playing = True
+    
+        # 再生ワーカースレッドを開始
+        self.playback_thread = threading.Thread(
+            target=self._playback_worker,
+            daemon=True,
+            name="VO-SE-Playback"
+        )
+        self.playback_thread.start()
+        print("再生スレッド開始")
+ 
+    def _stop_playback_locked(self):
+        """
+        再生を停止（スレッドロック保持中のみ呼び出し）    
+        注意: このメソッドは _playback_lock を取得した状態で呼び出す
+        """
+        # 再生フラグを下げる
+        self.is_playing = False
+    
+        # スレッドの終了を待機（最大1秒）
+        if self.playback_thread:
+            self.playback_thread.join(timeout=1.0)
+        
+            # タイムアウトした場合の警告
+            if self.playback_thread.is_alive():
+                print("警告: 再生スレッドが1秒以内に終了しませんでした")
+        
+            self.playback_thread = None
+    
+        print("再生スレッド停止")
+
+    def _playback_worker(self):
+        """
+        バックグラウンドで動作する再生ワーカー
+      
+        このメソッドは別スレッドで実行されます
+        """
+        try:
+            # エンジンの取得
+            engine = getattr(self, 'vo_se_engine', None)
+            if not engine:
+                print("エラー: 再生エンジンが見つかりません")
+                return
+        
+            # 再生処理
+            if hasattr(engine, 'play_audio'):
+                engine.play_audio()
+        
+        except Exception as e:
+            print(f"再生ワーカーエラー: {e}")
+            import traceback
+            traceback.print_exc()
+    
+        finally:
+            # 再生終了時にフラグをクリア
+            with self._playback_lock:
+                self.is_playing = False
+
     @Slot() 
     def on_play_pause_toggled(self):
         """再生/停止を切り替えるハンドラ（トグル機能）"""
