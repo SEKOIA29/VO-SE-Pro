@@ -1655,44 +1655,46 @@ class MainWindow(QMainWindow):
 
     def setup_audio_interface(self) -> None:
         """
-        オーディオ再生エンジンと操作UIの初期化を完遂します。
-        PySide6の仕様変更(Enum/Multimedia)に対応し、1行も省略せず記述します。
+        オーディオ再生エンジンと操作UIの初期化（PySide6完全対応版）
         """
         from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
         from PySide6.QtWidgets import QSlider, QLabel, QHBoxLayout
         from PySide6.QtCore import Qt
 
         # --- 1. 再生エンジンの構築 ---
-        # self.player の初期化 (None の可能性を排除して宣言)
         self.player = QMediaPlayer()
         self.audio_output = QAudioOutput()
-        
+    
         # PySide6必須：プレイヤーに出力先を接続
         self.player.setAudioOutput(self.audio_output)
-        
-        # 1567行目のエラー修正：音量は AudioOutput に対して 0.0 ~ 1.0 で設定
-        self.audio_output.setVolume(0.5) 
-        
-        # プレイヤーの状態監視を接続
+    
+        # 音量設定（0.0 ~ 1.0）
+        self.audio_output.setVolume(0.5)
+    
+        #    プレイヤーの状態監視を接続
         self.player.playbackStateChanged.connect(self.on_playback_state_changed)
 
-        # --- 2. ボリュームコントロールUI (1534行目Enum修正) ---
+        # --- 2. ボリュームコントロールUI ---
         vol_layout = QHBoxLayout()
-        
+    
         self.vol_label = QLabel("Volume: 50%")
-        self.vol_slider = QSlider(Qt.Orientation.Horizontal)
+        self.vol_slider = QSlider(Qt.Orientation.Horizontal)  # ✅ 修正
         self.vol_slider.setRange(0, 100)
         self.vol_slider.setValue(50)
-        
-        # 1534行目のエラー修正：Enumの正確な階層を指定
+    
+        # ✅ 正しい列挙型アクセス
         self.vol_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.vol_slider.setTickInterval(10)
-        
+    
         # スライダー変更時の処理
         self.vol_slider.valueChanged.connect(self.on_volume_changed)
-        
+    
         vol_layout.addWidget(self.vol_label)
         vol_layout.addWidget(self.vol_slider)
+    
+        # メインレイアウトに追加（既存のレイアウトがある場合）
+        if hasattr(self, 'main_layout') and self.main_layout:
+            self.main_layout.addLayout(vol_layout)
 
     def get_current_playback_state(self) -> bool:
         """
