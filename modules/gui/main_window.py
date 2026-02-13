@@ -2117,55 +2117,42 @@ class MainWindow(QMainWindow):
         """タイムラインが変更された時の処理（オートセーブなど）"""
         pass
 
-    def play_audio(self, path: str) -> None:
-        """
-        オーディオ再生の実装。
-        代表の設計に基づき、安全なオブジェクトアクセスで再生を完遂します。
-        """
-        if not path or not os.path.exists(path):
-            print(f"ERROR: Audio file not found: {path}")
-            return
+   def play_audio(self, path: str) -> None:
+       """オーディオファイルを安全に再生"""
+    
+       # 1. パスのチェック
+       if not path or not os.path.exists(path):
+           print(f"エラー: ファイルが見つかりません: {path}")
+           return
 
-        try:
-            # --- 1978行目付近のエラー修正：型ガードと安全なアクセス ---
-            
-            # self.player が bool 型になっていないか、None でないかを厳格にチェック
-            # これにより Pyright の "Cannot access attribute ... for class bool" を回避します
-            player_obj = getattr(self, 'player', None)
-            
-            # player_obj が bool型（True/False）の場合は、初期化漏れか状態フラグと混同されている
-            if isinstance(player_obj, bool) or player_obj is None:
-                # 代表、ここで player オブジェクトを安全に再生成、または無視するロジックを入れます
-                print("DEBUG: Player object is not initialized correctly. Skipping attribute access.")
-                is_playing = False
-            else:
-                # オブジェクトが存在する場合のみ属性にアクセス
-                # getattr を使うことで、属性そのものが存在しない場合のエラーも防ぎます
-                is_playing = getattr(player_obj, 'is_playing', False)
+       # 2. プレイヤーの取得
+       player = getattr(self, 'player', None)
+    
+       # 3. プレイヤーが初期化されているかチェック
+       if player is None or isinstance(player, bool):
+           print("警告: プレイヤーが初期化されていません")
+           return
 
-            # --- 再生ロジックの完遂 ---
-            if is_playing:
-                # すでに再生中なら一旦停止（代表のこだわり：二重再生防止）
-                stop_func = getattr(player_obj, 'stop', None)
-                if callable(stop_func):
-                    stop_func()
-
-            # 新しいソースをセットして再生
-            load_func = getattr(player_obj, 'load', None)
-            play_func = getattr(player_obj, 'play', None)
-            
-            if callable(load_func) and callable(play_func):
-                load_func(path)
-                play_func()
-                print(f"SUCCESS: Playing audio: {path}")
-            else:
-                print("ERROR: Player object does not support load/play methods.")
-
-        except Exception as e:
-            import traceback
-            print(f"Critical error in play_audio: {e}")
-            print(traceback.format_exc())
-
+       # 4. 再生処理
+       try:
+          from PySide6.QtCore import QUrl
+        
+           # 停止処理
+           if hasattr(player, 'stop'):
+               player.stop()
+        
+           # ソースを設定
+           if hasattr(player, 'setSource'):
+               file_url = QUrl.fromLocalFile(os.path.abspath(path))
+               player.setSource(file_url)
+        
+           # 再生開始
+           if hasattr(player, 'play'):
+               player.play()
+               print(f"再生開始: {path}")
+    
+       except Exception as e:
+           print(f"再生エラー: {e}")
     # ==========================================================================
     #  Pro audio modeling の起動、呼び出し　　　　　　　　　　　
     # ==========================================================================
