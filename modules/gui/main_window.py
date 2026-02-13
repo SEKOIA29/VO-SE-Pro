@@ -1186,7 +1186,8 @@ class MainWindow(QMainWindow):
     def refresh_canvas(self):
         """キャンバス（描画領域）を再描画する"""
         if hasattr(self, 'timeline_widget'):
-            self.timeline_widget.update()
+            if self.timeline_widget: 
+                self.timeline_widget.update()
 
     def sync_ui_to_selection(self):
         """選択されたアイテムに合わせてUI表示を同期する"""
@@ -1404,7 +1405,8 @@ class MainWindow(QMainWindow):
     def apply_state(self, state):
         """状態（ノートリストなど）を反映"""
         self.timeline_widget.notes_list = deepcopy(state)
-        self.timeline_widget.update()
+        if self.timeline_widget: 
+            self.timeline_widget.update()
 
     # --- マルチトラック操作 ---
 
@@ -1462,7 +1464,8 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'timeline_widget') and self.timeline_widget is not None:
             self.timeline_widget.set_notes(target_tr.notes)
             # 背景の波形などを再描画
-            self.timeline_widget.update()
+            if self.timeline_widget: 
+                self.timeline_widget.update()
 
         # 5. UI（ミキサー等）の同期
         # 各UIパーツの存在を確認しながら値をセット（AttributeAccessIssue対策）
@@ -1512,7 +1515,8 @@ class MainWindow(QMainWindow):
             track.vose_peaks = self.timeline_widget.get_audio_peaks(file_path)
             
             self.refresh_track_list_ui()
-            self.timeline_widget.update() # 再描画を指示
+            if self.timeline_widget: 
+                self.timeline_widget.update()
             self.statusBar().showMessage(f"Loaded: {track.name}")
 
     def refresh_ui(self):
@@ -1667,7 +1671,8 @@ class MainWindow(QMainWindow):
             current_sec = ms / 1000.0
             # タイムラインのカーソル位置を更新
             self.timeline_widget._current_playback_time = current_sec
-            self.timeline_widget.update()
+            if self.timeline_widget:
+                self.timeline_widget.update()
 
     def setup_audio_interface(self) -> None:
         """
@@ -4670,7 +4675,8 @@ class MainWindow(QMainWindow):
                 # timeline_widgetの存在を担保
                 if hasattr(self, 'timeline_widget') and self.timeline_widget is not None:
                     self.timeline_widget.set_notes(new_notes)
-                    self.timeline_widget.update()
+                    if self.timeline_widget:
+                        self.timeline_widget.update()
                 
                 # statusBarの存在確認（Noneになる可能性があるため）
                 status_bar = self.statusBar()
@@ -4708,7 +4714,8 @@ class MainWindow(QMainWindow):
             if i < len(lyrics):
                 note.lyrics = lyrics[i]
         
-        self.timeline_widget.update()
+        if self.timeline_widget:
+            self.timeline_widget.update()
 
     @Slot()
     def on_click_apply_lyrics_bulk(self):
@@ -4723,7 +4730,8 @@ class MainWindow(QMainWindow):
         for i in range(min(len(lyric_list), len(notes))):
             notes[i].lyrics = lyric_list[i]
             
-        self.timeline_widget.update()
+        if self.timeline_widget:
+            self.timeline_widget.update()
         
         if hasattr(self, 'pro_monitoring') and self.pro_monitoring:
             self.sync_notes = True
