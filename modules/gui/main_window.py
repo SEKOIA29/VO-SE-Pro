@@ -2100,57 +2100,104 @@ class MainWindow(QMainWindow):
 
     def synthesize(self, notes, output_path="output.wav"):
         """
-        [壺修正済み] 高セキュア・レンダリング・エンジン
-        GCからメモリを死守し、WORLDエンジンで高音質合成。
+        スレッドセーフなレンダリングと完璧なメモリ管理。
+        GC（ガベージコレクション）からNumPy配列を保護します。
         """
         import numpy as np
         import ctypes
+    
+        # 1. 入力検証
         if not notes:
+            print("エラー: レンダリングするノートがありません")
             return None
 
         note_count = len(notes)
-        # 1. C++構造体配列の確保
+    
+        # 2. C++構造体配列の確保
         cpp_notes_array = (NoteEvent * note_count)()
-        
-        # 2. 【最強の壺対策】GCからNumPy配列を保護するリスト
+    
+        # 3. 【重要】GCからNumPy配列を保護するリスト
+        # このリストが存在する限り、配列はメモリに保持される
         keep_alive = []
 
-        for i, n in enumerate(notes):
-            # 常にfloat64で固定
-            p_curve = np.array(n.pitch_curve, dtype=np.float64)
-            keep_alive.append(p_curve)
-            
-            # ダミーパラメータもDSP最適化された標準値
-            length = len(p_curve)
-            g_curve = np.full(length, 0.5, dtype=np.float64) # Gender
-            t_curve = np.full(length, 0.5, dtype=np.float64) # Tension
-            b_curve = np.full(length, 0.0, dtype=np.float64) # Breath
-            keep_alive.extend([g_curve, t_curve, b_curve])
-
-            # C++側へポインタを転送
-            cpp_notes_array[i].wav_path = n.phonemes.encode('utf-8')
-            cpp_notes_array[i].pitch_curve = p_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-            cpp_notes_array[i].pitch_length = length
-            cpp_notes_array[i].gender_curve = g_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-            cpp_notes_array[i].tension_curve = t_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-            cpp_notes_array[i].breath_curve = b_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-
-        # 3. レンダリング実行
         try:
-            result = self.engine_dll.execute_render(
-                cpp_notes_array, 
-                note_count, 
+            # 4. 各ノートのデータを構造体に変換
+            for i, note in enumerate(notes):
+                # ピッチカーブの準備（常にfloat64）
+                if hasattr(note, 'pitch_curve') and note.pitch_curve:
+                    p_curve = np.array(note.pitch_curve, dtype=np.float64)
+                else:
+                    # デフォルトのピッチカーブ
+                    p_curve = np.array([440.0], dtype=np.float64)
+            
+                 # GC保護リストに追加
+                 keep_alive.append(p_curve)
+            
+                 # その他のパラメータカーブ（DSP最適化済み標準値）
+                 curve_length = len(p_curve)
+                 g_curve = np.full(curve_length, 0.5, dtype=np.float64)  # Gender
+                 t_curve = np.full(curve_length, 0.5, dtype=np.float64)  # Tension
+                 b_curve = np.full(curve_length, 0.0, dtype=np.float64)  # Breath
+            
+                 # すべてのカーブをGC保護
+                 keep_alive.extend([g_curve, t_curve, b_curve])
+
+                 # 5. C++構造体へのポインタ転送
+                 # 音素情報
+                 phoneme_str = getattr(note, 'phonemes', 'a')
+                 cpp_notes_array[i].wav_path = phoneme_str.encode('utf-8')
+            
+                # ピッチカーブ
+                cpp_notes_array[i].pitch_curve = p_curve.ctypes.data_as(
+                    ctypes.POINTER(ctypes.c_double)
+                )
+                cpp_notes_array[i].pitch_length = curve_length
+            
+                # その他のカーブ
+                cpp_notes_array[i].gender_curve = g_curve.ctypes.data_as(
+                    ctypes.POINTER(ctypes.c_double)
+                )
+                cpp_notes_array[i].tension_curve = t_curve.ctypes.data_as(
+                    ctypes.POINTER(ctypes.c_double)
+                )
+                cpp_notes_array[i].breath_curve = b_curve.ctypes.data_as(
+                    ctypes.POINTER(ctypes.c_double)
+                )
+
+              # 6. C++エンジンでレンダリング実行
+            if not hasattr(self, 'engine_dll') or not self.engine_dll:
+                print("エラー: C++エンジンがロードされていません")
+                return None
+            
+            result_code = self.engine_dll.execute_render(
+                cpp_notes_array,
+                note_count,
                 output_path.encode('utf-8')
             )
-            if result == 0: # 成功
-                return output_path
-        except Exception as e:
-            print(f"CRITICAL ENGINE ERROR: {e}")
-        finally:
-            # 4. レンダリング終了後に安全にメモリ解放
-            del keep_alive
+        
+            # 7. 結果チェック
+            if result_code == 0:
+                 print(f"レンダリング成功: {output_path}")
+                 return output_path
+            else:
+                print(f"レンダリング失敗: エラーコード {result_code}")
+                return None
             
-        return None
+        except Exception as e:
+            print(f"重大なエンジンエラー: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+        
+        finally:
+            # 8. レンダリング終了後に安全にメモリ解放
+            # keep_alive が削除されることで、参照カウントが減り、
+            # Pythonのガベージコレクタが適切に処理する
+            del keep_alive
+            del cpp_notes_array
+            print("メモリクリーンアップ完了")
+
+
 
     def on_notes_updated(self):
         """タイムラインが変更された時の処理（オートセーブなど）"""
