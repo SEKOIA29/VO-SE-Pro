@@ -916,133 +916,173 @@ class AnalysisThread(QThread):
 class MainWindow(QMainWindow):
     """VO-SE Pro  メインウィンドウ"""
     
-    # --- Pyrightの reportAttributeAccessIssue 対策：全属性を明示的に宣言 ---
-    timeline_widget: TimelineWidget
-    graph_editor_widget: GraphEditorWidget
-    keyboard_sidebar: KeyboardSidebarWidget
-    render_timer: QTimer
-    playback_timer: QTimer
-    vertical_scroll: QSlider
-    input_fields: Dict[str, Any]
-    parameters: Dict[str, Any]
-
+    # --- 1. クラス属性の統合宣言（Pyright / Pylance の警告を完全に消去） ---
     timeline_widget: 'TimelineWidget'
     graph_editor_widget: 'GraphEditorWidget'
-    player: Any  # AudioPlayer等の具体的な型があればそれを使用
-    canvas: Any
-    text_analyzer: Any
-    piano_roll_scene: Any
-    audio_output: Any
-    
+    keyboard_sidebar: 'KeyboardSidebarWidget'
     keyboard_sidebar_widget: 'KeyboardSidebarWidget'
-    player: Any
-    audio_output: Any
-    talk_manager: Any
-    vose_core: Any
-    is_playing_state: bool
-    
-    player: Optional['AudioPlayer']
-    audio_output: Any
-    talk_manager: Any
-    vose_core: Optional['VoSeEngine']
-    text_analyzer: Optional['IntonationAnalyzer']
-    is_playing_state: bool
-    current_track_idx: int
+    vertical_scroll: QSlider
     vol_slider: QSlider
     vol_label: QLabel
-    # ------------------
-    
+    render_timer: QTimer
+    playback_timer: QTimer
+    player: Optional[Any]
+    audio_output: Any
+    talk_manager: Any
+    vose_core: Optional[Any]
+    text_analyzer: Optional[Any]
+    is_playing_state: bool
+    current_track_idx: int
+    input_fields: Dict[str, Any]
+    parameters: Dict[str, Any]
+    canvas: Any
+    piano_roll_scene: Any
+    vo_se_engine: Any
+    dynamics_ai: Any
+    voice_manager: Any
+    analyzer: Any
+    is_playing: bool
+    is_recording: bool
+    is_looping: bool
+    is_looping_selection: bool
+    tracks: List[Any]
+    notes: List[Any]
+    pitch_data: List[Any]
+    playing_notes: Dict[int, Any]
+    oto_dict: Dict[str, Any]
+    current_oto_data: List[Any]
+    current_voice: str
+    volume: float
+    current_playback_time: float
+    v_scrollbar: Optional[QSlider]
+    h_scrollbar: Optional[QScrollBar]
+    tempo_input: Optional[QLineEdit]
+    play_button: Optional[QPushButton]
+    play_btn: Optional[QPushButton]
+    record_button: Optional[QPushButton]
+    loop_button: Optional[QPushButton]
+    render_button: Optional[QPushButton]
+    status_label: Optional[QLabel]
+    btn_mute: Optional[QPushButton]
+    btn_solo: Optional[QPushButton]
+    track_list_widget: Optional[QListWidget]
+    progress_bar: Optional[QProgressBar]
+    character_selector: Optional[QComboBox]
+    midi_port_selector: Optional[QComboBox]
+    toolbar: Optional[QToolBar]
+    main_layout: Optional[QVBoxLayout]
+    voice_grid: Optional[QGridLayout]
+    voice_cards: List[Any]
+    playback_thread: Optional[Any]
+    _playback_lock: Any
+    analysis_thread: Optional[Any]
+    history: Any
+    config_manager: Any
+    config: Any
+    all_parameters: Dict[str, Any]
+    sync_notes: bool
+    vowel_groups: Dict[str, str]
+    confirmed_partners: Dict[int, str]
+    active_device: str
+    active_provider: str
+    device_status_label: Optional[QLabel]
+    audio_player: Any
 
     def __init__(self, parent=None, engine=None, ai=None, config=None):
         super().__init__(parent)
         
-        # ==========================================
-        # 重要：すべての属性を事前に初期化
-        # これにより AttributeError を防ぎます
-        # ==========================================
+        # --- 2. 属性の初期化（AttributeError 対策） ---
+        self._init_attributes(engine, ai, config)
         
-        # --- ウィジェット類 ---
-        self.timeline_widget: Optional['TimelineWidget'] = None
-        self.graph_editor_widget: Optional['GraphEditorWidget'] = None
-        self.keyboard_sidebar: Optional['KeyboardSidebarWidget'] = None
+        # --- 3. エンジンの実体化（ImportError ガード付き） ---
+        self._init_engines(engine, ai)
         
-        # --- オーディオ関連 ---
-        self.player: Optional[Any] = None
-        self.audio_output: Optional[Any] = None
-        self.audio_player: Optional[Any] = None
+        # --- 4. UI構築と起動シーケンス ---
+        self.init_ui()
+        self.setup_connections()
+        self.setup_vose_shortcuts()
+        self.perform_startup_sequence()
         
-        # --- エンジン類 ---
-        self.vo_se_engine: Optional[Any] = engine
-        self.vose_core: Optional[Any] = None
-        self.dynamics_ai: Optional[Any] = ai
-        self.voice_manager: Optional[Any] = None
-        self.analyzer: Optional[Any] = None
-        self.text_analyzer: Optional[Any] = None
+        # ウィンドウの最終設定
+        self.setWindowTitle("VO-SE Pro")
+        self.resize(1200, 800)
+
+    def _init_attributes(self, engine, ai, config):
+        """すべての属性に初期値を代入（省略なし）"""
+        self.timeline_widget = None
+        self.graph_editor_widget = None
+        self.keyboard_sidebar = None
+        self.keyboard_sidebar_widget = None
+        self.player = None
+        self.audio_output = None
+        self.audio_player = None
+        self.vo_se_engine = engine
+        self.vose_core = None
+        self.dynamics_ai = ai
+        self.voice_manager = None
+        self.analyzer = None
+        self.text_analyzer = None
+        self.is_playing_state = False
+        self.is_playing = False
+        self.is_recording = False
+        self.is_looping = False
+        self.is_looping_selection = False
         
-        # --- 状態フラグ ---
-        self.is_playing_state: bool = False
-        self.is_playing: bool = False
-        self.is_recording: bool = False
-        self.is_looping: bool = False
-        self.is_looping_selection: bool = False
+        from modules.data.track_model import VoseTrack
+        self.tracks = [VoseTrack("Vocal 1", "vocal")]
+        self.current_track_idx = 0
+        self.notes = []
+        self.pitch_data = []
+        self.playing_notes = {}
+        self.oto_dict = {}
+        self.current_oto_data = []
+        self.current_voice = "標準ボイス"
+        self.volume = 0.8
+        self.current_playback_time = 0.0
         
-        # --- データ管理 ---
-        self.tracks: List[VoseTrack] = [VoseTrack("Vocal 1", "vocal")]
-        self.current_track_idx: int = 0
-        self.notes: List[Any] = []
-        self.pitch_data: List[Any] = []
-        self.playing_notes: Dict[int, Any] = {}
-        self.oto_dict: Dict[str, Any] = {}
-        self.current_oto_data: List[Any] = []
+        self.v_scrollbar = None
+        self.h_scrollbar = None
+        self.vertical_scroll = None
+        self.tempo_input = None
+        self.play_button = None
+        self.play_btn = None
+        self.record_button = None
+        self.loop_button = None
+        self.render_button = None
+        self.status_label = None
+        self.vol_slider = None
+        self.vol_label = None
+        self.btn_mute = None
+        self.btn_solo = None
+        self.track_list_widget = None
+        self.progress_bar = None
+        self.character_selector = None
+        self.midi_port_selector = None
+        self.toolbar = None
+        self.device_status_label = None
+        self.main_layout = None
+        self.voice_grid = None
+        self.voice_cards = []
+        self.canvas = None
+        self.piano_roll_scene = None
         
-        # --- 音源・音声 ---
-        self.current_voice: str = "標準ボイス"
-        self.volume: float = 0.8
-        self.current_playback_time: float = 0.0
-        
-        # --- UI要素 ---
-        self.v_scrollbar: Optional[QSlider] = None
-        self.h_scrollbar: Optional[QScrollBar] = None
-        self.vertical_scroll: Optional[QSlider] = None
-        self.tempo_input: Optional[QLineEdit] = None
-        self.play_button: Optional[QPushButton] = None
-        self.play_btn: Optional[QPushButton] = None
-        self.record_button: Optional[QPushButton] = None
-        self.loop_button: Optional[QPushButton] = None
-        self.render_button: Optional[QPushButton] = None
-        self.status_label: Optional[QLabel] = None
-        self.vol_slider: Optional[QSlider] = None
-        self.vol_label: Optional[QLabel] = None
-        self.btn_mute: Optional[QPushButton] = None
-        self.btn_solo: Optional[QPushButton] = None
-        self.track_list_widget: Optional[QListWidget] = None
-        self.progress_bar: Optional[QProgressBar] = None
-        self.character_selector: Optional[QComboBox] = None
-        self.midi_port_selector: Optional[QComboBox] = None
-        self.toolbar: Optional[QToolBar] = None
-        
-        # --- レイアウト ---
-        self.main_layout: Optional[QVBoxLayout] = None
-        self.voice_grid: Optional[QGridLayout] = None
-        self.voice_cards: List[Any] = []
-        
-        # --- スレッド管理 ---
-        self.playback_thread: Optional[threading.Thread] = None
+        import threading
+        self.playback_thread = None
         self._playback_lock = threading.Lock()
-        self.analysis_thread: Optional[Any] = None
-        
-        # --- タイマー ---
+        self.analysis_thread = None
         self.render_timer = QTimer(self)
         self.playback_timer = QTimer(self)
         
-        # --- その他 ---
+        from modules.utils.history import HistoryManager
+        from modules.utils.config_handler import ConfigHandler
         self.history = HistoryManager()
         self.config_manager = ConfigHandler()
         self.config = config if config else self.config_manager.load_config()
-        self.all_parameters: Dict[str, Any] = {}
-        self.sync_notes: bool = True
+        self.all_parameters = {}
+        self.sync_notes = True
+        self.input_fields = {}
+        self.parameters = {}
         
-        # 母音グループ定義
         self.vowel_groups = {
             'a': 'あかさたなはまやらわがざだばぱぁゃ',
             'i': 'いきしちにひみりぎじぢびぴぃ',
@@ -1051,52 +1091,61 @@ class MainWindow(QMainWindow):
             'o': 'おこそとのほもよろをごぞどぼぽぉょ',
             'n': 'ん'
         }
-        
-        # パートナー情報
-        self.confirmed_partners: Dict[int, str] = {}
-        
-        # デバイス情報
-        self.active_device: str = "CPU (Standard)"
-        self.active_provider: str = "CPUExecutionProvider"
-        
-        # ==========================================
-        # ここから初期化処理を開始
-        # ==========================================
-        
-        # エンジン初期化
+        self.confirmed_partners = {}
+        self.active_device = "CPU (Standard)"
+        self.active_provider = "CPUExecutionProvider"
+
+    def _init_engines(self, engine, ai):
+        """エンジン類の実体化ロジック（省略なし完全版）"""
         if not self.vo_se_engine:
             try:
                 from modules.backend.vo_se_engine import VoSeEngine
                 self.vo_se_engine = VoSeEngine()
             except ImportError:
-                print("警告: VoSeEngine をインポートできませんでした")
-        
-        if not self.dynamics_ai:
-            try:
-                from modules.utils.dynamics_ai import DynamicsAIEngine
-                self.dynamics_ai = DynamicsAIEngine()
-            except ImportError:
-                print("警告: Engine をインポートできませんでした")
-        
-        # マネージャー初期化
-        self.voice_manager = VoiceManager(self.dynamics_ai)
-        self.analyzer = IntonationAnalyzer()
-        self.audio_player = AudioPlayer(volume=self.volume)
-        self.audio_output = AudioOutput()
-        
-        # UI構築
-        self.init_ui()
-        
-        # 接続設定
-        self.setup_connections()
-        self.setup_vose_shortcuts()
-        
-        # 起動シーケンス
-        self.perform_startup_sequence()
-        
-        # ウィンドウ設定
-        self.setWindowTitle("VO-SE Pro")
-        self.resize(1200, 800)
+                class MockEngine: 
+                    def __init__(self):
+                        self.lib = None
+                        self.current_time_playback = 0.0
+                    def set_active_character(self, name): pass
+                    def synthesize(self, *args, **kwargs): pass
+                    def play(self, *args, **kwargs): pass
+                    def stop_playback(self, *args, **kwargs): pass
+                    def export_to_wav(self, *args, **kwargs): pass
+                    def set_voice_library(self, *args, **kwargs): pass
+                    def set_oto_data(self, *args, **kwargs): pass
+                    def prepare_cache(self, *args, **kwargs): pass
+                    def close(self, *args, **kwargs): pass
+                    def vose_free_buffer(self, *args, **kwargs): pass
+                    def vose_set_formant(self, *args, **kwargs): pass
+                    def play_audio(self, *args, **kwargs): pass
+                    def get_current_time(self, *args, **kwargs): pass
+                    def seek_time(self, *args, **kwargs): pass
+                    def preview_single_note(self, *args, **kwargs): pass
+                    def enable_realtime_monitor(self, *args, **kwargs): pass
+                    def render(self, *args, **kwargs): pass
+                    def play_result(self, *args, **kwargs): pass
+                    def set_tempo(self, *args, **kwargs): pass
+                    def synthesize_track(self, *args, **kwargs): pass
+                    def update_notes_data(self, *args, **kwargs): pass
+                    def play_realtime_note(self, *args, **kwargs): pass
+                    def stop_realtime_note(self, *args, **kwargs): pass
+                self.vo_se_engine = MockEngine()
+
+        try:
+            from modules.utils.dynamics_ai import DynamicsAIEngine
+            from modules.backend.voice_manager import VoiceManager
+            from modules.talk.talk_manager import IntonationAnalyzer
+            from modules.audio.player import AudioPlayer
+            from modules.audio.output import AudioOutput
+            
+            self.dynamics_ai = ai if ai else DynamicsAIEngine()
+            self.voice_manager = VoiceManager(self.dynamics_ai)
+            self.analyzer = IntonationAnalyzer()
+            self.text_analyzer = self.analyzer
+            self.audio_player = AudioPlayer(volume=self.volume)
+            self.audio_output = AudioOutput()
+        except ImportError as e:
+            print(f"Engine Load Error: {e}")
         
         # ==============================================================================
         # --- ここで辞書を定義 ---
@@ -1113,40 +1162,7 @@ class MainWindow(QMainWindow):
 
 
         # --- 2. エンジン・マネージャー類の初期化 ---
-        # 重複を避け、一つの変数名(vo_se_engine)に統一
-        try:
-            from backend.engine import VO_SE_Engine
-            self.vo_se_engine = engine if engine else VO_SE_Engine()
-        except ImportError:
-            class MockEngine: 
-                def __init__(self):
-                    self.lib = None
-                    self.current_time_playback = 0.0
-                def set_active_character(self, name): pass
-                def synthesize(self, *args, **kwargs): pass
-                def play(self, *args, **kwargs): pass
-                def stop_playback(self, *args, **kwargs): pass
-                def export_to_wav(self, *args, **kwargs): pass
-                def set_voice_library(self, *args, **kwargs): pass
-                def set_oto_data(self, *args, **kwargs): pass
-                def prepare_cache(self, *args, **kwargs): pass
-                def close(self, *args, **kwargs): pass
-                def vose_free_buffer(self, *args, **kwargs): pass
-                def vose_set_formant(self, *args, **kwargs): pass
-                def play_audio(self, *args, **kwargs): pass
-                def get_current_time(self, *args, **kwargs): pass
-                def seek_time(self, *args, **kwargs): pass
-                def preview_single_note(self, *args, **kwargs): pass
-                def enable_realtime_monitor(self, *args, **kwargs): pass
-                def render(self, *args, **kwargs): pass
-                def play_result(self, *args, **kwargs): pass
-                def set_tempo(self, *args, **kwargs): pass
-                def synthesize_track(self, *args, **kwargs): pass
-                def update_notes_data(self, *args, **kwargs): pass
-                def play_realtime_note(self, *args, **kwargs): pass
-                def stop_realtime_note(self, *args, **kwargs): pass
 
-            self.vo_se_engine = MockEngine()
 
         self.dynamics_ai = ai if ai else DynamicsAIEngine()
         self.voice_manager = VoiceManager(self.dynamics_ai)
