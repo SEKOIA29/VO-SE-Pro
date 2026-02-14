@@ -14,9 +14,8 @@ import zipfile
 import shutil
 import threading
 import math
-import platform
 from copy import deepcopy
-from typing import Any, List, Dict, Optional, TYPE_CHECKING, cast, Union
+from typing import Any, List, Dict, Optional, TYPE_CHECKING, cast
 
 # ==========================================================================
 # 2. 数値計算・信号処理 (Numerical Processing)
@@ -30,19 +29,19 @@ from scipy.io.wavfile import write as wav_write
 # 3. GUIライブラリ (PySide6 / Qt)
 # ==========================================================================
 from PySide6.QtCore import (
-    Qt, Signal, Slot, QThread, QTimer, QUrl, QSize
+    Qt, Signal, Slot, QThread, QTimer
 )
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QFileDialog, QScrollBar, QInputDialog, QLineEdit,
     QLabel, QSplitter, QComboBox, QProgressBar, QMessageBox, QToolBar,
     QGridLayout, QFrame, QDialog, QScrollArea, QSizePolicy, QButtonGroup,
-    QListWidget, QListWidgetItem, QSlider, QShortcut # type: ignore
+    QListWidget, QSlider, QShortcut # type: ignore
 )
 from PySide6.QtGui import (
-    QAction, QKeySequence, QFont, QColor, QPalette
+    QAction, QKeySequence, QFont, QColor
 )
-from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PySide6.QtMultimedia import QMediaPlayer
 
 # ==========================================================================
 # 4. 型チェック時のみのインポート (reportAssignmentType エラーを根本解決)
@@ -1936,38 +1935,6 @@ class MainWindow(QMainWindow):
 
      #=======================================================
 
-
-
-
-    def on_play_pause_toggled(self): # type: ignore
-        self.toggle_playback()
-
-    def on_record_toggled(self): # type: ignore
-        self.is_recording = not self.is_recording
-        if self.record_button:
-            self.record_button.setText("■ 録音中" if self.is_recording else "● 録音")
-
-    def update_tempo_from_input(self): # type: ignore
-        if self.tempo_input:
-            print(f"Tempo changed to: {self.tempo_input.text()}")
-
-    def on_midi_port_changed(self, index): # type: ignore
-        pass
-
-    def on_click_apply_lyrics_bulk(self): # type: ignore
-        pass
-
-    def on_render_button_clicked(self): # type: ignore
-        pass
-        
-    def start_batch_analysis(self): # type: ignore
-        pass
-        
-    def on_click_auto_lyrics(self): # type: ignore
-        pass
-        
-    def on_timeline_updated(self): # type: ignore
-        self.update()
         
     #=======================================================
     # --- Undo / Redo スロット ---
@@ -4218,22 +4185,37 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.warning(self, "保存エラー", f"文字化けの可能性があります:\n{e}")
 
-    def get_safe_installed_name(self, filename, zip_path):
-        """安全にフォルダ名を取り出す"""
-        if hasattr(self, 'player') and self.player:
-            self.player.stop()
+    def get_safe_installed_name(self, filename: str, zip_path: str) -> str:
+        """
+        [Safety Lock] インストールパスから安全にフォルダ名を取り出す
+        （Pyright/Pylance 警告根絶版）
+        """
+        # 1. プレイヤーの停止（型ガードを追加）
+        # getattrとcastを組み合わせることで、hasattrチェック後の呼び出しエラーを防ぎます
+        player = cast(Any, getattr(self, 'player', None))
+        if player is not None:
+            if hasattr(player, 'stop'):
+                player.stop()
         
         self.is_playing = False
         
-        # タイムライン等のリセット
-        if hasattr(self, 'timeline_widget'):
-            self.timeline_widget.set_current_time(0.0)
+        # 2. タイムラインのリセット（型ガードを追加）
+        timeline = cast(Any, getattr(self, 'timeline_widget', None))
+        if timeline is not None:
+            if hasattr(timeline, 'set_current_time'):
+                timeline.set_current_time(0.0)
             
+        # 3. パス解析ロジック（代表のロジックを維持）
         clean_path = os.path.normpath(filename)
+        # 空の要素を除去
         parts = [p for p in clean_path.split(os.sep) if p]
+        
         if len(parts) >= 2:
-            return parts[-2]
-        return os.path.splitext(os.path.basename(zip_path))[0]
+            # 親ディレクトリ名を返す
+            return str(parts[-2])
+            
+        # ファイル名（拡張子なし）を返す
+        return str(os.path.splitext(os.path.basename(zip_path))[0])
 
     @Slot()
     def on_export_button_clicked(self):
