@@ -3070,16 +3070,24 @@ class MainWindow(QMainWindow):
         """
         [Strategic Toggle] パフォーマンスモードの初期化。
         リソースの乏しい環境(Core i3等)と、ハイスペック環境を瞬時に最適化します。
+        （機能維持・解析エラー根絶版）
         """
-        # アイコンやテキストで「プロのツール」感を演出
+        # 1. アクションの生成（代表の設計通り、プロ感を演出）
         self.perf_action = QAction("High-Performance Mode", self)
         self.perf_action.setCheckable(True)
+        
         # 初期状態は省電力(False)にしておき、ユーザーが必要に応じてブーストする仕様
         self.perf_action.setChecked(False) 
         self.perf_action.triggered.connect(self.toggle_performance)
         
-        # ツールバーへの追加（メイン操作部に配置してアクセシビリティを確保）
-        self.toolbar.addAction(self.perf_action)
+        # 2. ツールバーへの追加
+        # Pylance対策：toolbar を cast して「存在する」と明示し、かつ if で実在確認をします
+        # これにより、機能を削らずに reportOptionalMemberAccess エラーを消去します
+        toolbar = cast(QToolBar, self.toolbar) if self.toolbar else None
+        
+        if toolbar:
+            # メイン操作部に配置してアクセシビリティを確保
+            toolbar.addAction(self.perf_action)
 
     @Slot(bool)
     def toggle_performance(self, checked):
@@ -3439,11 +3447,21 @@ class MainWindow(QMainWindow):
 
     @Slot() 
     def on_play_pause_toggled(self):
-        """再生/停止を切り替えるハンドラ（トグル機能）"""
-        # --- 1. すでに再生中の場合 → 停止させる ---
+        """再生/停止を切り替えるハンドラ（トグル機能・機能維持・解析エラー根絶版）"""
+        
+        # --- 0. 解析エラー(reportOptionalMemberAccess)対策の型宣言 ---
+        # メソッドの冒頭でキャストし、Pylanceに「このパーツは存在する」と信じ込ませます
+        # これにより、以降の setText 等への警告を物理的に消滅させます
+        play_btn = cast(QPushButton, self.play_button) if self.play_button else None
+        status_lbl = cast(QLabel, self.status_label) if self.status_label else None
+        timeline = cast(Any, self.timeline_widget) if self.timeline_widget else None
+        timer = cast(Any, self.playback_timer) if self.playback_timer else None
+
+        # --- 1. すでに再生中の場合 → 停止させる (代表のロジックを完全維持) ---
         if self.is_playing:
             self.is_playing = False
-            self.playback_timer.stop()
+            if timer:
+                timer.stop()
             
             if hasattr(self.vo_se_engine, 'stop_playback'):
                 self.vo_se_engine.stop_playback()
@@ -3451,41 +3469,48 @@ class MainWindow(QMainWindow):
             if self.playback_thread and self.playback_thread.is_alive():
                 self.playback_thread.join(timeout=0.2) 
 
-            self.play_button.setText("▶ 再生")
-            self.status_label.setText("停止しました")
+            # パーツが存在する場合のみUIを更新（クラッシュ防止）
+            if play_btn: play_btn.setText("▶ 再生")
+            if status_lbl: status_lbl.setText("停止しました")
             self.playing_notes = {}
             return
 
         # --- 2. 停止中の場合 → 再生を開始する ---
-        # 録音中なら止める（安全策）
+        # 録音中なら止める（代表の安全策を維持）
         if getattr(self, 'is_recording', False):
             self.on_record_toggled()
 
-        notes = self.timeline_widget.notes_list
+        # タイムラインが存在しない場合は何もしない
+        if not timeline:
+            return
+            
+        notes = timeline.notes_list
         if not notes:
-            self.status_label.setText("ノートが存在しません")
+            if status_lbl: status_lbl.setText("ノートが存在しません")
             return
 
         try:
-            self.status_label.setText("音声生成中...")
+            if status_lbl: status_lbl.setText("音声生成中...")
             # GUIをフリーズさせないための処理
             QApplication.processEvents()
 
-            # ノートの範囲を取得（実装されている場合）
-            if hasattr(self.timeline_widget, 'get_selected_notes_range'):
-                start_time, end_time = self.timeline_widget.get_selected_notes_range()
+            # ノートの範囲を取得（代表の動的判定ロジックを維持）
+            if hasattr(timeline, 'get_selected_notes_range'):
+                start_time, end_time = timeline.get_selected_notes_range()
             else:
-                start_time = 0
-                _ = max(n.start_time + n.duration for n in notes)
+                start_time = 0.0
+                # ノートの最後尾を計算するロジック（必要に応じて使用）
+                # _ = max(n.start_time + n.duration for n in notes)
 
             # 再生フラグを立てる
             self.is_playing = True
             self.current_playback_time = start_time
-            self.play_button.setText("■ 停止")
-            self.status_label.setText(f"再生中: {start_time:.2f}s -")
+            
+            # UI表示の更新
+            if play_btn: play_btn.setText("■ 停止")
+            if status_lbl: status_lbl.setText(f"再生中: {start_time:.2f}s -")
 
-            # 別スレッドで再生を開始
-            # 注: play_audioに引数が必要な場合は args=(audio_track,) 等を追加
+            # 代表の設計：別スレッドで再生を開始（daemon=Trueで安全に終了可能）
             self.playback_thread = threading.Thread(
                 target=self.vo_se_engine.play_audio, 
                 daemon=True
@@ -3493,19 +3518,18 @@ class MainWindow(QMainWindow):
             self.playback_thread.start()
             
             # UI更新タイマー開始
-            self.playback_timer.start(20)
+            if timer:
+                timer.start(20)
 
         except Exception as e:
-            # 1. status_label が存在するか確認してからセットする
-            if self.status_label is not None:
-                self.status_label.setText(f"再生エラー: {e}")
+            # 例外発生時も安全にUIを復元
+            if status_lbl:
+                status_lbl.setText(f"再生エラー: {e}")
             
             self.is_playing = False
             
-            # 2. play_button が存在するか確認してからテキストを変える
-            if self.play_button is not None:
-                self.play_button.setText("▶ 再生")
-
+            if play_btn:
+                play_btn.setText("▶ 再生")
     @Slot()
     def on_record_toggled(self):
         """録音開始/停止"""
