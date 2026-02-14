@@ -74,7 +74,7 @@ except ImportError:
     from timeline_widget import TimelineWidget # type: ignore
     from keyboard_sidebar_widget import KeyboardSidebarWidget # type: ignore
     from voice_manager import VoiceManager # type: ignore
-    from ai_manager import AIManager # type: ignore
+    #from ai_manager import AIManager # type: ignore
     from aural_engine import AuralAIEngine
 
 try:
@@ -4161,7 +4161,7 @@ class MainWindow(QMainWindow):
                     print(f"ファイル読み込み成功: {filepath} ({encoding})")
                     return decoded_text
                 
-                except (UnicodeDecodeError, LookupError) as e:
+                except (UnicodeDecodeError, LookupError) :
                     # このエンコーディングは失敗、次を試す
                     continue
 
