@@ -2756,19 +2756,19 @@ class MainWindow(QMainWindow):
                  # GC保護リストに追加
                 keep_alive.append(p_curve)
             
-                 # その他のパラメータカーブ（DSP最適化済み標準値）
-                 curve_length = len(p_curve)
-                 g_curve = np.full(curve_length, 0.5, dtype=np.float64)  # Gender
-                 t_curve = np.full(curve_length, 0.5, dtype=np.float64)  # Tension
-                 b_curve = np.full(curve_length, 0.0, dtype=np.float64)  # Breath
+                # その他のパラメータカーブ（DSP最適化済み標準値）
+                curve_length = len(p_curve)
+                g_curve = np.full(curve_length, 0.5, dtype=np.float64)  # Gender
+                t_curve = np.full(curve_length, 0.5, dtype=np.float64)  # Tension
+                b_curve = np.full(curve_length, 0.0, dtype=np.float64)  # Breath
             
-                 # すべてのカーブをGC保護
-                 keep_alive.extend([g_curve, t_curve, b_curve])
+                # すべてのカーブをGC保護
+                keep_alive.extend([g_curve, t_curve, b_curve])
 
-                 # 5. C++構造体へのポインタ転送
-                 # 音素情報
-                 phoneme_str = getattr(note, 'phonemes', 'a')
-                 cpp_notes_array[i].wav_path = phoneme_str.encode('utf-8')
+                # 5. C++構造体へのポインタ転送
+                # 音素情報
+                phoneme_str = getattr(note, 'phonemes', 'a')
+                cpp_notes_array[i].wav_path = phoneme_str.encode('utf-8')
             
                 # ピッチカーブ
                 cpp_notes_array[i].pitch_curve = p_curve.ctypes.data_as(
@@ -2827,33 +2827,36 @@ class MainWindow(QMainWindow):
         pass
 
     def play_audio(self, path: str) -> None:
-        """オーディオファイルを安全に再生"""
+        """オーディオファイルを安全に再生（構文エラー・型チェック対策済）"""
     
         # 1. パスのチェック
         if not path or not os.path.exists(path):
             print(f"エラー: ファイルが見つかりません: {path}")
             return
  
-        # 2. プレイヤーの取得
-        player = getattr(self, 'player', None)
+        # 2. プレイヤーの取得と型確定
+        # getattrの戻り値をcastすることで、その後の hasattr チェックを有効にします
+        player = cast(Any, getattr(self, 'player', None))
     
-        # 3. プレイヤーが初期化されているかチェック
+        # 3. プレイヤーが有効かチェック
         if player is None or isinstance(player, bool):
             print("警告: プレイヤーが初期化されていません")
             return
 
         # 4. 再生処理
         try:
-           from PySide6.QtCore import QUrl
+            # 🔴 重要: インデントを修正 (ここがズレていると invalid-syntax になります)
+            from PySide6.QtCore import QUrl
         
             # 停止処理
             if hasattr(player, 'stop'):
                 player.stop()
          
             # ソースを設定
-            
             if hasattr(player, 'setSource'):
-                file_url = QUrl.fromLocalFile(os.path.abspath(path))
+                # 絶対パスを取得して QUrl に変換
+                abs_path = os.path.abspath(path)
+                file_url = QUrl.fromLocalFile(abs_path)
                 player.setSource(file_url)
         
             # 再生開始
@@ -2862,7 +2865,9 @@ class MainWindow(QMainWindow):
                 print(f"再生開始: {path}")
     
         except Exception as e:
+            # ここも上の try と垂直に揃える必要があります
             print(f"再生エラー: {e}")
+
     # ==========================================================================
     #  Pro audio modeling の起動、呼び出し　　　　　　　　　　　
     # ==========================================================================
