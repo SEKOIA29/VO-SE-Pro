@@ -32,11 +32,11 @@ from PySide6.QtCore import (
     Qt, Signal, Slot, QThread, QTimer
 )
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSlider,
     QPushButton, QFileDialog, QScrollBar, QInputDialog, QLineEdit,
     QLabel, QSplitter, QComboBox, QProgressBar, QMessageBox, QToolBar,
     QGridLayout, QFrame, QDialog, QScrollArea, QSizePolicy, QButtonGroup,
-    QListWidget, QSlider, QShortcut # type: ignore
+    QListWidget, 
 )
 from PySide6.QtGui import (
     QAction, QKeySequence, QFont, QColor
@@ -5403,7 +5403,6 @@ def main() -> None:
     """
     VO-SE Pro アプリケーション起動エントリーポイント。
     """
-    from PySide6.QtWidgets import QApplication
 
     # 1. アプリケーションインスタンスの作成
     # sys をインポート済みなので、sys.argv へのアクセスが安全です
