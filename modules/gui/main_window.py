@@ -74,7 +74,6 @@ except ImportError:
     from timeline_widget import TimelineWidget # type: ignore
     from keyboard_sidebar_widget import KeyboardSidebarWidget # type: ignore
     from voice_manager import VoiceManager # type: ignore
-    #from ai_manager import AIManager # type: ignore
     from aural_engine import AuralAIEngine
 
 try:
