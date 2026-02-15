@@ -67,7 +67,7 @@ try:
     from modules.gui.graph_editor_widget import GraphEditorWidget # type: ignore
     from modules.gui.keyboard_sidebar_widget import KeyboardSidebarWidget # type: ignore
     from modules.backend.voice_manager import VoiceManager # type: ignore
-    from modules.backend.ai_manager import AIManager # type: ignore
+    #from modules.backend.ai_manager import AIManager # type: ignore
     from modules.backend.aural_engine import AuralAIEngine # type: ignore
 except ImportError:
     # ローカルの実行環境で modules が見えない場合のバックアップ
