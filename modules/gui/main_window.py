@@ -4201,7 +4201,7 @@ class MainWindow(QMainWindow):
         文字コードを自動判別してファイルを安全に読み込む。
         日本語テキストファイル（Shift-JIS、UTF-8等）に完全対応。
         """
-        import chardet
+        #import chardet
         import os
 
         # 1. ファイル存在チェック
@@ -4313,7 +4313,16 @@ class MainWindow(QMainWindow):
     @Slot()
     def on_export_button_clicked(self):
         """ WAV書き出し（多重起動防止 & 高速化）"""
-        notes = self.timeline_widget.notes_list
+
+        tw = getattr(self, 'timeline_widget', None)
+        gw = getattr(self, 'graph_editor_widget', None)
+        engine = getattr(self, 'vo_se_engine', None)
+
+        if tw is None or gw is None or engine is None:
+            QMessageBox.warning(self, "エラー", "書き出しに必要な初期化が完了していません。")
+            return
+
+        notes = getattr(tw, 'notes_list', [])
         if not notes:
             QMessageBox.warning(self, "エラー", "ノートがないため書き出しできません。")
             return
@@ -4321,16 +4330,21 @@ class MainWindow(QMainWindow):
         file_path, _ = QFileDialog.getSaveFileName(
             self, "音声ファイルを保存", "output.wav", "WAV Files (*.wav)"
         )
-        if not file_path: 
+        if not file_path:
             return
 
         self.stop_and_clear_playback()
-        self.statusBar().showMessage("レンダリング中...")
+
+        status_bar = self.statusBar()
+        if status_bar:
+            status_bar.showMessage("レンダリング中...")
 
         try:
-            all_params = self.graph_editor_widget.all_parameters
+            all_params = getattr(gw, 'all_parameters', {})
+
             vocal_data_list = []
-            res = 128 
+            res = 128
+
             for note in notes:
                 note_data = {
                     "lyric": note.lyrics,
@@ -4341,20 +4355,24 @@ class MainWindow(QMainWindow):
                     "pitch_list": self._sample_range(all_params.get("Pitch", []), note, res),
                     "gender_list": self._sample_range(all_params.get("Gender", []), note, res),
                     "tension_list": self._sample_range(all_params.get("Tension", []), note, res),
-                    "breath_list": self._sample_range(all_params.get("Breath", []), note, res)
+                    "breath_list": self._sample_range(all_params.get("Breath", []), note, res),
                 }
                 vocal_data_list.append(note_data)
 
-            self.vo_se_engine.export_to_wav(
+            engine.export_to_wav(
                 vocal_data=vocal_data_list,
-                tempo=self.timeline_widget.tempo,
+                tempo=tw.tempo,
                 file_path=file_path
             )
+
             QMessageBox.information(self, "完了", "レンダリングが完了しました！")
-            self.statusBar().showMessage("エクスポート完了")
+            if status_bar:
+                status_bar.showMessage("エクスポート完了")
+
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"書き出し失敗: {e}")
-            self.statusBar().showMessage("エラー発生")
+            if status_bar:
+                status_bar.showMessage("エラー発生")
 
     @Slot()
     def save_file_dialog_and_save_midi(self):
@@ -4362,24 +4380,37 @@ class MainWindow(QMainWindow):
         filepath, _ = QFileDialog.getSaveFileName(
             self, "プロジェクトを保存", "", "VO-SE Project (*.vose);;JSON Files (*.json)"
         )
-        if not filepath: 
+        if not filepath:
             return
 
-        all_params = self.graph_editor_widget.all_parameters
+        tw = getattr(self, 'timeline_widget', None)
+        gw = getattr(self, 'graph_editor_widget', None)
+
+        if tw is None or gw is None:
+            QMessageBox.warning(self, "エラー", "保存に必要なデータが初期化されていません")
+            return
+
+        all_params = getattr(gw, 'all_parameters', {})
+
         save_data = {
             "app_id": "VO_SE_Pro_2026",
             "version": "1.1",
-            "tempo_bpm": self.timeline_widget.tempo,
-            "notes": [note.to_dict() for note in self.timeline_widget.notes_list],
+            "tempo_bpm": tw.tempo,
+            "notes": [note.to_dict() for note in tw.notes_list],
             "parameters": {
                 mode: [{"t": p.time, "v": p.value} for p in events]
                 for mode, events in all_params.items()
             }
         }
+
         try:
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(save_data, f, indent=2, ensure_ascii=False)
-            self.statusBar().showMessage(f"保存完了: {filepath}")
+
+            status_bar = self.statusBar()
+            if status_bar:
+                status_bar.showMessage(f"保存完了: {filepath}")
+
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"保存失敗: {e}")
 
@@ -4408,65 +4439,55 @@ class MainWindow(QMainWindow):
         JSONプロジェクトの読み込み
         型チェックエラー(Attribute unknown)を回避し、安全にパラメータを復元する
         """
-
         try:
+            from ..data.data_models import NoteEvent, PitchEvent
+
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            
-            # --- 1. ノートデータの復元 ---
+
             raw_notes = data.get("notes", [])
             notes = []
             if hasattr(NoteEvent, 'from_dict'):
                 notes = [NoteEvent.from_dict(d) for d in raw_notes]
             else:
-                # 予備ロジック：直接インスタンス化
                 for d in raw_notes:
                     notes.append(NoteEvent(**d))
-            
-            # タイムラインへの反映
+
             tw = getattr(self, 'timeline_widget', None)
             if tw and hasattr(tw, 'set_notes'):
                 tw.set_notes(notes)
-            
-            # --- 2. テンポ設定の復元 ---
+
             tempo = data.get("tempo_bpm", 120)
             t_input = getattr(self, 'tempo_input', None)
             if t_input:
                 t_input.setText(str(tempo))
                 if hasattr(self, 'update_tempo_from_input'):
                     self.update_tempo_from_input()
-            
-            # --- 3. グラフパラメータ（ピッチ等）の復元 ---
+
             gw = getattr(self, 'graph_editor_widget', None)
             saved_params = data.get("parameters", {})
-            
-            # Pyrightエラー回避：all_parameters の存在を確認
+
             if gw and hasattr(gw, 'all_parameters'):
-                # gw.all_parameters が Dict[str, List] であることを想定
                 target_params = gw.all_parameters
                 for mode in target_params.keys():
                     if mode in saved_params:
-                        # PitchEvent(time=p["t"], value=p["v"]) の復元
                         restored_events = []
                         for p in saved_params[mode]:
-                            # キーが存在するか安全に確認
                             t_val = p.get("t", p.get("time", 0))
                             v_val = p.get("v", p.get("value", 0))
                             restored_events.append(PitchEvent(time=t_val, value=v_val))
-                        
                         target_params[mode] = restored_events
-            
-            # --- 4. 表示の更新（安全な呼び出し） ---
+
             if hasattr(self, 'update_scrollbar_range'):
                 self.update_scrollbar_range()
             if hasattr(self, 'update_scrollbar_v_range'):
                 self.update_scrollbar_v_range()
-            
+
             if gw:
                 gw.update()
             if tw:
                 tw.update()
-            
+
             status_bar = self.statusBar()
             if status_bar:
                 status_bar.showMessage(f"読み込み完了: {len(notes)}ノート")
@@ -4477,30 +4498,44 @@ class MainWindow(QMainWindow):
     def load_midi_file_from_path(self, filepath: str):
         """MIDI読み込み（自動歌詞変換機能付き）"""
         try:
+            from ..data.data_models import NoteEvent
+
             mid = mido.MidiFile(filepath)
             loaded_tempo = 120.0
+
             for track in mid.tracks:
                 for msg in track:
                     if msg.type == 'set_tempo':
                         loaded_tempo = mido.tempo2bpm(msg.tempo)
                         break
+
             notes_data = load_midi_file(filepath)
             notes = [NoteEvent.from_dict(d) for d in notes_data]
+
             for note in notes:
                 if note.lyrics and not note.phonemes:
                     note.phonemes = self._get_yomi_from_lyrics(note.lyrics)
-            self.timeline_widget.set_notes(notes)
-            self.tempo_input.setText(str(loaded_tempo))
+
+            if hasattr(self, 'timeline_widget') and self.timeline_widget:
+                self.timeline_widget.set_notes(notes)
+
+            if hasattr(self, 'tempo_input') and self.tempo_input:
+                self.tempo_input.setText(str(loaded_tempo))
+
             self.update_tempo_from_input()
             self.update_scrollbar_range()
             self.update_scrollbar_v_range()
-            self.statusBar().showMessage(f"MIDI読み込み完了: {len(notes)}ノート")
+
+            status_bar = self.statusBar()
+            if status_bar:
+                status_bar.showMessage(f"MIDI読み込み完了: {len(notes)}ノート")
+
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"MIDI読み込み失敗: {e}")
 
 
 
- # ==========================================================================
+    # ==========================================================================
     # 音源管理
     # ==========================================================================
 
@@ -4510,80 +4545,115 @@ class MainWindow(QMainWindow):
         if not os.path.exists(voice_root):
             os.makedirs(voice_root)
 
-        found_voices = {}
+        found_voices: dict = {}
+
         # 1. ユーザー追加音源のスキャン
         for dir_name in os.listdir(voice_root):
             dir_path = os.path.join(voice_root, dir_name)
-            if os.path.isdir(dir_path):
-                oto_path = os.path.join(dir_path, "oto.ini")
-                if os.path.exists(oto_path):
-                    char_name = dir_name
-                    char_txt = os.path.join(dir_path, "character.txt")
-                    if os.path.exists(char_txt):
-                        content = self.read_file_safely(char_txt)
-                        for line in content.splitlines():
-                            if line.startswith("name="):
-                                char_name = line.split("=")[1].strip()
-                                break
-                    
-                    found_voices[char_name] = {
-                        "path": dir_path,
-                        "icon": os.path.join(dir_path, "icon.png") if os.path.exists(os.path.join(dir_path, "icon.png")) else "resources/default_avatar.png",
-                        "id": dir_name
-                    }
-        
+            if not os.path.isdir(dir_path):
+                continue
+
+            oto_path = os.path.join(dir_path, "oto.ini")
+            if not os.path.exists(oto_path):
+                continue
+
+            char_name = dir_name
+            char_txt = os.path.join(dir_path, "character.txt")
+
+            if os.path.exists(char_txt):
+                content = self.read_file_safely(char_txt)
+                if content:
+                    for line in content.splitlines():
+                        if line.startswith("name="):
+                            char_name = line.split("=", 1)[1].strip()
+                            break
+
+            found_voices[char_name] = {
+                "path": dir_path,
+                "icon": (
+                    os.path.join(dir_path, "icon.png")
+                    if os.path.exists(os.path.join(dir_path, "icon.png"))
+                    else "resources/default_avatar.png"
+                ),
+                "id": dir_name,
+            }
+
         # 2. 公式音源のスキャン
-        base_path = getattr(self, 'base_path', os.getcwd())
+        base_path = getattr(self, "base_path", os.getcwd())
         official_base = os.path.join(base_path, "assets", "official_voices")
+
         if os.path.exists(official_base):
             for char_dir in os.listdir(official_base):
                 full_dir = os.path.join(official_base, char_dir)
-                if os.path.isdir(full_dir):
-                    display_name = f"[Official] {char_dir}"
-                    found_voices[display_name] = {
-                        "path": full_dir,
-                        "icon": "resources/official_icon.png",
-                        "id": f"__INTERNAL__:{char_dir}"
-                    }
-        
-        if hasattr(self, 'voice_manager'):
-            self.voice_manager.voices = found_voices
+                if not os.path.isdir(full_dir):
+                    continue
+
+                display_name = f"[Official] {char_dir}"
+                found_voices[display_name] = {
+                    "path": full_dir,
+                    "icon": "resources/official_icon.png",
+                    "id": f"__INTERNAL__:{char_dir}",
+                }
+
+        voice_manager = getattr(self, "voice_manager", None)
+        if voice_manager and hasattr(voice_manager, "voices"):
+            voice_manager.voices = found_voices
+
         return found_voices
 
     def parse_oto_ini(self, voice_path: str) -> dict:
         """
         oto.iniを解析して辞書に格納する
-        戻り値: { "あ": {"wav": "a.wav", "offset": 50, "consonant": 100, ...}, ... }
+        戻り値:
+        {
+            "あ": {
+                "wav_path": ".../a.wav",
+                "offset": 50.0,
+                "consonant": 100.0,
+                "blank": 0.0,
+                "preutterance": 120.0,
+                "overlap": 30.0
+            },
+            ...
+        }
         """
-        oto_map = {}
+        oto_map: dict = {}
+
         oto_path = os.path.join(voice_path, "oto.ini")
-        
         if not os.path.exists(oto_path):
             return oto_map
 
         content = self.read_file_safely(oto_path)
-        
+        if not content:
+            return oto_map
+
         for line in content.splitlines():
-            if not line.strip() or "=" not in line:
+            line = line.strip()
+            if not line or "=" not in line:
                 continue
-            
+
             try:
                 wav_file, params = line.split("=", 1)
-                p = params.split(",")
-                
-                alias = p[0] if p[0] else os.path.splitext(wav_file)[0]
-                
+                wav_file = wav_file.strip()
+
+                parts = params.split(",")
+
+                alias = parts[0].strip() if parts and parts[0].strip() else os.path.splitext(wav_file)[0]
+
                 oto_map[alias] = {
                     "wav_path": os.path.join(voice_path, wav_file),
-                    "offset": float(p[1]) if len(p) > 1 else 0.0,
-                    "consonant": float(p[2]) if len(p) > 2 else 0.0,
-                    "blank": float(p[3]) if len(p) > 3 else 0.0,
-                    "preutterance": float(p[4]) if len(p) > 4 else 0.0,
-                    "overlap": float(p[5]) if len(p) > 5 else 0.0
+                    "offset": self.safe_to_float(parts[1]) if len(parts) > 1 else 0.0,
+                    "consonant": self.safe_to_float(parts[2]) if len(parts) > 2 else 0.0,
+                    "blank": self.safe_to_float(parts[3]) if len(parts) > 3 else 0.0,
+                    "preutterance": self.safe_to_float(parts[4]) if len(parts) > 4 else 0.0,
+                    "overlap": self.safe_to_float(parts[5]) if len(parts) > 5 else 0.0,
                 }
-            except (ValueError, IndexError):
+
+            except Exception as e:
+                # oto.ini は壊れている行が普通にあるので黙殺が正解
+                print(f"DEBUG: oto.ini parse skipped line: {line} ({e})")
                 continue
-                
+
         return oto_map
 
     def safe_to_float(self, val: Any) -> float:
@@ -4622,9 +4692,15 @@ class MainWindow(QMainWindow):
     def refresh_voice_ui_with_scan(self):
         """スキャンを実行してUIを最新状態にする"""
         self.statusBar().showMessage("音源フォルダをスキャン中...")
+
         self.scan_utau_voices()
         self.update_voice_list()
-        count = len(self.voice_manager.voices) if hasattr(self, 'voice_manager') else 0
+
+        if self.voice_manager is not None:
+            count = len(self.voice_manager.voices)
+        else:
+            count = 0
+
         self.statusBar().showMessage(
             f"スキャン完了: {count} 個の音源",
             3000
@@ -4632,35 +4708,48 @@ class MainWindow(QMainWindow):
 
     def update_voice_list(self):
         """VoiceManagerと同期してUI（カード一覧）を再構築"""
-        if not hasattr(self, 'voice_cards') or isinstance(self.voice_cards, dict):
+        if self.voice_cards is None:
             self.voice_cards = []
         else:
             self.voice_cards.clear()
 
-        if not hasattr(self, 'voice_grid'):
+        if self.voice_grid is None:
             return
 
-        for i in reversed(range(self.voice_grid.count())): 
+        for i in reversed(range(self.voice_grid.count())):
             item = self.voice_grid.itemAt(i)
-            if item and item.widget():
-                item.widget().deleteLater()
+            if item is None:
+                continue
 
-        voices_dict = self.voice_manager.voices if hasattr(self, 'voice_manager') else {}
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+
+        if self.voice_manager is None:
+            voices_dict = {}
+        else:
+            voices_dict = self.voice_manager.voices
+
         for index, (name, data) in enumerate(voices_dict.items()):
             path = data.get("path", "")
             icon_path = data.get("icon", os.path.join(path, "icon.png"))
-            color = self.voice_manager.get_character_color(path) if hasattr(self, 'voice_manager') else "#FFFFFF"
-            
+
+            if self.voice_manager is not None:
+                color = self.voice_manager.get_character_color(path)
+            else:
+                color = "#FFFFFF"
+
             try:
-                from .widgets import VoiceCardWidget # type: ignore
+                from .widgets import VoiceCardWidget  # type: ignore
                 card = VoiceCardWidget(name, icon_path, color)
                 card.clicked.connect(self.on_voice_selected)
                 self.voice_grid.addWidget(card, index // 3, index % 3)
                 self.voice_cards.append(card)
             except ImportError:
                 pass
-        
-        if hasattr(self, 'character_selector'):
+
+        if self.character_selector is not None:
             self.character_selector.clear()
             self.character_selector.addItems(list(voices_dict.keys()))
 
@@ -4670,26 +4759,28 @@ class MainWindow(QMainWindow):
         ボイスカード選択時の処理。
         音源データのロード、エンジンの更新、トークマネージャーの設定を同期。
         """
-        import os  # メソッド内で確実に使えるように念のため
+        import os
 
         # 1. UIの表示更新（選択状態のハイライト切り替え）
-        if hasattr(self, 'voice_cards') and self.voice_cards:
+        if self.voice_cards:
             for card in self.voice_cards:
-                if card is not None and hasattr(card, 'set_selected'):
-                    # カードの名前と選択された名前が一致すればTrueを渡す
-                    card.set_selected(getattr(card, 'name', '') == character_name)
-        
+                if card is not None and hasattr(card, "set_selected"):
+                    card.set_selected(getattr(card, "name", "") == character_name)
+
         # 2. 音源データの取得準備
-        # voice_managerが存在しない、またはvoices辞書がない場合を想定
-        voice_mgr = getattr(self, 'voice_manager', None)
-        voices_dict = getattr(voice_mgr, 'voices', {}) if voice_mgr else {}
-        
+        if self.voice_manager is None:
+            status_bar = self.statusBar()
+            if status_bar:
+                status_bar.showMessage("エラー: voice_manager が初期化されていません")
+            return
+
+        voices_dict = self.voice_manager.voices
         if character_name not in voices_dict:
             status_bar = self.statusBar()
             if status_bar:
                 status_bar.showMessage(f"エラー: {character_name} のデータが見つかりません")
             return
-        
+
         voice_data = voices_dict[character_name]
         path = voice_data.get("path", "")
         if not path:
@@ -4697,45 +4788,42 @@ class MainWindow(QMainWindow):
 
         try:
             # 3. 原音設定(oto.ini)の解析と保持
-            # parse_oto_iniの戻り値がNoneにならないよう注意
             oto_data = self.parse_oto_ini(path)
-            self.current_oto_data = oto_data if oto_data else []
-            
+            self.current_oto_data = oto_data if isinstance(oto_data, list) else []
+
             # 4. エンジン(vo_se_engine)への音源反映
-            engine = getattr(self, 'vo_se_engine', None)
-            if engine:
-                if hasattr(engine, 'set_voice_library'):
-                    engine.set_voice_library(path)
-                if hasattr(engine, 'set_oto_data'):
-                    engine.set_oto_data(self.current_oto_data)
-            
+            if self.vo_se_engine is not None:
+                self.vo_se_engine.set_voice_library(path)
+                self.vo_se_engine.set_oto_data(self.current_oto_data)
+
             self.current_voice = character_name
 
             # 5. トーク用音源(htsvoice)のチェックと設定
             talk_model = os.path.join(path, "talk.htsvoice")
-            t_manager = getattr(self, 'talk_manager', None)
-            if os.path.exists(talk_model) and t_manager:
-                if hasattr(t_manager, 'set_voice'):
-                    t_manager.set_voice(talk_model)
+            if os.path.exists(talk_model) and self.talk_manager is not None:
+                self.talk_manager.set_voice(talk_model)
 
             # 6. キャラクターカラーの取得と完了通知
             char_color = "#FFFFFF"
-            if voice_mgr and hasattr(voice_mgr, 'get_character_color'):
-                char_color = voice_mgr.get_character_color(path)
-            
+            if hasattr(self.voice_manager, "get_character_color"):
+                char_color = self.voice_manager.get_character_color(path)
+
             msg = f"【{character_name}】に切り替え完了 ({len(self.current_oto_data)} 音素ロード)"
-            
+
             status_bar = self.statusBar()
             if status_bar:
                 status_bar.showMessage(msg, 5000)
-            
+
             print(f"Selected voice: {character_name} at {path} (Color: {char_color})")
 
         except Exception as e:
-            # エラー時もstatusBarやQMessageBoxでユーザーに通知（省略なし）
-            print(f"Error loading voice: {e}")
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.critical(self, "音源ロードエラー", f"音源の読み込み中にエラーが発生しました:\n{str(e)}")
+            print(f"Error loading voice: {e}")
+            QMessageBox.critical(
+                self,
+                "音源ロードエラー",
+                f"音源の読み込み中にエラーが発生しました:\n{str(e)}",
+            )
 
     def refresh_voice_list(self):
         """voice_banksフォルダを再スキャン（省略なし完全版）"""
@@ -4938,16 +5026,22 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'timeline_widget'):
                 self.refresh_canvas() # 再描画で同期を視覚化
 
-    def parse_ust_dict_to_note(self, d: Dict[str, Any], current_time_sec: float = 0.0, tempo: float = 120.0) -> Any:
+    def parse_ust_dict_to_note(
+        self,
+        d: Dict[str, Any],
+        current_time_sec: float = 0.0,
+        tempo: float = 120.0
+    ) -> Any:
         """
         USTの辞書データを解析し、NoteEventオブジェクトと次の開始時間を生成する統合メソッド。
         """
-        # 1. 内部インポート（循環参照を防止し、Actionsの型チェックをパスさせる）
+        # 1. 内部インポート（循環参照回避）
         try:
             from .data_models import NoteEvent
         except (ImportError, ValueError):
-            # 万が一モデルが見つからない場合のフォールバック用定義
+            # フォールバック（型チェック用）
             from dataclasses import dataclass
+
             @dataclass
             class NoteEvent:
                 lyrics: str
@@ -5013,19 +5107,18 @@ class MainWindow(QMainWindow):
     @Slot()
     def update_scrollbar_range(self):
         """水平スクロールバーの範囲更新"""
-        if not hasattr(self, 'h_scrollbar'):
+        if self.h_scrollbar is None or self.timeline_widget is None:
             return
+
         if not self.timeline_widget.notes_list:
             self.h_scrollbar.setRange(0, 0)
             return
-        
-        max_beats = 0
-        if hasattr(self.timeline_widget, 'get_max_beat_position'):
-            max_beats = self.timeline_widget.get_max_beat_position()
-            
+
+        max_beats = self.timeline_widget.get_max_beat_position()
+
         max_x_position = (max_beats + 4) * self.timeline_widget.pixels_per_beat
         viewport_width = self.timeline_widget.width()
-        
+
         max_scroll_value = max(0, int(max_x_position - viewport_width))
         self.h_scrollbar.setRange(0, max_scroll_value)
         self.h_scrollbar.setPageStep(viewport_width)
@@ -5033,29 +5126,34 @@ class MainWindow(QMainWindow):
     # ==========================================================================
     # その他のスロット
     # ==========================================================================
-
     @Slot()
     def update_tempo_from_input(self):
         """テンポ入力の反映"""
         try:
-            if not hasattr(self, 'tempo_input'):
+            if self.tempo_input is None or self.timeline_widget is None:
                 return
+
             new_tempo = float(self.tempo_input.text())
             if not (30.0 <= new_tempo <= 300.0):
                 raise ValueError("テンポは30-300の範囲で入力してください")
-            
+ 
             self.timeline_widget.tempo = int(new_tempo)
-            if hasattr(self, 'vo_se_engine') and self.vo_se_engine:
+             
+            if self.vo_se_engine is not None:
                 self.vo_se_engine.set_tempo(new_tempo)
-            if hasattr(self, 'graph_editor_widget') and self.graph_editor_widget:
+  
+            if self.graph_editor_widget is not None:
                 self.graph_editor_widget.tempo = int(new_tempo)
-                
+
             self.update_scrollbar_range()
-            if hasattr(self, 'status_label'):
+
+            if self.status_label is not None:
                 self.status_label.setText(f"テンポ: {new_tempo} BPM")
+
         except ValueError as e:
             QMessageBox.warning(self, "エラー", str(e))
-            self.tempo_input.setText(str(self.timeline_widget.tempo))
+            if self.tempo_input is not None and self.timeline_widget is not None:
+                self.tempo_input.setText(str(self.timeline_widget.tempo))
 
     @Slot(str)
     def set_current_parameter_layer(self, layer_name: str):
@@ -5128,27 +5226,32 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def on_midi_port_changed(self):
-        if not hasattr(self, 'midi_port_selector'):
-            return
+        if self.midi_port_selector is None:
+           return
+
         selected_port = self.midi_port_selector.currentData()
-        if hasattr(self, 'midi_manager') and self.midi_manager:
-            self.midi_manager.stop()
-            self.midi_manager = None
+
+        if self.midi_manager is not None:
+           self.midi_manager.stop()
+           self.midi_manager = None
 
         if selected_port and selected_port != "ポートなし":
             try:
-                from .midi_io import MidiInputManager # type: ignore
-                self.midi_manager = MidiInputManager(selected_port)
-                self.midi_manager.start()
-                if hasattr(self, 'status_label'):
-                    self.status_label.setText(f"MIDI: {selected_port}")
+               from .midi_io import MidiInputManager  # type: ignore
+               self.midi_manager = MidiInputManager(selected_port)
+               self.midi_manager.start()
+
+               if self.status_label is not None:
+                   self.status_label.setText(f"MIDI: {selected_port}")
+
             except ImportError:
                 pass
 
     @Slot(int, int, str)
     def update_gui_with_midi(self, note_number: int, velocity: int, event_type: str):
-        if not hasattr(self, 'status_label'):
+        if self.status_label is None:
             return
+
         if event_type == 'on':
             self.status_label.setText(f"ノートオン: {note_number} (Velocity: {velocity})")
         elif event_type == 'off':
@@ -5168,23 +5271,24 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def update_scrollbar_v_range(self):
-        if not hasattr(self, 'timeline_widget'):
+        if self.timeline_widget is None:
             return
+
         key_h = self.timeline_widget.key_height_pixels
         full_height = 128 * key_h
         viewport_height = self.timeline_widget.height()
-        
+
         n_height = getattr(self.timeline_widget, 'note_height', key_h)
         max_v = 128 * n_height
-        
-        if hasattr(self, 'vertical_scroll'):
+
+        if self.vertical_scroll is not None:
             self.vertical_scroll.setRange(0, int(max_v))
 
-        if hasattr(self, 'v_scrollbar'):
+        if self.v_scrollbar is not None:
             max_scroll_value = max(0, int(full_height - viewport_height + key_h))
             self.v_scrollbar.setRange(0, max_scroll_value)
-            
-        if hasattr(self, 'keyboard_sidebar'):
+
+        if self.keyboard_sidebar is not None:
             self.keyboard_sidebar.set_key_height_pixels(key_h)
 
     # ==========================================================================
