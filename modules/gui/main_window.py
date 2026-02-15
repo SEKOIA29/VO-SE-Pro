@@ -948,80 +948,118 @@ class AnalysisThread(QThread):
 class MainWindow(QMainWindow):
     """VO-SE Pro  メインウィンドウ"""
     
-    # --- 1. クラス属性の統合宣言（Pyright / Pylance の警告を完全に消去） ---
-    timeline_widget: 'TimelineWidget'
-    graph_editor_widget: 'GraphEditorWidget'
-    keyboard_sidebar: 'KeyboardSidebarWidget'
-    keyboard_sidebar_widget: 'KeyboardSidebarWidget'
-    vertical_scroll: QSlider
-    vol_slider: QSlider
-    vol_label: QLabel
+    # === メインUIウィジェット系（遅延生成 → Optional） ===
+    timeline_widget: Optional['TimelineWidget']
+    graph_editor_widget: Optional['GraphEditorWidget']
+    keyboard_sidebar: Optional['KeyboardSidebarWidget']
+    keyboard_sidebar_widget: Optional['KeyboardSidebarWidget']
+
+    timeline_widget: TimelineWidget
+
+    # === スクロール・ボリュームUI ===
+    vertical_scroll: Optional[QSlider]
+    v_scrollbar: Optional[QSlider]
+    h_scrollbar: Optional[QScrollBar]
+    vol_slider: Optional[QSlider]
+    #vol_label: Optional[QLabel]
+
+    # === タイマー（__init__で必ず実体化） ===
     render_timer: QTimer
     playback_timer: QTimer
+
+    # === 再生・音声系 ===
     player: Optional[Any]
+    audio_player: Any
     audio_output: Any
-    talk_manager: Any
-    vose_core: Optional[Any]
-    text_analyzer: Optional[Any]
-    is_playing_state: bool
-    current_track_idx: int
-    input_fields: Dict[str, Any]
-    parameters: Dict[str, Any]
-    canvas: Any
-    piano_roll_scene: Any
+
+    # === AI / エンジン系（実体保証できないため Any） ===
     vo_se_engine: Any
+    vose_core: Optional[Any]
     dynamics_ai: Any
     voice_manager: Any
     analyzer: Any
+    talk_manager: Any
+    text_analyzer: Optional[Any]
+
+    # === 再生状態フラグ ===
+    is_playing_state: bool
     is_playing: bool
     is_recording: bool
     is_looping: bool
     is_looping_selection: bool
+
+    # === トラック・データ管理 ===
+    current_track_idx: int
     tracks: List[Any]
     notes: List[Any]
     pitch_data: List[Any]
     playing_notes: Dict[int, Any]
+
     oto_dict: Dict[str, Any]
     current_oto_data: List[Any]
+
     current_voice: str
     volume: float
     current_playback_time: float
-    v_scrollbar: Optional[QSlider]
-    h_scrollbar: Optional[QScrollBar]
+
+    # === UIコントロール ===
     tempo_input: Optional[QLineEdit]
     play_button: Optional[QPushButton]
     play_btn: Optional[QPushButton]
     record_button: Optional[QPushButton]
     loop_button: Optional[QPushButton]
     render_button: Optional[QPushButton]
-    status_label: Optional[QLabel]
+
     btn_mute: Optional[QPushButton]
     btn_solo: Optional[QPushButton]
+
     track_list_widget: Optional[QListWidget]
     progress_bar: Optional[QProgressBar]
+    status_label: Optional[QLabel]
+
     character_selector: Optional[QComboBox]
     midi_port_selector: Optional[QComboBox]
+
     toolbar: Optional[QToolBar]
     main_layout: Optional[QVBoxLayout]
     voice_grid: Optional[QGridLayout]
     voice_cards: List[Any]
-    playback_thread: Optional[Any]
-    _playback_lock: Any
-    analysis_thread: Optional[Any]
+
+    # === 描画・キャンバス ===
+    canvas: Any
+    piano_roll_scene: Any
+
+    # === スレッド・排他制御 ===
+    playback_thread: Optional[threading.Thread]
+    analysis_thread: Optional[QThread]
+    _playback_lock: threading.Lock
+
+    # === 履歴・設定 ===
     history: Any
     config_manager: Any
     config: Any
+
+    # === パラメータ管理 ===
+    input_fields: Dict[str, Any]
+    parameters: Dict[str, Any]
     all_parameters: Dict[str, Any]
     sync_notes: bool
+
     vowel_groups: Dict[str, str]
     confirmed_partners: Dict[int, str]
+
+    # === デバイス情報 ===
     active_device: str
     active_provider: str
     device_status_label: Optional[QLabel]
-    audio_player: Any
 
     def __init__(self, parent=None, engine=None, ai=None, config=None):
         super().__init__(parent)
+
+        self.vol_slider = None
+        self.vol_label = None
+        self.timeline_widget = None
+        self.graph_editor_widget = None
         
         # --- 2. 属性の初期化（AttributeError 対策） ---
         self._init_attributes(engine, ai, config)
@@ -1039,52 +1077,58 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("VO-SE Pro")
         self.resize(1200, 800)
 
-    def _init_attributes(self, engine, ai, config):
-        """すべての属性に初期値を代入（Pylance 警告完全根絶版）"""
-        # --- 1. 宣言に合わせて Optional 型として扱うか、ダミーを入れる ---
-        # 宣言側で Optional になっていないものは、cast を使って「今は None だけど許して」と伝えます
+    def _init_attributes(self, engine: Any, ai: Any, config: Any):
+        """
+        すべての属性に初期値を代入。
+        (Pylance の reportAttributeAccessIssue を根絶する完全版)
+        """
+        # --- 1. Required宣言されているものへの代入 (Anyキャストで矛盾回避) ---
         self.timeline_widget = cast(Any, None)
         self.graph_editor_widget = cast(Any, None)
         self.keyboard_sidebar = cast(Any, None)
         self.keyboard_sidebar_widget = cast(Any, None)
+        self.vertical_scroll = cast(Any, None)
+        self.vol_slider = cast(Any, None)
+        self.vol_label = cast(Any, None)
         
+        # --- 2. Optional宣言またはAny型のもの ---
         self.player = None
         self.audio_output = None
         self.audio_player = None
-        self.vo_se_engine = engine
         self.vose_core = None
+        self.text_analyzer = None
+        self.playback_thread = None
+        self.analysis_thread = None
+        
+        # エンジン類
+        self.vo_se_engine = engine
         self.dynamics_ai = ai
         self.voice_manager = None
         self.analyzer = None
-        self.text_analyzer = None
         
+        # 状態フラグ
         self.is_playing_state = False
         self.is_playing = False
         self.is_recording = False
         self.is_looping = False
         self.is_looping_selection = False
         
-        # 外部クラスの読み込み
-        try:
-            from modules.data.track_model import VoseTrack
-            self.tracks = [VoseTrack("Vocal 1", "vocal")]
-        except ImportError:
-            self.tracks = []
-            
-        self.current_track_idx = 0
+        # データリスト・辞書
+        self.tracks = []
         self.notes = []
         self.pitch_data = []
         self.playing_notes = {}
         self.oto_dict = {}
-        self.current_oto_data = []
+        self.current_oto_data = [] # ここが List[Any] 宣言なら [] でOK
+        
+        self.current_track_idx = 0
         self.current_voice = "標準ボイス"
         self.volume = 0.8
         self.current_playback_time = 0.0
         
-        # --- 2. UIパーツの初期化（Optional 宣言されているものは None でOK） ---
+        # UIポインタ (Optional群)
         self.v_scrollbar = None
         self.h_scrollbar = None
-        self.vertical_scroll = cast(Any, None) # 宣言が QSlider (Required) のため cast
         self.tempo_input = None
         self.play_button = None
         self.play_btn = None
@@ -1092,8 +1136,6 @@ class MainWindow(QMainWindow):
         self.loop_button = None
         self.render_button = None
         self.status_label = None
-        self.vol_slider = cast(Any, None)      # 宣言が QSlider (Required) のため cast
-        self.vol_label = cast(Any, None)       # 宣言が QLabel (Required) のため cast
         self.btn_mute = None
         self.btn_solo = None
         self.track_list_widget = None
@@ -1107,27 +1149,19 @@ class MainWindow(QMainWindow):
         self.voice_cards = []
         self.canvas = None
         self.piano_roll_scene = None
-        
-        import threading
-        self.playback_thread = None
-        self._playback_lock = threading.Lock()
-        self.analysis_thread = None
-        
-        # タイマーの初期化（これらは初期化時点で実体化させるのが最もエラーが少ないです）
+
+        # タイマーはここで実体化させる (Noneアクセスを未然に防ぐ)
         self.render_timer = QTimer(self)
         self.playback_timer = QTimer(self)
         
-        # マネージャー系の初期化
-        try:
-            from modules.utils.history import HistoryManager
-            from modules.utils.config_handler import ConfigHandler
-            self.history = HistoryManager()
-            self.config_manager = ConfigHandler()
-        except ImportError:
-            self.history = cast(Any, None)
-            self.config_manager = cast(Any, None)
-
-        self.config = config if config else (self.config_manager.load_config() if self.config_manager else {})
+        # ロック
+        import threading
+        self._playback_lock = threading.Lock()
+        
+        # 外部マネージャー
+        self.history = cast(Any, None)
+        self.config_manager = cast(Any, None)
+        self.config = config if config else {}
         self.all_parameters = {}
         self.sync_notes = True
         self.input_fields = {}
@@ -1336,7 +1370,9 @@ class MainWindow(QMainWindow):
         self.editor_splitter.addWidget(self.track_panel)
         if self.main_layout is not None:
             if self.timeline_widget is not None:
-                self.main_layout.addWidget(self.timeline_widget)
+                if self.timeline_widget is not None:
+                    assert self.timeline_widget is not None
+                    self.main_layout.addWidget(self.timeline_widget)
             if self.graph_editor_widget is not None:
                 self.main_layout.addWidget(self.graph_editor_widget)
         
@@ -1772,6 +1808,7 @@ class MainWindow(QMainWindow):
         """キャンバス（描画領域）を再描画する"""
         if hasattr(self, 'timeline_widget'):
             if self.timeline_widget: 
+                assert self.timeline_widget is not None
                 self.timeline_widget.update()
 
     def sync_ui_to_selection(self):
@@ -1994,8 +2031,8 @@ class MainWindow(QMainWindow):
     def apply_state(self, state):
         """状態（ノートリストなど）を反映"""
         self.timeline_widget.notes_list = deepcopy(state)
-        if self.timeline_widget: 
-            self.timeline_widget.update()
+        assert self.timeline_widget is not None
+        self.timeline_widget.update()
 
     # --- マルチトラック操作 ---
 
@@ -2301,7 +2338,8 @@ class MainWindow(QMainWindow):
         self.vol_label = QLabel("Volume: 50%")
         self.vol_slider = QSlider(Qt.Orientation.Horizontal)  # ✅ 修正
         self.vol_slider.setRange(0, 100)
-        self.vol_slider.setValue(50)
+        if self.vol_slider is not None:
+            self.vol_slider.setValue(50)
     
         # ✅ 正しい列挙型アクセス
         self.vol_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
