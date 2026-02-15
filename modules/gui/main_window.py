@@ -55,7 +55,7 @@ if TYPE_CHECKING:
     from modules.backend.intonation import IntonationAnalyzer # type: ignore
     from modules.audio.vo_se_engine import VoSeEngine # type: ignore
     from modules.backend.voice_manager import VoiceManager # type: ignore
-    from modules.backend.ai_manager import AIManager # type: ignore
+    #from modules.backend.ai_manager import AIManager # type: ignore
     from modules.backend.aural_engine import AuralAIEngine # type: ignore
 
 # ==========================================================================
