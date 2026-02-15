@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
     QListWidget, 
 )
 from PySide6.QtGui import (
-    QAction, QKeySequence, QFont, QColor
+    QAction, QKeySequence, QFont, QColor, QShortcut
 )
 from PySide6.QtMultimedia import QMediaPlayer
 
@@ -5403,6 +5403,7 @@ def main() -> None:
     """
     VO-SE Pro アプリケーション起動エントリーポイント。
     """
+    from PySide6.QtWidgets import QApplication
 
     # 1. アプリケーションインスタンスの作成
     # sys をインポート済みなので、sys.argv へのアクセスが安全です
