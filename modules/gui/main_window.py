@@ -4267,8 +4267,7 @@ class MainWindow(QMainWindow):
             import traceback
             traceback.print_exc()
             return None
-            
-   
+             
             
     def save_oto_ini(self, path, content):
         """UTF-8の文字が含まれていてもエラーで落ちずに書き出す"""
