@@ -3001,16 +3001,28 @@ class MainWindow(QMainWindow):
         """タイムラインとグラフのデータをエンジン形式にシリアライズ"""
         if not hasattr(self, 'timeline_widget'):
             return None
+
         notes = self.timeline_widget.notes_list
         if not notes:
             return None
-            
+
+        voice_path = ""
+        if hasattr(self, 'voice_manager') and self.voice_manager:
+            if hasattr(self.voice_manager, 'get_current_voice_path'):
+                voice_path = self.voice_manager.get_current_voice_path()
+
         render_data = {
             "project_name": "New Project",
-            "voice_path": self.voice_manager.get_current_voice_path(),
+            "voice_path": voice_path,
             "tempo": self.timeline_widget.tempo,
             "notes": []
         }
+
+        graph = getattr(self, 'graph_editor_widget', None)
+        all_params = getattr(graph, 'all_parameters', {}) if graph else {}
+
+        pitch_events = all_params.get("Pitch", [])
+        tension_events = all_params.get("Tension", [])
 
         for note in notes:
             note_info = {
@@ -3018,11 +3030,11 @@ class MainWindow(QMainWindow):
                 "note_num": note.note_number,
                 "start_sec": note.start_time,
                 "duration_sec": note.duration,
-                "pitch_bend": self._sample_range(self.graph_editor_widget.all_parameters["Pitch"], note, 64),
-                "dynamics": self._sample_range(self.graph_editor_widget.all_parameters["Tension"], note, 64)
+                "pitch_bend": self._sample_range(pitch_events, note, 64),
+                "dynamics": self._sample_range(tension_events, note, 64)
             }
             render_data["notes"].append(note_info)
-            
+
         return render_data
 
     def start_playback(self):
@@ -3599,31 +3611,43 @@ class MainWindow(QMainWindow):
     def on_record_toggled(self):
         """録音開始/停止"""
         self.is_recording = not self.is_recording
-        
+
         if self.is_recording:
-            if self.is_playing:
+            if getattr(self, 'is_playing', False):
                 self.on_play_pause_toggled()
-            
-            self.record_button.setText("■ 録音中")
-            self.status_label.setText("録音開始 - MIDI入力待機中...")
-            self.timeline_widget.set_recording_state(True, time.time())
+
+            if hasattr(self, 'record_button'):
+                self.record_button.setText("■ 録音中")
+
+            if hasattr(self, 'status_label'):
+                self.status_label.setText("録音開始 - MIDI入力待機中...")
+
+            if hasattr(self, 'timeline_widget'):
+                self.timeline_widget.set_recording_state(True, time.time())
         else:
-            self.record_button.setText("● 録音")
-            self.status_label.setText("録音停止")
-            self.timeline_widget.set_recording_state(False, 0.0)
+            if hasattr(self, 'record_button'):
+                self.record_button.setText("● 録音")
+
+            if hasattr(self, 'status_label'):
+                self.status_label.setText("録音停止")
+
+            if hasattr(self, 'timeline_widget'):
+                self.timeline_widget.set_recording_state(False, 0.0)
 
     @Slot()
     def on_loop_button_toggled(self):
         """ループ再生切り替え"""
         self.is_looping_selection = not self.is_looping_selection
         self.is_looping = self.is_looping_selection
-        
-        if self.is_looping:
-            self.loop_button.setText("ループ: ON")
-            self.status_label.setText("選択範囲でのループ再生を有効にしました")
-        else:
-            self.loop_button.setText("ループ: OFF")
-            self.status_label.setText("ループ再生を無効にしました")
+
+        if hasattr(self, 'loop_button'):
+            self.loop_button.setText("ループ: ON" if self.is_looping else "ループ: OFF")
+
+        if hasattr(self, 'status_label'):
+            if self.is_looping:
+                self.status_label.setText("選択範囲でのループ再生を有効にしました")
+            else:
+                self.status_label.setText("ループ再生を無効にしました")
 
 
 
@@ -5443,7 +5467,9 @@ class MainWindow(QMainWindow):
         歌唱モードとトークモードを自動判別して NoteEvent を構築します。
         """
         import os
-        from typing import List
+        from typing import List, Dict, Any
+        from ..data.data_models import NoteEvent
+        from ..core.c_bridge import prepare_c_note_event
         
         # 1. 保存先の決定
         output_wav = os.path.join(os.getcwd(), "output", "render_result.wav")

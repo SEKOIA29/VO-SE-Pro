@@ -26,7 +26,7 @@ class NoteEventProtocol(Protocol):
     def to_dict(self) -> Dict[str, Any]: ...
 
 try:
-    from .data_models import NoteEvent
+    from ..data.data_models import NoteEvent
 except ImportError:
     # Actions対策: 本物の NoteEvent とシグネチャを合わせ、
     # 属性アクセス(reportAttributeAccessIssue)を完全に封殺します。
