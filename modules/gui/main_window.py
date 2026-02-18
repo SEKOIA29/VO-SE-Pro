@@ -14,6 +14,7 @@ import zipfile
 import shutil
 import threading
 import math
+from copy import deepcopy
 from typing import Any, List, Dict, Optional, TYPE_CHECKING, cast              
 
 # ==========================================================================
