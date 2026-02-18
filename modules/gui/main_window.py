@@ -16,6 +16,7 @@ import threading
 import math
 from copy import deepcopy
 from typing import Any, List, Dict, Optional, TYPE_CHECKING, cast
+#                
 
 # ==========================================================================
 # 2. 数値計算・信号処理 (Numerical Processing)
@@ -1073,6 +1074,9 @@ class MainWindow(QMainWindow):
 
         self.status_label = QLabel("")
         self.voice_grid = QGridLayout()
+
+        widget = cast(QScrollBar, self.v_scrollbar)
+        widget.setValue(10)
         
         # --- 2. 属性の初期化（AttributeError 対策） ---
         self._init_attributes(engine, ai, config)
