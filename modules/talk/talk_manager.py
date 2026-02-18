@@ -7,14 +7,6 @@ import traceback
 from PySide6.QtCore import QObject
 from typing import Any, List, Dict, Tuple, Optional
 
-# --- 1. インポートとスタブ定義 ---
-try:
-    from .intonation_analyzer import IntonationAnalyzer
-except ImportError:
-    # 循環参照対策が必要な場合のスタブ
-    class IntonationAnalyzer: 
-        pass
-
 # --- 2. UTAUイベント生成ロジック ---
 def generate_talk_events(text: str, analyzer: "IntonationAnalyzer") -> List[Dict[str, Any]]:
     """
@@ -142,6 +134,12 @@ class IntonationAnalyzer:
             self.last_analysis_status = False
             return error_msg
 
+    def analyze_to_phonemes(self, text: str) -> List[str]:
+        """トークイベント生成用の簡易音素列を返す。"""
+        if not text:
+            return []
+        return [p for p in text.strip().split() if p]
+
 
 # --- 5. トークマネージャー (Talk/TTSロジック) ---
 class TalkManager(QObject):
@@ -220,20 +218,10 @@ class TalkManager(QObject):
                             raise ValueError("font attempt returned None")
 
                     except (TypeError, Exception):
-                        # 優先順位3: 位置引数
-                        try:
-                            result = pyopenjtalk.tts(text, v_path, **options)
-                            if result is not None and len(result) >= 2:
-                                x, sr = result[0], result[1]
-                            else:
-                                raise ValueError("Positional attempt returned None")
-                        
-                        except Exception as final_e:
-                            print(f"DEBUG: All specific voice attempts failed: {final_e}")
-                            # 最終手段：デフォルト音声
-                            result = pyopenjtalk.tts(text, **options)
-                            if result is not None and len(result) >= 2:
-                                x, sr = result[0], result[1]
+                        print("DEBUG: Falling back to default voice")
+                        result = pyopenjtalk.tts(text, **options)
+                        if result is not None and len(result) >= 2:
+                            x, sr = result[0], result[1]
             else:
                 # ボイス指定なし
                 result = pyopenjtalk.tts(text, **options)

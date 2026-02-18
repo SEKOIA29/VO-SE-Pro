@@ -77,10 +77,11 @@ class TokenizerProtocol(Protocol):
     def tokenize(self, text: str) -> List[Any]: ...
 
 try:
-    from janome.tokenizer import Tokenizer
+    from janome.tokenizer import Tokenizer as JanomeTokenizer
 except ImportError:
-    class Tokenizer:
-        def tokenize(self, text: str) -> List[Any]: return []
+    class JanomeTokenizer:
+        def tokenize(self, text: str) -> List[Any]:
+            return []
 
 
 class TimelineWidget(QWidget):
@@ -140,7 +141,7 @@ class TimelineWidget(QWidget):
         try:
             # 型チェックを通過させるため、一度ローカル変数に受ける等の工夫も可だが
             # ここではクラス定義の try-except ブロックで保証された Tokenizer を使用
-            self.tokenizer = Tokenizer()
+            self.tokenizer = JanomeTokenizer()
         except Exception:
             # 万が一の予備
             class DummyTokenizer:

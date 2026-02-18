@@ -712,6 +712,7 @@ except ImportError:
             self.note_border_color = "#000000"
             self.text_color = "#FFFFFF"
         def get_notes_data(self): return self.notes_list
+        def get_all_notes_data(self): return self.notes_list
         def get_all_notes(self): return self.notes_list
         def set_notes(self, notes): self.notes_list = notes
         def get_selected_notes_range(self): return (0.0, 10.0)
@@ -727,7 +728,7 @@ except ImportError:
         def beats_to_pixels(self, beats): return beats * self.pixels_per_beat
         def note_to_y(self, note_num): return (127 - note_num) * self.key_height_pixels
         def get_pitch_data(self): return []
-        def get_audio_peaks(self): return []
+        def get_audio_peaks(self, file_path, num_peaks=2000): return []
         def set_pitch_data(self, data): pass
         def add_note_from_midi(self, note_num, velocity): pass
         def update(self): super().update()
@@ -738,6 +739,7 @@ except ImportError:
     class KeyboardSidebarWidget(QWidget):
         def __init__(self, height, lowest): super().__init__()
         def set_key_height_pixels(self, h): pass
+        def set_vertical_offset(self, offset_pixels: int): pass
 
 try:
     from .midi_manager import load_midi_file, MidiInputManager # type: ignore
@@ -949,19 +951,17 @@ class MainWindow(QMainWindow):
     """VO-SE Pro  メインウィンドウ"""
     
     # === メインUIウィジェット系（遅延生成 → Optional） ===
-    timeline_widget: Optional['TimelineWidget']
-    graph_editor_widget: Optional['GraphEditorWidget']
-    keyboard_sidebar: Optional['KeyboardSidebarWidget']
-    keyboard_sidebar_widget: Optional['KeyboardSidebarWidget']
-
-    timeline_widget: TimelineWidget
+    timeline_widget: 'TimelineWidget'
+    graph_editor_widget: 'GraphEditorWidget'
+    keyboard_sidebar: 'KeyboardSidebarWidget'
+    keyboard_sidebar_widget: 'KeyboardSidebarWidget'
 
     # === スクロール・ボリュームUI ===
-    vertical_scroll: Optional[QSlider]
-    v_scrollbar: Optional[QSlider]
-    h_scrollbar: Optional[QScrollBar]
-    vol_slider: Optional[QSlider]
-    #vol_label: Optional[QLabel]
+    vertical_scroll: QSlider
+    v_scrollbar: QSlider
+    h_scrollbar: QScrollBar
+    vol_slider: QSlider
+    vol_label: QLabel
 
     # === タイマー（__init__で必ず実体化） ===
     render_timer: QTimer
@@ -1003,26 +1003,26 @@ class MainWindow(QMainWindow):
     current_playback_time: float
 
     # === UIコントロール ===
-    tempo_input: Optional[QLineEdit]
-    play_button: Optional[QPushButton]
-    play_btn: Optional[QPushButton]
-    record_button: Optional[QPushButton]
-    loop_button: Optional[QPushButton]
-    render_button: Optional[QPushButton]
+    tempo_input: QLineEdit
+    play_button: QPushButton
+    play_btn: QPushButton
+    record_button: QPushButton
+    loop_button: QPushButton
+    render_button: QPushButton
 
-    btn_mute: Optional[QPushButton]
-    btn_solo: Optional[QPushButton]
+    btn_mute: QPushButton
+    btn_solo: QPushButton
 
-    track_list_widget: Optional[QListWidget]
-    progress_bar: Optional[QProgressBar]
-    status_label: Optional[QLabel]
+    track_list_widget: QListWidget
+    progress_bar: QProgressBar
+    status_label: QLabel
 
-    character_selector: Optional[QComboBox]
-    midi_port_selector: Optional[QComboBox]
+    character_selector: QComboBox
+    midi_port_selector: QComboBox
 
-    toolbar: Optional[QToolBar]
-    main_layout: Optional[QVBoxLayout]
-    voice_grid: Optional[QGridLayout]
+    toolbar: QToolBar
+    main_layout: QVBoxLayout
+    voice_grid: QGridLayout
     voice_cards: List[Any]
 
     # === 描画・キャンバス ===
@@ -1031,7 +1031,7 @@ class MainWindow(QMainWindow):
 
     # === スレッド・排他制御 ===
     playback_thread: Optional[threading.Thread]
-    analysis_thread: Optional[QThread]
+    analysis_thread: QThread
     _playback_lock: threading.Lock
 
     # === 履歴・設定 ===
@@ -1040,7 +1040,7 @@ class MainWindow(QMainWindow):
     config: Any
 
     # === パラメータ管理 ===
-    input_fields: Dict[str, Any]
+    input_fields: List[QLineEdit]
     parameters: Dict[str, Any]
     all_parameters: Dict[str, Any]
     sync_notes: bool
@@ -1051,7 +1051,8 @@ class MainWindow(QMainWindow):
     # === デバイス情報 ===
     active_device: str
     active_provider: str
-    device_status_label: Optional[QLabel]
+    device_status_label: QLabel
+    ai_manager: Any
 
     def __init__(self, parent=None, engine=None, ai=None, config=None):
         super().__init__(parent)
@@ -1086,13 +1087,15 @@ class MainWindow(QMainWindow):
         (Pylance の reportAttributeAccessIssue を根絶する完全版)
         """
         # --- 1. Required宣言されているものへの代入 (Anyキャストで矛盾回避) ---
-        self.timeline_widget = cast(Any, None)
-        self.graph_editor_widget = cast(Any, None)
-        self.keyboard_sidebar = cast(Any, None)
-        self.keyboard_sidebar_widget = cast(Any, None)
-        self.vertical_scroll = cast(Any, None)
-        self.vol_slider = cast(Any, None)
-        self.vol_label = cast(Any, None)
+        self.timeline_widget = cast(TimelineWidget, None)
+        self.graph_editor_widget = cast(GraphEditorWidget, None)
+        self.keyboard_sidebar = cast(KeyboardSidebarWidget, None)
+        self.keyboard_sidebar_widget = cast(KeyboardSidebarWidget, None)
+        self.vertical_scroll = cast(QSlider, None)
+        self.v_scrollbar = cast(QSlider, None)
+        self.h_scrollbar = cast(QScrollBar, None)
+        self.vol_slider = cast(QSlider, None)
+        self.vol_label = cast(QLabel, None)
         
         # --- 2. Optional宣言またはAny型のもの ---
         self.player = None
@@ -1101,7 +1104,7 @@ class MainWindow(QMainWindow):
         self.vose_core = None
         self.text_analyzer = None
         self.playback_thread = None
-        self.analysis_thread = None
+        self.analysis_thread = cast(QThread, None)
         
         # エンジン類
         self.vo_se_engine = engine
@@ -1130,25 +1133,23 @@ class MainWindow(QMainWindow):
         self.current_playback_time = 0.0
         
         # UIポインタ (Optional群)
-        self.v_scrollbar = None
-        self.h_scrollbar = None
-        self.tempo_input = None
-        self.play_button = None
-        self.play_btn = None
-        self.record_button = None
-        self.loop_button = None
-        self.render_button = None
-        self.status_label = None
-        self.btn_mute = None
-        self.btn_solo = None
-        self.track_list_widget = None
-        self.progress_bar = None
-        self.character_selector = None
-        self.midi_port_selector = None
-        self.toolbar = None
-        self.device_status_label = None
-        self.main_layout = None
-        self.voice_grid = None
+        self.tempo_input = cast(QLineEdit, None)
+        self.play_button = cast(QPushButton, None)
+        self.play_btn = cast(QPushButton, None)
+        self.record_button = cast(QPushButton, None)
+        self.loop_button = cast(QPushButton, None)
+        self.render_button = cast(QPushButton, None)
+        self.status_label = cast(QLabel, None)
+        self.btn_mute = cast(QPushButton, None)
+        self.btn_solo = cast(QPushButton, None)
+        self.track_list_widget = cast(QListWidget, None)
+        self.progress_bar = cast(QProgressBar, None)
+        self.character_selector = cast(QComboBox, None)
+        self.midi_port_selector = cast(QComboBox, None)
+        self.toolbar = cast(QToolBar, None)
+        self.device_status_label = cast(QLabel, None)
+        self.main_layout = cast(QVBoxLayout, None)
+        self.voice_grid = cast(QGridLayout, None)
         self.voice_cards = []
         self.canvas = None
         self.piano_roll_scene = None
@@ -1167,7 +1168,8 @@ class MainWindow(QMainWindow):
         self.config = config if config else {}
         self.all_parameters = {}
         self.sync_notes = True
-        self.input_fields = {}
+        self.input_fields = []
+        self.ai_manager = None
         self.parameters = {}
         
         self.vowel_groups = {
@@ -1528,12 +1530,12 @@ class MainWindow(QMainWindow):
         timeline_layout.addWidget(self.timeline_widget)
         
         # 垂直スクロールバー
-        self.vertical_scroll = QSlider(Qt.Orientation.Vertical, self)
+        self.v_scrollbar = QSlider(Qt.Orientation.Vertical, self)
         self.v_scrollbar.valueChanged.connect(self.timeline_widget.set_vertical_offset)
         timeline_layout.addWidget(self.v_scrollbar)
         
         splitter.addWidget(timeline_container)
-        self.vertical_scroll.setRange(0, 1000)
+        self.v_scrollbar.setRange(0, 1000)
         
         # 水平スクロールバー
         self.h_scrollbar = QScrollBar(Qt.Orientation.Horizontal)
@@ -1970,9 +1972,9 @@ class MainWindow(QMainWindow):
 
     # --- 2. 音声・AI処理系 ---
 
-    def preprocess_lyrics(self, text: str):
+    def preprocess_lyrics(self, text: str, notes: Optional[List[Any]] = None):
         """歌詞の事前処理（平仮名化など）を実行"""
-        if hasattr(self, 'text_analyzer'):
+        if hasattr(self, 'text_analyzer') and self.text_analyzer is not None:
             processed = self.text_analyzer.analyze_text(text)
             print(f"歌詞を解析しました: {text} -> {len(processed)}音素")
             return processed
@@ -1985,7 +1987,7 @@ class MainWindow(QMainWindow):
 
     # --- 3. エンジン・モニタリング系 ---
 
-    def run_engine(self):
+    def run_engine(self, alias: Optional[str] = None, params: Optional[Any] = None):
         """音声合成エンジンの実行（レンダリング）"""
         print("エンジンのレンダリングを開始します...")
         if hasattr(self, 'ai_manager'):
@@ -2313,6 +2315,14 @@ class MainWindow(QMainWindow):
             self.timeline_widget._current_playback_time = current_sec
             if self.timeline_widget:
                 self.timeline_widget.update()
+
+    @Slot(object)
+    def on_playback_state_changed(self, state: Any) -> None:
+        """再生状態の変化をUIと内部フラグに同期する。"""
+        is_playing = state == QMediaPlayer.PlaybackState.PlayingState
+        self.is_playing = is_playing
+        if hasattr(self, "play_btn") and self.play_btn:
+            self.play_btn.setText("⏸ 停止" if is_playing else "▶ 再生")
 
     def setup_audio_interface(self) -> None:
         """
@@ -5469,11 +5479,6 @@ class MainWindow(QMainWindow):
         タイムライン上の全ノートをスキャンし、代表のC++エンジンでWAVを生成する。
         歌唱モードとトークモードを自動判別して NoteEvent を構築します。
         """
-        import os
-        from typing import List, Dict, Any
-        from ..data.data_models import NoteEvent
-        from ..core.c_bridge import prepare_c_note_event
-        
         # 1. 保存先の決定
         output_wav = os.path.join(os.getcwd(), "output", "render_result.wav")
         os.makedirs(os.path.dirname(output_wav), exist_ok=True)
@@ -5495,15 +5500,17 @@ class MainWindow(QMainWindow):
             note_count = len(raw_notes)
             NotesArrayType = NoteEvent * note_count
             c_notes = NotesArrayType()
+            c_events: List[NoteEvent] = []
 
             for i, note_data in enumerate(raw_notes):
                 # UIからの生データを C++ NoteEvent 構造体に変換
                 c_event = prepare_c_note_event(note_data)
+                c_events.append(c_event)
                 c_notes[i] = c_event
 
             # 4. 代表のC++エンジン (DLL/so) を呼び出し
             # ここで UTAUトーク も 歌唱 も一気に処理されます
-            if self.vose_core:
+            if hasattr(self, "vose_core") and self.vose_core:
                 self.vose_core.execute_render(c_notes, note_count, output_wav.encode('utf-8'))
                 
                 self.statusBar().showMessage(f"レンダリング完了: {output_wav}")
