@@ -42,6 +42,7 @@ class VoiceManager:
         
         # ボイスディレクトリの確定
         self.voices_dir = os.path.join(self.base_path, "assets", "voices")
+        self.internal_voice_dir = os.path.join(self.base_path, "voice_banks")
         self.voices = {}  # { "キャラ名": "絶対パス" }
 
     def scan_voices(self):

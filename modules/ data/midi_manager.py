@@ -9,8 +9,9 @@ from PySide6.QtCore import Signal, QObject
 
 # 警告が出ていたインポートパスを、プロジェクト構造に合わせて安全に記述
 try:
-    from modules.data.data_models import NoteEvent
-except ImportError:
+    import modules.data.data_models as _data_models
+    NoteEvent: Any = getattr(_data_models, "NoteEvent")
+except Exception:
     # 読み込み失敗時のフォールバック用ダミークラス（解析エラー回避）
     class NoteEvent:
         def __init__(self, **kwargs):

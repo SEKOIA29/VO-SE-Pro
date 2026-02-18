@@ -90,9 +90,13 @@ class AIManager(QObject):
 
     def predict_onset(self, audio_data):
         """同期推論実行（代表のロジック）"""
+        if self.session is None:
+            if not self.init_model() or self.session is None:
+                return []
+        session = self.session
         input_data = self._preprocess(audio_data)
         # モデルの入力名に合わせて実行
-        outputs = self.session.run(None, {self.session.get_inputs()[0].name: input_data})
+        outputs = session.run(None, {session.get_inputs()[0].name: input_data})
         return self._postprocess(outputs)
 
     def _preprocess(self, audio_data):

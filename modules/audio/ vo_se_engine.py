@@ -114,7 +114,8 @@ class VO_SE_Engine:
                 raw = f.read()
                 det = chardet.detect(raw)
                 enc = det['encoding'] if det['confidence'] > 0.7 else 'cp932'
-                return raw.decode(enc, errors='ignore')
+                safe_enc = enc if isinstance(enc, str) else "cp932"
+                return raw.decode(safe_enc, errors='ignore')
         except Exception:
             return ""
 
@@ -176,7 +177,9 @@ class VO_SE_Engine:
             return 0.0
 
         try:
-            curr_sample = int(self.get_playback_time() * 44100)
+            get_playback_time = getattr(self, "get_playback_time", None)
+            playback_time = float(get_playback_time()) if callable(get_playback_time) else 0.0
+            curr_sample = int(playback_time * 44100)
             chunk = self.current_out_data[curr_sample : curr_sample + 256]
             if len(chunk) == 0:
                 return 0.0

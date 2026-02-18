@@ -21,10 +21,12 @@ class DynamicsMemoryManager:
 
     def safe_release_audio(self, audio_ptr):
         """C言語側でmallocした音声バッファをピンポイントで解放する"""
-        if audio_ptr:
+        if audio_ptr and self._handle is not None:
             # 前に作った vse_free_buffer を呼び出す
-            self._handle.vse_free_buffer(audio_ptr)
-            print("C-side audio buffer released.")
+            free_buffer = getattr(self._handle, "vse_free_buffer", None)
+            if callable(free_buffer):
+                free_buffer(audio_ptr)
+                print("C-side audio buffer released.")
 
     def unload_engine(self):
         """DLLそのものをメモリから完全に消去する（キャラ切り替え用）"""
@@ -35,9 +37,13 @@ class DynamicsMemoryManager:
             # DLLのハンドルをOSに返却してメモリから消す
             handle_val = self._handle._handle
             if platform.system() == "Windows":
-                _ctypes.FreeLibrary(handle_val)
+                free_library = getattr(_ctypes, "FreeLibrary", None)
+                if callable(free_library):
+                    free_library(handle_val)
             else:
-                _ctypes.dlclose(handle_val)
+                dlclose = getattr(_ctypes, "dlclose", None)
+                if callable(dlclose):
+                    dlclose(handle_val)
             
             self._handle = None
             print("DLL memory fully unloaded.")
@@ -68,8 +74,8 @@ class AuralAIEngine:
         # AI推論の実行（入力整形）
         input_data = base_f0_array.astype(np.float32).reshape(1, -1, 1)
         delta = self.session.run(None, {"input": input_data})[0]
-        
-        return base_f0_array + delta.flatten()
+        delta_arr = np.asarray(delta, dtype=np.float32).reshape(-1)
+        return base_f0_array + delta_arr
 
     def _apply_pseudo_ai(self, f0):
         """AIモデルがない時のための予備ロジック（ビブラート等）"""

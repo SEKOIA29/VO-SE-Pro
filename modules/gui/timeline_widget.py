@@ -30,11 +30,12 @@ class NoteEventProtocol(Protocol):
     def to_dict(self) -> Dict[str, Any]: ...
 
 try:
-    from ..data.data_models import NoteEvent as _ModelNoteEvent
-except ImportError:
+    import modules.data.data_models as _data_models
+    NoteEvent: Any = getattr(_data_models, "NoteEvent")
+except Exception:
     # Actions対策: 本物の NoteEvent とシグネチャを合わせ、
     # 属性アクセス(reportAttributeAccessIssue)を完全に封殺します。
-    class _ModelNoteEvent:
+    class NoteEvent:
         def __init__(
             self, 
             start_time: float, 
@@ -70,7 +71,6 @@ except ImportError:
                 "overlap": getattr(self, "overlap", 0.0),
                 "pre_utterance": getattr(self, "pre_utterance", 0.0)
             }
-NoteEvent: Any = _ModelNoteEvent
 
 # --- 2. Janome Tokenizer の安全なインポート ---
 # Protocol定義により、ダミーでも本物でも tokenize メソッドの存在を保証
@@ -78,12 +78,12 @@ class TokenizerProtocol(Protocol):
     def tokenize(self, text: str) -> List[Any]: ...
 
 try:
-    from janome.tokenizer import Tokenizer as _JanomeTokenizer
-except ImportError:
-    class _JanomeTokenizer:
+    import janome.tokenizer as _janome_tokenizer
+    JanomeTokenizer: Any = getattr(_janome_tokenizer, "Tokenizer")
+except Exception:
+    class JanomeTokenizer:
         def tokenize(self, text: str) -> List[Any]:
             return []
-JanomeTokenizer: Any = _JanomeTokenizer
 
 
 class TimelineWidget(QWidget):

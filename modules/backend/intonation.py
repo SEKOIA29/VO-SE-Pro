@@ -9,7 +9,7 @@ class IntonationAnalyzer:
     def __init__(self):
         # パス設定：プロジェクト構造に合わせて調整
         if getattr(sys, 'frozen', False):
-            self.root = sys._MEIPASS
+            self.root = str(getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__))))
         else:
             # backend/ から見たプロジェクトルート (../)
             self.root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -72,5 +72,5 @@ class IntonationAnalyzer:
                 # 使わない変数の代入を消し、labelを正しく扱う(未使用)
                 _start_tick = int(match.group(1))
                 _end_tick = int(match.group(2))
-                _label_text = match.group(3) if match.lastindex >= 3 else ""
+                _label_text = match.group(3) if (match.lastindex or 0) >= 3 else ""
                 # ここで label_text を使った処理を書くか、なければ pass

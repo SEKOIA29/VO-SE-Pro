@@ -11,9 +11,6 @@ from PySide6.QtWidgets import QApplication
 # --- 自作モジュールのインポート ---
 # フォルダ構成に合わせてパスを調整（絶対インポートを推奨）
 from modules.gui.main_window import MainWindow
-from modules.audio.vo_se_engine import VO_SE_Engine
-from modules.ai.ai_manager import AIManager
-from modules.audio.audio_output import AudioOutput
 
 # PyInstallerのスプラッシュスクリーン制御
 try:
@@ -70,9 +67,14 @@ def main():
 
     # --- 3. バックエンドの初期化（スプラッシュ表示中に実行） ---
     try:
+        import importlib
         if pyi_splash:
             pyi_splash.update_text("音声エンジンをロード中...")
         
+        VO_SE_Engine = importlib.import_module("modules.audio.vo_se_engine").VO_SE_Engine  # type: ignore[attr-defined]
+        AIManager = importlib.import_module("modules.ai.ai_manager").AIManager  # type: ignore[attr-defined]
+        AudioOutput = importlib.import_module("modules.audio.audio_output").AudioOutput  # type: ignore[attr-defined]
+
         # 低遅延オーディオ出力の初期化
         audio_device = AudioOutput(sample_rate=44100, block_size=256)
         
@@ -90,7 +92,8 @@ def main():
         if pyi_splash:
             pyi_splash.update_text("UIを構築中...")
             
-        window = MainWindow(engine=engine, ai=ai, audio=audio_device)
+        window = MainWindow(engine=engine, ai=ai)
+        window.audio_output = audio_device
 
         # --- 5. セットアップ完了、表示 ---
         if pyi_splash:

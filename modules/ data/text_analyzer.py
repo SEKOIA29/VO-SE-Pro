@@ -15,7 +15,9 @@ class TextAnalyzer:
         
         # 辞書のパスが実在する場合のみセットする（製品としての安全設計）
         if self.dict_path and os.path.exists(self.dict_path):
-            pyopenjtalk.set_dic_path(self.dict_path)
+            set_dic_path = getattr(pyopenjtalk, "set_dic_path", None)
+            if callable(set_dic_path):
+                set_dic_path(self.dict_path)
 
     def analyze_text(self, text: Optional[str]) -> List[NoteEvent]:
         """
