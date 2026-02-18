@@ -178,7 +178,8 @@ class VO_SE_Engine:
 
         try:
             get_playback_time = getattr(self, "get_playback_time", None)
-            playback_time = float(get_playback_time()) if callable(get_playback_time) else 0.0
+            raw_playback = get_playback_time() if callable(get_playback_time) else 0.0
+            playback_time = float(raw_playback) if isinstance(raw_playback, (int, float)) else 0.0
             curr_sample = int(playback_time * 44100)
             chunk = self.current_out_data[curr_sample : curr_sample + 256]
             if len(chunk) == 0:

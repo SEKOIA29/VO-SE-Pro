@@ -29,61 +29,57 @@ class NoteEventProtocol(Protocol):
     has_analysis: bool
     def to_dict(self) -> Dict[str, Any]: ...
 
+class _FallbackNoteEvent:
+    def __init__(
+        self,
+        start_time: float,
+        duration: float,
+        note_number: int,
+        lyrics: str
+    ) -> None:
+        self.start_time: float = start_time
+        self.duration: float = duration
+        self.note_number: int = note_number
+        self.lyrics: str = lyrics
+        self.is_selected: bool = False
+        self.phoneme: str = ""
+        self.onset: float = 0.0
+        self.overlap: float = 0.0
+        self.pre_utterance: float = 0.0
+        self.has_analysis: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "start_time": self.start_time,
+            "duration": self.duration,
+            "note_number": self.note_number,
+            "lyrics": self.lyrics,
+            "phoneme": self.phoneme,
+            "onset": getattr(self, "onset", 0.0),
+            "overlap": getattr(self, "overlap", 0.0),
+            "pre_utterance": getattr(self, "pre_utterance", 0.0)
+        }
+
 try:
     import modules.data.data_models as _data_models
-    NoteEvent: Any = getattr(_data_models, "NoteEvent")
+    NoteEventClass: Any = getattr(_data_models, "NoteEvent", _FallbackNoteEvent)
 except Exception:
-    # Actions対策: 本物の NoteEvent とシグネチャを合わせ、
-    # 属性アクセス(reportAttributeAccessIssue)を完全に封殺します。
-    class NoteEvent:
-        def __init__(
-            self, 
-            start_time: float, 
-            duration: float, 
-            note_number: int, 
-            lyrics: str
-        ) -> None:
-            self.start_time: float = start_time
-            self.duration: float = duration
-            self.note_number: int = note_number
-            self.lyrics: str = lyrics
-            self.is_selected: bool = False
-            self.phoneme: str = ""
-            
-            # 解析用パラメータ（main_window.py との整合性維持）
-            self.onset: float = 0.0
-            self.overlap: float = 0.0
-            self.pre_utterance: float = 0.0
-            self.has_analysis: bool = False
-
-        def to_dict(self) -> Dict[str, Any]:
-            """
-            ダミー実装でも、最低限の構造を返すことで
-            保存処理（JSON書き出しなど）でのクラッシュを防ぎます。
-            """
-            return {
-                "start_time": self.start_time,
-                "duration": self.duration,
-                "note_number": self.note_number,
-                "lyrics": self.lyrics,
-                "phoneme": self.phoneme,
-                "onset": getattr(self, "onset", 0.0),
-                "overlap": getattr(self, "overlap", 0.0),
-                "pre_utterance": getattr(self, "pre_utterance", 0.0)
-            }
+    NoteEventClass = _FallbackNoteEvent
 
 # --- 2. Janome Tokenizer の安全なインポート ---
 # Protocol定義により、ダミーでも本物でも tokenize メソッドの存在を保証
 class TokenizerProtocol(Protocol):
     def tokenize(self, text: str) -> List[Any]: ...
 
+class _FallbackTokenizer:
+    def tokenize(self, text: str) -> List[Any]:
+        return []
+
 try:
     import janome.tokenizer as _janome_tokenizer
-    JanomeTokenizer: Any = getattr(_janome_tokenizer, "Tokenizer")
+    TokenizerClass: Any = getattr(_janome_tokenizer, "Tokenizer", _FallbackTokenizer)
 except Exception:
-    class JanomeTokenizer:
-        def tokenize(self, text: str) -> List[Any]:
-            return []
+    TokenizerClass = _FallbackTokenizer
 
 
 class TimelineWidget(QWidget):
@@ -143,7 +139,7 @@ class TimelineWidget(QWidget):
         try:
             # 型チェックを通過させるため、一度ローカル変数に受ける等の工夫も可だが
             # ここではクラス定義の try-except ブロックで保証された Tokenizer を使用
-            self.tokenizer = JanomeTokenizer()
+            self.tokenizer = TokenizerClass()
         except Exception:
             # 万が一の予備
             class DummyTokenizer:
@@ -542,7 +538,7 @@ class TimelineWidget(QWidget):
         offset = max(n.start_time + n.duration for n in sel) - min(n.start_time for n in sel)
         self.deselect_all()
         for n in sel:
-            clone = NoteEvent(n.start_time + offset, n.duration, n.note_number, n.lyrics)
+            clone = NoteEventClass(n.start_time + offset, n.duration, n.note_number, n.lyrics)
             clone.is_selected = True
             self.notes_list.append(clone)
         self.notes_changed_signal.emit()
@@ -570,7 +566,7 @@ class TimelineWidget(QWidget):
         if n in self.notes_list:
             self.notes_list.remove(n)
         for i, c in enumerate(chars): 
-            new_n = NoteEvent(n.start_time + i*dur, dur, n.note_number, c)
+            new_n = NoteEventClass(n.start_time + i*dur, dur, n.note_number, c)
             self.notes_list.append(new_n)
 
     def copy_notes(self) -> None:
@@ -589,7 +585,7 @@ class TimelineWidget(QWidget):
             data = json.loads(clipboard_text)
             self.deselect_all()
             for d in data:
-                nn = NoteEvent(self._current_playback_time + d["o"], d["d"], d["n"], d["l"])
+                nn = NoteEventClass(self._current_playback_time + d["o"], d["d"], d["n"], d["l"])
                 nn.is_selected = True
                 self.notes_list.append(nn)
             self.notes_changed_signal.emit()

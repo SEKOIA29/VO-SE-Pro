@@ -5085,19 +5085,22 @@ class MainWindow(QMainWindow):
         """
         USTの辞書データを解析し、NoteEventオブジェクトと次の開始時間を生成する統合メソッド。
         """
-        # 1. 内部インポート（循環参照回避）
-        try:
-            from modules.data.data_models import NoteEvent
-        except (ImportError, ValueError):
-            # フォールバック（型チェック用）
-            from dataclasses import dataclass
+        # 1. NoteEventクラスの解決（循環参照回避）
+        from dataclasses import dataclass
+        import importlib
 
-            @dataclass
-            class NoteEvent:
-                lyrics: str
-                note_number: int
-                start_time: float
-                duration: float
+        @dataclass
+        class _UstFallbackNoteEvent:
+            lyrics: str
+            note_number: int
+            start_time: float
+            duration: float
+
+        try:
+            model_mod = importlib.import_module("modules.data.data_models")
+            NoteEventCls: Any = getattr(model_mod, "NoteEvent", _UstFallbackNoteEvent)
+        except Exception:
+            NoteEventCls = _UstFallbackNoteEvent
 
         # 2. データの抽出とガード（getを使用し、キー不在によるクラッシュを完全回避）
         try:
@@ -5115,7 +5118,7 @@ class MainWindow(QMainWindow):
 
             # 5. オブジェクトの生成
             # 旧定義の互換性を保ちつつ、NoteEventとして構築
-            note = NoteEvent(
+            note = NoteEventCls(
                 lyrics=lyric,
                 note_number=note_num,
                 start_time=current_time_sec,

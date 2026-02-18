@@ -7,17 +7,18 @@ import time
 from typing import List, Optional, Dict, Any, cast
 from PySide6.QtCore import Signal, QObject
 
-# 警告が出ていたインポートパスを、プロジェクト構造に合わせて安全に記述
+class _FallbackNoteEvent:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+    def to_dict(self):
+        return self.__dict__
+
 try:
     import modules.data.data_models as _data_models
-    NoteEvent: Any = getattr(_data_models, "NoteEvent")
+    NoteEventClass: Any = getattr(_data_models, "NoteEvent", _FallbackNoteEvent)
 except Exception:
-    # 読み込み失敗時のフォールバック用ダミークラス（解析エラー回避）
-    class NoteEvent:
-        def __init__(self, **kwargs):
-            self.__dict__.update(kwargs)
-        def to_dict(self):
-            return self.__dict__
+    NoteEventClass = _FallbackNoteEvent
 
 class MidiSignals(QObject):
     """MIDIイベントをGUIやエンジンに橋渡しするシグナル"""
@@ -33,7 +34,7 @@ def load_midi_file(filepath: str) -> Optional[List[Dict[str, Any]]]:
     """MIDIファイルを読み込み、NoteEventのリスト（辞書形式）を返す（1行も省略なし）"""
     try:
         mid = mido.MidiFile(filepath)
-        notes: List[NoteEvent] = []
+        notes: List[Any] = []
         
         ticks_per_beat = mid.ticks_per_beat
         # デフォルトテンポ: 120bpm (500,000 microseconds per beat)
@@ -70,7 +71,7 @@ def load_midi_file(filepath: str) -> Optional[List[Dict[str, Any]]]:
                         duration = current_seconds - start_sec
                         
                         if duration > 0:
-                            notes.append(NoteEvent(
+                            notes.append(NoteEventClass(
                                 note_number=m_note,
                                 start_time=start_sec,
                                 duration=duration,
