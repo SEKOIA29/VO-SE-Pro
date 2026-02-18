@@ -89,7 +89,7 @@ os.environ["OMP_NUM_THREADS"] = "1"
 
 
 try:
-    from .data_models import NoteEvent # type: ignore
+    from modules.data.data_models import NoteEvent  # type: ignore
 except ImportError:
     class NoteEvent(ctypes.Structure):
         _fields_ = [
@@ -771,8 +771,9 @@ except ImportError:
         def get_character_color(self, path): return "#4A90E2"
 
 try:
-    from .audio_output import AudioOutput
-except ImportError:
+    import importlib
+    AudioOutput = importlib.import_module("modules.audio.output").AudioOutput  # type: ignore[attr-defined]
+except Exception:
     class AudioOutput:
         def __init__(self): pass
         def play_se(self, path): pass
@@ -796,8 +797,9 @@ except ImportError:
     AudioPlayer = cast(Any, _AudioPlayerFallback)
 
 try:
-    from modules.utils.dynamics_ai import DynamicsAIEngine
-except ImportError:
+    import importlib
+    DynamicsAIEngine = importlib.import_module("modules.utils.dynamics_ai").DynamicsAIEngine  # type: ignore[attr-defined]
+except Exception:
     class _DynamicsAIEngineFallback:
         def generate_emotional_pitch(self, f0): return f0
     DynamicsAIEngine = cast(Any, _DynamicsAIEngineFallback)
@@ -1069,8 +1071,8 @@ class MainWindow(QMainWindow):
         self.timeline_widget = None
         self.graph_editor_widget = None
 
-        self.status_label: QLabel = QLabel("")
-        self.voice_grid: QGridLayout = QGridLayout()
+        self.status_label = QLabel("")
+        self.voice_grid = QGridLayout()
         
         # --- 2. 属性の初期化（AttributeError 対策） ---
         self._init_attributes(engine, ai, config)
@@ -1094,10 +1096,10 @@ class MainWindow(QMainWindow):
         (Pylance の reportAttributeAccessIssue を根絶する完全版)
         """
         # --- 1. Required宣言されているものへの代入 (Anyキャストで矛盾回避) ---
-        self.timeline_widget = cast(TimelineWidget, None)
-        self.graph_editor_widget = cast(GraphEditorWidget, None)
-        self.keyboard_sidebar = cast(KeyboardSidebarWidget, None)
-        self.keyboard_sidebar_widget = cast(KeyboardSidebarWidget, None)
+        self.timeline_widget = cast(Any, None)
+        self.graph_editor_widget = cast(Any, None)
+        self.keyboard_sidebar = cast(Any, None)
+        self.keyboard_sidebar_widget = cast(Any, None)
         self.vertical_scroll = cast(QSlider, None)
         self.v_scrollbar = cast(QSlider, None)
         self.h_scrollbar = cast(QScrollBar, None)
@@ -1195,9 +1197,10 @@ class MainWindow(QMainWindow):
         """エンジン類の実体化ロジック（省略なし完全版）"""
         if not self.vo_se_engine:
             try:
-                from modules.backend.vo_se_engine import VoSeEngine
+                import importlib
+                VoSeEngine = importlib.import_module("modules.backend.vo_se_engine").VoSeEngine  # type: ignore[attr-defined]
                 self.vo_se_engine = VoSeEngine()
-            except ImportError:
+            except Exception:
                 class MockEngine: 
                     def __init__(self):
                         self.lib = None
@@ -1228,11 +1231,12 @@ class MainWindow(QMainWindow):
                 self.vo_se_engine = MockEngine()
 
         try:
-            from modules.utils.dynamics_ai import DynamicsAIEngine
-            from modules.backend.voice_manager import VoiceManager
-            from modules.talk.talk_manager import IntonationAnalyzer
-            from modules.audio.player import AudioPlayer
-            from modules.audio.output import AudioOutput
+            import importlib
+            DynamicsAIEngine = importlib.import_module("modules.utils.dynamics_ai").DynamicsAIEngine  # type: ignore[attr-defined]
+            VoiceManager = importlib.import_module("modules.backend.voice_manager").VoiceManager  # type: ignore[attr-defined]
+            IntonationAnalyzer = importlib.import_module("modules.talk.talk_manager").IntonationAnalyzer  # type: ignore[attr-defined]
+            AudioPlayer = importlib.import_module("modules.audio.player").AudioPlayer  # type: ignore[attr-defined]
+            AudioOutput = importlib.import_module("modules.audio.output").AudioOutput  # type: ignore[attr-defined]
             
             self.dynamics_ai = ai if ai else DynamicsAIEngine()
             self.voice_manager = VoiceManager(self.dynamics_ai)
@@ -1240,7 +1244,7 @@ class MainWindow(QMainWindow):
             self.text_analyzer = self.analyzer
             self.audio_player = AudioPlayer(volume=self.volume)
             self.audio_output = AudioOutput()
-        except ImportError as e:
+        except Exception as e:
             print(f"Engine Load Error: {e}")
         
         # ==============================================================================
@@ -1529,7 +1533,7 @@ class MainWindow(QMainWindow):
         timeline_layout.setContentsMargins(0, 0, 0, 0)
         
         # キーボードサイドバー
-        self.keyboard_sidebar = KeyboardSidebarWidget(20, 21)
+        self.keyboard_sidebar = KeyboardSidebarWidget(20, self)
         timeline_layout.addWidget(self.keyboard_sidebar)
         
         # タイムライン本体
@@ -4978,7 +4982,7 @@ class MainWindow(QMainWindow):
             # 3. インポートとNoteEvent生成
             # フォルダ構成エラーを防ぐため絶対パス的なインポートを試みる
             try:
-                from .data_models import NoteEvent # type: ignore
+                from modules.data.data_models import NoteEvent  # type: ignore
             except ImportError:
                 # 万が一インポートできない場合のフォールバック（Actions対策）
                 class NoteEvent:
@@ -5080,7 +5084,7 @@ class MainWindow(QMainWindow):
         """
         # 1. 内部インポート（循環参照回避）
         try:
-            from .data_models import NoteEvent
+            from modules.data.data_models import NoteEvent
         except (ImportError, ValueError):
             # フォールバック（型チェック用）
             from dataclasses import dataclass

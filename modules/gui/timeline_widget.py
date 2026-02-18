@@ -30,11 +30,11 @@ class NoteEventProtocol(Protocol):
     def to_dict(self) -> Dict[str, Any]: ...
 
 try:
-    from ..data.data_models import NoteEvent as ImportedNoteEvent
+    from ..data.data_models import NoteEvent as _ModelNoteEvent
 except ImportError:
     # Actions対策: 本物の NoteEvent とシグネチャを合わせ、
     # 属性アクセス(reportAttributeAccessIssue)を完全に封殺します。
-    class ImportedNoteEvent:
+    class _ModelNoteEvent:
         def __init__(
             self, 
             start_time: float, 
@@ -70,7 +70,7 @@ except ImportError:
                 "overlap": getattr(self, "overlap", 0.0),
                 "pre_utterance": getattr(self, "pre_utterance", 0.0)
             }
-NoteEvent = cast(Any, ImportedNoteEvent)
+NoteEvent: Any = _ModelNoteEvent
 
 # --- 2. Janome Tokenizer の安全なインポート ---
 # Protocol定義により、ダミーでも本物でも tokenize メソッドの存在を保証
@@ -78,12 +78,12 @@ class TokenizerProtocol(Protocol):
     def tokenize(self, text: str) -> List[Any]: ...
 
 try:
-    from janome.tokenizer import Tokenizer as ImportedJanomeTokenizer
+    from janome.tokenizer import Tokenizer as _JanomeTokenizer
 except ImportError:
-    class ImportedJanomeTokenizer:
+    class _JanomeTokenizer:
         def tokenize(self, text: str) -> List[Any]:
             return []
-JanomeTokenizer = cast(Any, ImportedJanomeTokenizer)
+JanomeTokenizer: Any = _JanomeTokenizer
 
 
 class TimelineWidget(QWidget):
@@ -106,7 +106,7 @@ class TimelineWidget(QWidget):
         
         # --- 基本データ構造 ---
         # NoteEventがダミーでも本物でも、型ヒントでActionsを黙らせます
-        self.notes_list: List[NoteEvent] = []
+        self.notes_list: List[Any] = []
         self.tempo: float = 120.0
         self.pixels_per_beat: float = 40.0
         self.key_height_pixels: float = 20.0
@@ -178,7 +178,7 @@ class TimelineWidget(QWidget):
     def quantize(self, val: float) -> float: 
         return round(val / self.quantize_resolution) * self.quantize_resolution
 
-    def get_note_rect(self, note: NoteEvent) -> QRect:
+    def get_note_rect(self, note: Any) -> QRect:
         x = int(self.seconds_to_beats(note.start_time) * self.pixels_per_beat - self.scroll_x_offset)
         y = int((127 - note.note_number) * self.key_height_pixels - self.scroll_y_offset)
         w = int(self.seconds_to_beats(note.duration) * self.pixels_per_beat)
@@ -565,7 +565,7 @@ class TimelineWidget(QWidget):
                     self.notes_changed_signal.emit()
                     self.update()
 
-    def split_note(self, n: NoteEvent, chars: List[str]) -> None:
+    def split_note(self, n: Any, chars: List[str]) -> None:
         dur = n.duration / len(chars)
         if n in self.notes_list:
             self.notes_list.remove(n)
