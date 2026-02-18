@@ -3,7 +3,7 @@ import os
 import ctypes
 import wave
 import numpy as np
-from typing import List, Dict, Any, Optional, Protocol, runtime_checkable, cast
+from typing import List, Dict, Any, Optional, Protocol, runtime_checkable
 
 from PySide6.QtWidgets import QWidget, QApplication, QInputDialog, QLineEdit
 from PySide6.QtCore import Qt, QRect, Signal, Slot, QPoint, QSize
