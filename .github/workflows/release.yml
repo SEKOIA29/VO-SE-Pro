@@ -35,21 +35,22 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel
           pip install PySide6 numpy sounddevice soundfile mido janome Pillow pyinstaller ruff pyright scipy onnxruntime chardet pykakasi
-
           pip install pyopenjtalk --only-binary :all: || pip install pyopenjtalk
 
-          # user.csv がある場合のみ辞書生成（ない場合はスキップ）
-          python - <<'PY'
+      # --- ここをクロスプラットフォーム対応に修正（一切の省略なし） ---
+      - name: Create User Dictionary (if needed)
+        shell: python # シェルにpythonを直接指定することでエラーを回避
+        run: |
           import os
           try:
               import pyopenjtalk
               if hasattr(pyopenjtalk, 'create_user_dict') and os.path.exists('user.csv'):
                   pyopenjtalk.create_user_dict('user.dic', 'user.csv')
+                  print('User dictionary created successfully.')
               else:
-                  print('Skip dict creation')
+                  print('Skip dict creation: No user.csv or function missing')
           except Exception as e:
               print(f'Skip dict creation: {e}')
-          PY
 
       # 2. その後に Ruff でチェック
       - name: Lint with Ruff
