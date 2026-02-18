@@ -3,7 +3,7 @@ import os
 import ctypes
 import wave
 import numpy as np
-from typing import List, Dict, Any, Optional, Protocol, runtime_checkable
+from typing import List, Dict, Any, Optional, Protocol, runtime_checkable, cast
 
 from PySide6.QtWidgets import QWidget, QApplication, QInputDialog, QLineEdit
 from PySide6.QtCore import Qt, QRect, Signal, Slot, QPoint, QSize
@@ -30,11 +30,11 @@ class NoteEventProtocol(Protocol):
     def to_dict(self) -> Dict[str, Any]: ...
 
 try:
-    from ..data.data_models import NoteEvent
+    from ..data.data_models import NoteEvent as ImportedNoteEvent
 except ImportError:
     # Actions対策: 本物の NoteEvent とシグネチャを合わせ、
     # 属性アクセス(reportAttributeAccessIssue)を完全に封殺します。
-    class NoteEvent:
+    class ImportedNoteEvent:
         def __init__(
             self, 
             start_time: float, 
@@ -70,6 +70,7 @@ except ImportError:
                 "overlap": getattr(self, "overlap", 0.0),
                 "pre_utterance": getattr(self, "pre_utterance", 0.0)
             }
+NoteEvent = cast(Any, ImportedNoteEvent)
 
 # --- 2. Janome Tokenizer の安全なインポート ---
 # Protocol定義により、ダミーでも本物でも tokenize メソッドの存在を保証
@@ -77,11 +78,12 @@ class TokenizerProtocol(Protocol):
     def tokenize(self, text: str) -> List[Any]: ...
 
 try:
-    from janome.tokenizer import Tokenizer as JanomeTokenizer
+    from janome.tokenizer import Tokenizer as ImportedJanomeTokenizer
 except ImportError:
-    class JanomeTokenizer:
+    class ImportedJanomeTokenizer:
         def tokenize(self, text: str) -> List[Any]:
             return []
+JanomeTokenizer = cast(Any, ImportedJanomeTokenizer)
 
 
 class TimelineWidget(QWidget):

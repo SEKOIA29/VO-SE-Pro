@@ -1,7 +1,7 @@
 # data_models.py
 
 from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Union
 import json
 
 @dataclass
@@ -26,7 +26,7 @@ class NoteEvent:
     start_time: float           # 開始時間（秒）
     duration: float             # 長さ（秒）
     lyric: str = "あ"            # 歌詞
-    phonemes: List[str] = field(default_factory=list) # 解析済み音素
+    phonemes: Union[List[str], str] = field(default_factory=list) # 解析済み音素
     velocity: int = 100         # 音の強さ (0-127)
     
     # --- 歌唱（Singing）用パラメータ ---
@@ -51,6 +51,14 @@ class NoteEvent:
     def __repr__(self):
         mode = "Talk" if self.pitch_end is not None else "Sing"
         return f"Note({mode}, pitch={self.note_number}, lyric='{self.lyric}', start={self.start_time:.2f}s)"
+
+    @property
+    def lyrics(self) -> str:
+        return self.lyric
+
+    @lyrics.setter
+    def lyrics(self, value: str) -> None:
+        self.lyric = value
 
     def to_dict(self) -> Dict[str, Any]:
         """保存用に辞書化（GUI用フラグは除外）"""

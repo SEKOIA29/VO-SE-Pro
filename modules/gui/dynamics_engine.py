@@ -2,8 +2,24 @@ import ctypes
 import numpy as np
 import _ctypes
 import platform
-# F401 修正: 使っていない CPitchEvent を削除
-from audio_types import SynthesisRequest, CNoteEvent 
+
+try:
+    from .audio_types import SynthesisRequest, CNoteEvent  # type: ignore
+except Exception:
+    class CNoteEvent(ctypes.Structure):
+        _fields_ = [
+            ("note_number", ctypes.c_int),
+            ("start_time", ctypes.c_double),
+            ("duration", ctypes.c_double),
+            ("velocity", ctypes.c_int),
+        ]
+
+    class SynthesisRequest(ctypes.Structure):
+        _fields_ = [
+            ("notes", ctypes.POINTER(CNoteEvent)),
+            ("note_count", ctypes.c_int),
+            ("sample_rate", ctypes.c_int),
+        ]
 
 class DynamicsEngine:
     def __init__(self, dll_path, _model_path): # 未使用引数に _ を付与
@@ -74,7 +90,11 @@ class DynamicsEngine:
         """DLLをメモリから完全に解除する"""
         handle = self.lib._handle
         if platform.system() == "Windows":
-            _ctypes.FreeLibrary(handle)
+            free_library = getattr(_ctypes, "FreeLibrary", None)
+            if callable(free_library):
+                free_library(handle)
         else:
-            _ctypes.dlclose(handle)
+            dlclose = getattr(_ctypes, "dlclose", None)
+            if callable(dlclose):
+                dlclose(handle)
         print("Engine: DLL Unloaded.")

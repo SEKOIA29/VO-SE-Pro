@@ -669,6 +669,9 @@ except ImportError:
 
 
 class VoSeEngine:
+    def generate_audio_signal(self, notes, pitch_data):
+        return np.zeros(44100, dtype=np.float32)
+
     def export_to_wav(self, notes, pitch_data, file_path):
         """
         notes: TimelineWidget.notes_list (NoteEventのリスト)
@@ -697,7 +700,7 @@ class VoSeEngine:
 try:
     from .timeline_widget import TimelineWidget
 except ImportError:
-    class TimelineWidget(QWidget):
+    class _TimelineWidgetFallback(QWidget):
         notes_changed_signal = Signal()
         def __init__(self): 
             super().__init__()
@@ -732,14 +735,16 @@ except ImportError:
         def set_pitch_data(self, data): pass
         def add_note_from_midi(self, note_num, velocity): pass
         def update(self): super().update()
+    TimelineWidget = cast(Any, _TimelineWidgetFallback)
 
 try:
     from .keyboard_sidebar_widget import KeyboardSidebarWidget
 except ImportError:
-    class KeyboardSidebarWidget(QWidget):
+    class _KeyboardSidebarWidgetFallback(QWidget):
         def __init__(self, height, lowest): super().__init__()
         def set_key_height_pixels(self, h): pass
         def set_vertical_offset(self, offset_pixels: int): pass
+    KeyboardSidebarWidget = cast(Any, _KeyboardSidebarWidgetFallback)
 
 try:
     from .midi_manager import load_midi_file, MidiInputManager # type: ignore
@@ -773,26 +778,29 @@ except ImportError:
         def play_se(self, path): pass
 
 try:
-    from backend.intonation import IntonationAnalyzer
+    from modules.backend.intonation import IntonationAnalyzer
 except ImportError:
-    class IntonationAnalyzer:
+    class _IntonationAnalyzerFallback:
         def analyze(self, text): return []
         def parse_trace_to_notes(self, trace): return []
         def analyze_to_pro_events(self, text): return []
+    IntonationAnalyzer = cast(Any, _IntonationAnalyzerFallback)
 
 try:
-    from backend.audio_player import AudioPlayer
+    from modules.backend.audio_player import AudioPlayer
 except ImportError:
-    class AudioPlayer:
+    class _AudioPlayerFallback:
         def __init__(self, volume=0.8): pass
         def play_file(self, path): pass
         def play(self, data): pass
+    AudioPlayer = cast(Any, _AudioPlayerFallback)
 
 try:
-    from utils.dynamics_ai import DynamicsAIEngine
+    from modules.utils.dynamics_ai import DynamicsAIEngine
 except ImportError:
-    class DynamicsAIEngine:
+    class _DynamicsAIEngineFallback:
         def generate_emotional_pitch(self, f0): return f0
+    DynamicsAIEngine = cast(Any, _DynamicsAIEngineFallback)
 
 
 # ==============================================================================
@@ -838,27 +846,26 @@ class VoiceCardGallery(QWidget):
         self.main_layout = QVBoxLayout(self)
         
         # スクロールエリアの設定（音源が増えても大丈夫なように）
-        self.scroll = QScrollArea()
-        self.scroll.setWidgetResizable(True)
-        self.scroll.setStyleSheet("background-color: #1E1E1E; border: none;")
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setStyleSheet("background-color: #1E1E1E; border: none;")
         
         self.container = QWidget()
         self.grid = QGridLayout(self.container)
         self.grid.setSpacing(15)
-        self.scroll.setWidget(self.container)
+        self.scroll_area.setWidget(self.container)
         
-        self.main_layout.addWidget(self.scroll)
-
-        if self.main_layout is not None:
-            self.main_layout.addWidget(cast(QWidget, self.timeline_widget))
+        self.main_layout.addWidget(self.scroll_area)
 
     def setup_gallery(self):
         """音源をスキャンしてカードを生成・配置する"""
         # 既存のカードをクリア
         for i in reversed(range(self.grid.count())): 
-            widget = self.grid.itemAt(i).widget()
-            if widget:
-                widget.setParent(None)
+            item = self.grid.itemAt(i)
+            if item:
+                widget = item.widget()
+                if widget:
+                    widget.setParent(None)
         self.cards.clear()
 
         # VoiceManagerから全音源（公式・外部）を取得
@@ -951,17 +958,17 @@ class MainWindow(QMainWindow):
     """VO-SE Pro  メインウィンドウ"""
     
     # === メインUIウィジェット系（遅延生成 → Optional） ===
-    timeline_widget: 'TimelineWidget'
-    graph_editor_widget: 'GraphEditorWidget'
-    keyboard_sidebar: 'KeyboardSidebarWidget'
-    keyboard_sidebar_widget: 'KeyboardSidebarWidget'
+    timeline_widget: Any
+    graph_editor_widget: Any
+    keyboard_sidebar: Any
+    keyboard_sidebar_widget: Any
 
     # === スクロール・ボリュームUI ===
-    vertical_scroll: QSlider
-    v_scrollbar: QSlider
-    h_scrollbar: QScrollBar
-    vol_slider: QSlider
-    vol_label: QLabel
+    vertical_scroll: Any
+    v_scrollbar: Any
+    h_scrollbar: Any
+    vol_slider: Any
+    vol_label: Any
 
     # === タイマー（__init__で必ず実体化） ===
     render_timer: QTimer
@@ -1003,26 +1010,26 @@ class MainWindow(QMainWindow):
     current_playback_time: float
 
     # === UIコントロール ===
-    tempo_input: QLineEdit
-    play_button: QPushButton
-    play_btn: QPushButton
-    record_button: QPushButton
-    loop_button: QPushButton
-    render_button: QPushButton
+    tempo_input: Any
+    play_button: Any
+    play_btn: Any
+    record_button: Any
+    loop_button: Any
+    render_button: Any
 
-    btn_mute: QPushButton
-    btn_solo: QPushButton
+    btn_mute: Any
+    btn_solo: Any
 
-    track_list_widget: QListWidget
-    progress_bar: QProgressBar
-    status_label: QLabel
+    track_list_widget: Any
+    progress_bar: Any
+    status_label: Any
 
-    character_selector: QComboBox
-    midi_port_selector: QComboBox
+    character_selector: Any
+    midi_port_selector: Any
 
-    toolbar: QToolBar
-    main_layout: QVBoxLayout
-    voice_grid: QGridLayout
+    toolbar: Any
+    main_layout: Any
+    voice_grid: Any
     voice_cards: List[Any]
 
     # === 描画・キャンバス ===
@@ -1031,7 +1038,7 @@ class MainWindow(QMainWindow):
 
     # === スレッド・排他制御 ===
     playback_thread: Optional[threading.Thread]
-    analysis_thread: QThread
+    analysis_thread: Any
     _playback_lock: threading.Lock
 
     # === 履歴・設定 ===
@@ -1040,7 +1047,7 @@ class MainWindow(QMainWindow):
     config: Any
 
     # === パラメータ管理 ===
-    input_fields: List[QLineEdit]
+    input_fields: List[Any]
     parameters: Dict[str, Any]
     all_parameters: Dict[str, Any]
     sync_notes: bool
@@ -1051,7 +1058,7 @@ class MainWindow(QMainWindow):
     # === デバイス情報 ===
     active_device: str
     active_provider: str
-    device_status_label: QLabel
+    device_status_label: Any
     ai_manager: Any
 
     def __init__(self, parent=None, engine=None, ai=None, config=None):
@@ -1343,7 +1350,7 @@ class MainWindow(QMainWindow):
         
         # --- 左側：トラック管理パネル ---
         self.track_panel = QFrame()
-        self.track_panel.setFrameShape(QFrame.StyledPanel)
+        self.track_panel.setFrameShape(QFrame.Shape.StyledPanel)
         self.track_panel.setMinimumWidth(200)
         self.track_panel.setMaximumWidth(400)
         
@@ -1387,7 +1394,7 @@ class MainWindow(QMainWindow):
         # 初期リスト更新
         self.refresh_track_list_ui()
 
-        self.timeline_widget = TimelineWidget(parent=self) 
+        self.timeline_widget = TimelineWidget() 
 
         self.editor_splitter.addWidget(self.track_panel)
         self.editor_splitter.addWidget(self.timeline_widget)
@@ -1916,7 +1923,7 @@ class MainWindow(QMainWindow):
         
         # 現在フォーカスされているウィジェットを確認
         current = self.focusWidget()
-        if current in self.input_fields:
+        if isinstance(current, QLineEdit) and current in self.input_fields:
             idx = self.input_fields.index(current)
             next_idx = (idx + 1) % len(self.input_fields)
             self.input_fields[next_idx].setFocus()
@@ -3730,12 +3737,9 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            # MIDIマネージャーをメソッド内で安全にインポート
-            from modules.data.midi_manager import MidiManager
-            manager = MidiManager()
-            
             # MIDIロード実行
-            notes = manager.load_midi(file_path)
+            from modules.data.midi_manager import load_midi_file
+            notes = load_midi_file(file_path)
 
             if notes:
                 t_widget = getattr(self, 'timeline_widget', None)
@@ -4549,8 +4553,11 @@ class MainWindow(QMainWindow):
             notes = [NoteEvent.from_dict(d) for d in notes_data]
 
             for note in notes:
-                if note.lyrics and not note.phonemes:
-                    note.phonemes = self._get_yomi_from_lyrics(note.lyrics)
+                lyric_text = str(getattr(note, "lyric", getattr(note, "lyrics", "")))
+                phonemes = getattr(note, "phonemes", [])
+                if lyric_text and not phonemes:
+                    yomi = self._get_yomi_from_lyrics(lyric_text)
+                    setattr(note, "phonemes", [yomi] if isinstance(yomi, str) else yomi)
 
             if hasattr(self, 'timeline_widget') and self.timeline_widget:
                 self.timeline_widget.set_notes(notes)

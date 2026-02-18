@@ -4,11 +4,7 @@
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt, Signal, Slot, QRect, QPointF
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QPaintEvent, QMouseEvent
-# 相対インポートが通らない場合は from modules.data.data_models import PitchEvent に書き換えてください
-try:
-    from .data_models import PitchEvent
-except ImportError:
-    from modules.data.data_models import PitchEvent
+from modules.data.data_models import PitchEvent
 
 class GraphEditorWidget(QWidget):
     parameters_changed = Signal(dict) 
@@ -84,7 +80,7 @@ class GraphEditorWidget(QWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             time = self.x_to_time(event.position().x())
             val = self.y_to_value(event.position().y())
-            new_point = PitchEvent(time=time, value=val)
+            new_point = PitchEvent(time=time, value=int(round(val)))
             self.all_parameters[self.current_mode].append(new_point)
             self.all_parameters[self.current_mode].sort(key=lambda x: x.time)
             self.parameters_changed.emit(self.all_parameters)
