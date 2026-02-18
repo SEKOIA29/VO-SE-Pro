@@ -1,4 +1,5 @@
 pyopenjtalk
 numpy
 PySide6
-pyinstaller
+setuptools>=70,<81
+pyinstaller==6.13.0

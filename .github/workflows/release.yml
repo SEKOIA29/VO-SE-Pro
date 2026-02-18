@@ -33,9 +33,20 @@ jobs:
       # 1. 先にライブラリをインストール
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install PySide6 numpy sounddevice soundfile mido janome Pillow pyinstaller ruff pyright scipy onnxruntime chardet pykakasi
+          python -m pip install --upgrade pip wheel
+          python -m pip uninstall -y pkg_resources || true
+          python -m pip install "setuptools>=70,<81" "pyinstaller==6.13.0"
+          pip install PySide6 numpy sounddevice soundfile mido janome Pillow ruff pyright scipy onnxruntime chardet pykakasi
           pip install pyopenjtalk --only-binary :all: || pip install pyopenjtalk
+
+      - name: Verify pkg_resources for PyInstaller hook
+        shell: python
+        run: |
+          import pkg_resources
+          print("pkg_resources file:", getattr(pkg_resources, "__file__", "unknown"))
+          print("has NullProvider:", hasattr(pkg_resources, "NullProvider"))
+          if not hasattr(pkg_resources, "NullProvider"):
+              raise SystemExit("pkg_resources.NullProvider is missing")
 
       # --- ここをクロスプラットフォーム対応に修正（一切の省略なし） ---
       - name: Create User Dictionary (if needed)
