@@ -3,3 +3,4 @@ numpy
 PySide6
 setuptools>=70,<81
 pyinstaller==6.13.0
+backports.tarfile

@@ -36,7 +36,7 @@ jobs:
           python -m pip install --upgrade pip wheel
           python -m pip uninstall -y pkg_resources || true
           python -m pip install "setuptools>=70,<81" "pyinstaller==6.13.0"
-          pip install PySide6 numpy sounddevice soundfile mido janome Pillow ruff pyright scipy onnxruntime chardet pykakasi
+          pip install PySide6 numpy sounddevice soundfile mido janome Pillow ruff pyright scipy onnxruntime chardet pykakasi backports.tarfile
           pip install pyopenjtalk --only-binary :all: || pip install pyopenjtalk
 
       - name: Verify pkg_resources for PyInstaller hook
@@ -100,6 +100,8 @@ jobs:
               --paths modules \
               --icon="assets/icon.ico" \
               --hidden-import=modules.gui.main_window \
+              --hidden-import=backports \
+              --hidden-import=backports.tarfile \
               --add-data "bin/libvo_se.dll;bin" \
               --add-data "assets;assets" \
               --add-data "modules;modules" \
@@ -113,6 +115,8 @@ jobs:
               --icon="assets/icon.icns" \
               --exclude-module PySide6.QtPdf \
               --hidden-import=modules.gui.main_window \
+              --hidden-import=backports \
+              --hidden-import=backports.tarfile \
               --add-data "bin/libvo_se.dylib:bin" \
               --add-data "assets:assets" \
               --add-data "modules:modules" \
