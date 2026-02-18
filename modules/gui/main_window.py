@@ -4225,7 +4225,7 @@ class MainWindow(QMainWindow):
         文字コードを自動判別してファイルを安全に読み込む。
         日本語テキストファイル（Shift-JIS、UTF-8等）に完全対応。
         """
-        #import chardet
+        import chardet
         import os
 
         # 1. ファイル存在チェック
