@@ -1060,6 +1060,9 @@ class MainWindow(QMainWindow):
         self.vol_label = None
         self.timeline_widget = None
         self.graph_editor_widget = None
+
+        self.status_label: QLabel = QLabel("")
+        self.voice_grid: QGridLayout = QGridLayout()
         
         # --- 2. 属性の初期化（AttributeError 対策） ---
         self._init_attributes(engine, ai, config)
@@ -2599,7 +2602,7 @@ class MainWindow(QMainWindow):
         """
         [完全版] AI予測ピッチ + 黄金比ポルタメント + ビブラート
         """
-        import numpy as np
+        import numpy as np      
         import math
         # 1. 基礎となる音程（Hz）の計算
         target_hz = 440.0 * (2.0 ** ((note.note_number - 69) / 12.0))

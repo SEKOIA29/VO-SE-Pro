@@ -9,6 +9,10 @@ from PySide6.QtWidgets import QWidget, QApplication, QInputDialog, QLineEdit
 from PySide6.QtCore import Qt, QRect, Signal, Slot, QPoint, QSize
 from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QFont, QLinearGradient, QPaintEvent
 
+
+
+
+
 # --- 1. データモデルの安全なインポートと型定義 ---
 # Protocolを使用して、NoteEventが持つべき属性を型チェッカーに約束させます
 @runtime_checkable
