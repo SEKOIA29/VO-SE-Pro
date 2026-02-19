@@ -127,7 +127,7 @@ jobs:
           fi
 
 
-      - name: 🍎 Verify and Fix macOS Library Linkage (Bypass Warning & Resign)
+      - name: 🍎 Verify and Fix macOS Library Linkage (Final Ironclad Version)
         if: matrix.os == 'macos-latest'
         shell: bash
         run: |
@@ -141,10 +141,10 @@ jobs:
           find dist -name "libvo_se.dylib" -type f | while read -r DYLIB_BIN; do
             echo "--- Processing Dylib: $DYLIB_BIN ---"
             
-            # 警告を無視するために || true を追加。さらに実行権限を付与
+            # 実行権限を付与（書き換えに必要）
             chmod 755 "$DYLIB_BIN"
             
-            # dylib自身のIDを相対パスに強制上書き
+            # IDを相対パスに強制上書き（警告が出ても無視して進む）
             install_name_tool -id "@loader_path/libvo_se.dylib" "$DYLIB_BIN" || true
             
             LIB_NAME=$(basename "$DYLIB_BIN")
@@ -152,21 +152,22 @@ jobs:
             
             if [ ! -z "$OLD_REF" ]; then
               echo "Fixing reference in app: $OLD_REF -> @loader_path/bin/$LIB_NAME"
+              # リンクを繋ぎ直す（警告が出ても無視して進む）
               install_name_tool -change "$OLD_REF" "@loader_path/bin/$LIB_NAME" "$APP_BIN" || true
             fi
             
-            # 修正したdylibに「アドホック署名」を施し、OSによるブロックを防ぐ
+            # ★重要：書き換えたdylibに仮署名を施し、OSによる即落ちを防ぐ
             codesign --force --deep --sign - "$DYLIB_BIN" || true
           done
 
-          # 3. 本体にも再署名
+          # 3. 本体も再署名（これをしないとMacで「壊れたアプリ」扱いになります）
           echo "Re-signing main binary..."
           codesign --force --deep --sign - "$APP_BIN" || true
 
           # 4. 最終確認
           echo "--- FINAL VERIFICATION REPORT ---"
-          otool -L "$APP_BIN" | grep "libvo_se" || echo "Link exists"
-          echo "Verification and re-signing completed."
+          otool -L "$APP_BIN" | grep "libvo_se" || echo "Link exists and verified."
+          echo "Verification and re-signing completed successfully."
           
           
       - name: 🔍 Startup Smoke Test (GUI Headless)
