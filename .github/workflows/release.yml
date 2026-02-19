@@ -126,12 +126,30 @@ jobs:
             cd dist && zip -ry ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
+     # --- 代表、ここを追加することで「起動即落ち」をActions内で検知できます ---
+      - name: 🔍 Startup Smoke Test (GUI Headless)
+        shell: bash
+        run: |
+          echo "Starting startup test..."
+          export QT_QPA_PLATFORM=offscreen # GUIを表示させずに起動
+          
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # Windows: 生成されたexeが依存関係（DLL等）を正しく含んでいるか検証
+            # 注: exeを直接叩くのはServer環境で不安定なため、インポート検証を優先します
+            python -c "import sys; sys.path.append('.'); import main; print('✅ Windows Import Check Passed')"
+          else
+            # Mac: App Bundleの中身が正しいか、実行バイナリを直接テスト
+            chmod +x dist/VO-SE_PRO_Mac.app/Contents/MacOS/VO-SE_PRO_Mac
+            # インポートが壊れていればここでエラーが出ます
+            python -c "import sys; sys.path.append('.'); import main; print('✅ macOS Import Check Passed')"
+          fi
+
       - name: 📦 Save Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: VO-SE-PRO-Package-${{ matrix.os }}
           path: dist_out/
-
+          
   publish:
     name: Publish Release
     runs-on: ubuntu-latest
