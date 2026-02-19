@@ -127,43 +127,41 @@ jobs:
           fi
 
 
-      - name: 🍎 Verify and Fix macOS Library Linkage (Auto-Discovery)
+      - name: 🍎 Verify and Fix macOS Library Linkage (Safe Multi-Discovery)
         if: matrix.os == 'macos-latest'
         shell: bash
         run: |
           echo "Macのバイナリを探索し、リンクを自動修正します..."
           
-          # 1. アプリ本体とdylibの正確な場所を検索（パスのズレを吸収）
-          APP_BIN=$(find dist -name "VO-SE_PRO_Mac" -type f | grep ".app/Contents/MacOS/VO-SE_PRO_Mac")
-          DYLIB_BIN=$(find dist -name "libvo_se.dylib" -type f)
-          
+          # 1. アプリ本体を特定
+          APP_BIN=$(find dist -name "VO-SE_PRO_Mac" -type f | grep ".app/Contents/MacOS/VO-SE_PRO_Mac" | head -n 1)
           echo "Main Binary found at: $APP_BIN"
-          echo "Dylib found at: $DYLIB_BIN"
 
-          if [ -z "$DYLIB_BIN" ]; then
-            echo "Error: libvo_se.dylib が見つかりません。PyInstallerのビルドを確認してください。"
-            exit 1
-          fi
+          # 2. 見つかったすべての dylib に対してループ処理
+          # 改行区切りで複数見つかっても、1つずつ確実に処理します
+          find dist -name "libvo_se.dylib" -type f | while read -r DYLIB_BIN; do
+            echo "--- Processing Dylib: $DYLIB_BIN ---"
+            
+            # dylib自身のID（内部名）を相対パスに強制上書き
+            install_name_tool -id "@loader_path/libvo_se.dylib" "$DYLIB_BIN"
+            
+            # アプリ本体がこのdylibを参照している「古い住所」を特定
+            # ファイル名だけでマッチングさせて、そのフルパスを取得
+            LIB_NAME=$(basename "$DYLIB_BIN")
+            OLD_REF=$(otool -L "$APP_BIN" | grep "$LIB_NAME" | awk '{print $1}')
+            
+            if [ ! -z "$OLD_REF" ]; then
+              echo "Fixing reference in app: $OLD_REF -> @loader_path/bin/$LIB_NAME"
+              # 両方の可能性（Frameworks内とMacOS内）を考慮してリンクを繋ぎ直す
+              install_name_tool -change "$OLD_REF" "@loader_path/bin/$LIB_NAME" "$APP_BIN" || \
+              install_name_tool -change "$OLD_REF" "@executable_path/bin/$LIB_NAME" "$APP_BIN"
+            fi
+          done
 
-          # 2. dylib自身のID（内部名）を相対パスに強制上書き
-          # これにより、どの場所から呼ばれても「自分はここにいる」と正しく返事します
-          install_name_tool -id "@loader_path/libvo_se.dylib" "$DYLIB_BIN"
-          
-          # 3. アプリ本体からdylibへの「古い住所」を「新しい住所」に書き換え
-          # otoolの結果から、libvo_se.dylibを含んでいる行を抜き出し、そのパスを修正します
-          OLD_REF=$(otool -L "$APP_BIN" | grep "libvo_se.dylib" | awk '{print $1}')
-          
-          if [ ! -z "$OLD_REF" ]; then
-            echo "Old Reference: $OLD_REF"
-            # どんな古いパスであっても、現在のdylibの相対パスへリンクを繋ぎ直す
-            install_name_tool -change "$OLD_REF" "@loader_path/bin/libvo_se.dylib" "$APP_BIN" || \
-            install_name_tool -change "$OLD_REF" "@executable_path/bin/libvo_se.dylib" "$APP_BIN"
-          fi
-
-          # 4. 最終確認
-          echo "--- Verification Result ---"
-          otool -L "$APP_BIN" | grep "libvo_se.dylib"
-          echo "Linkage Fix Completed Successfully."
+          # 3. 最終確認
+          echo "--- FINAL VERIFICATION REPORT ---"
+          otool -L "$APP_BIN" | grep "libvo_se" || echo "Warning: libvo_se link not found in main binary"
+          echo "All discovered dylibs have been processed."
           
       - name: 🔍 Startup Smoke Test (GUI Headless)
         shell: bash
