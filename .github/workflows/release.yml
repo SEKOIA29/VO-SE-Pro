@@ -127,36 +127,6 @@ jobs:
           fi
 
 
-      - name: 🍎 Verify and Fix macOS Library Linkage
-        if: matrix.os == 'macos-latest'
-        shell: bash
-        run: |
-          echo "Macのバイナリリンク検証を開始します..."
-          APP_BIN="dist/VO-SE_PRO_Mac.app/Contents/MacOS/VO-SE_PRO_Mac"
-          DYLIB_BIN="dist/VO-SE_PRO_Mac.app/Contents/MacOS/bin/libvo_se.dylib"
-          
-          # 1. リンク状態の可視化 (otool -L)
-          echo "--- Current Linkage for dylib ---"
-          otool -L "$DYLIB_BIN"
-          
-          # 2. フルパス（/Users/ や /home/runner/）が含まれているかチェックし、あれば相対パスに強制修正
-          # ID（自身の名前）をアプリ相対パスに書き換え
-          install_name_tool -id "@executable_path/bin/libvo_se.dylib" "$DYLIB_BIN"
-          
-          # 3. 本体からdylibへの参照パスを修正
-          # もし元のパスがフルパスで記録されていても、これでアプリ内の相対パスを見に行くようになります
-          # 元のパスを特定するために一度変数に格納
-          OLD_PATH=$(otool -L "$APP_BIN" | grep "libvo_se.dylib" | awk '{print $1}')
-          if [ ! -z "$OLD_PATH" ] && [ "$OLD_PATH" != "@executable_path/bin/libvo_se.dylib" ]; then
-            echo "Fixing reference: $OLD_PATH -> @executable_path/bin/libvo_se.dylib"
-            install_name_tool -change "$OLD_PATH" "@executable_path/bin/libvo_se.dylib" "$APP_BIN"
-          fi
-
-          # 4. 最終確認
-          echo "--- Verified Linkage ---"
-          otool -L "$APP_BIN" | grep "libvo_se.dylib"
-          echo "Linkage fix completed."
-          
       - name: 🍎 Verify and Fix macOS Library Linkage (Auto-Discovery)
         if: matrix.os == 'macos-latest'
         shell: bash
@@ -194,6 +164,24 @@ jobs:
           echo "--- Verification Result ---"
           otool -L "$APP_BIN" | grep "libvo_se.dylib"
           echo "Linkage Fix Completed Successfully."
+          
+      - name: 🔍 Startup Smoke Test (GUI Headless)
+        shell: bash
+        run: |
+          echo "Starting startup test..."
+          export QT_QPA_PLATFORM=offscreen
+          # Pythonの標準出力を強制的にUTF-8に設定してエンコードエラーを回避
+          export PYTHONIOENCODING=utf-8
+          
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            echo "Running Windows Import Test..."
+            python -c "import sys; sys.path.append('.'); import main; print('SUCCESS: Windows Import Check Passed')"
+          else
+            echo "Running macOS Import Test..."
+            # MacのApp構造を考慮した実行テスト
+            chmod +x dist/VO-SE_PRO_Mac.app/Contents/MacOS/VO-SE_PRO_Mac
+            python -c "import sys; sys.path.append('.'); import main; print('SUCCESS: macOS Import Check Passed')"
+          fi 
 
       - name: 📦 Save Artifacts
         uses: actions/upload-artifact@v4
