@@ -87,8 +87,14 @@ class VoSeEngine:
                 if self.os_name == "Windows":
                     self.c_engine = ctypes.CDLL(abs_dll_path)
                 else:
-                    # Macでのロード。mode=ctypes.RTLD_GLOBAL は int 扱いなので安全
-                    self.c_engine = ctypes.CDLL(abs_dll_path, mode=10) # 10 = RTLD_GLOBAL (Mac/Unix)
+                    # Macでのロード。mode=10 (RTLD_GLOBAL)
+                    self.c_engine = ctypes.CDLL(abs_dll_path, mode=10)
+                
+                # --- [追加] C関数の型定義 (安全性の向上) ---
+                # process_voice(float* data, int length) と仮定
+                if hasattr(self.c_engine, 'process_voice'):
+                    self.c_engine.process_voice.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_int]
+                    self.c_engine.process_voice.restype = None
                 
                 print(f"[Success] C-Engine loaded: {abs_dll_path}")
             except Exception as e:
@@ -100,8 +106,10 @@ class VoSeEngine:
             print(f"[Warning] C-Engine file not found at: {dll_path}")
 
     def analyze_intonation(self, text):
-        """pyopenjtalkを使用した音韻解析"""
-        print(f"\n--- 解析実行: '{text}' ---")
+        """
+        【読み上げ用】pyopenjtalkを使用した音韻解析
+        """
+        print(f"\n--- 読み上げ解析実行: '{text}' ---")
         try:
             labels = pyopenjtalk.extract_fullcontext(text)
             return labels
@@ -109,19 +117,38 @@ class VoSeEngine:
             return [f"Analysis failed: {str(e)}"]
 
     def process_with_c(self, data_array):
-        """C++製エンジンによる音声波形処理"""
+        """
+        【読み上げ・歌唱共通】C++製エンジンによる音声波形処理
+        歌唱データなどの長い配列でも、メモリの連続性を保証して処理します。
+        """
         if not self.c_engine:
+            print("[Warning] C-Engine is not loaded. Skipping process.")
             return data_array
             
-        data_float = np.array(data_array, dtype=np.float32)
-        ptr = data_float.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-        
         try:
-            self.c_engine.process_voice(ptr, len(data_float))
+            # メモリが連続していることを保証 (歌唱データの音飛び防止)
+            data_float = np.ascontiguousarray(data_array, dtype=np.float32)
+            
+            # C言語側のポインタを取得
+            ptr = data_float.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+            length = len(data_float)
+            
+            # C++エンジンの呼び出し（ピッチ補正やフォルマント処理を想定）
+            self.c_engine.process_voice(ptr, length)
+            
             return data_float
         except Exception as e:
             print(f"C-Process error: {e}")
             return data_array
+
+    def analyze_musical_score(self, score_data):
+        """
+        【歌唱用】将来的な拡張：楽譜データの解析メソッド
+        現在はスタブ（枠組み）として定義
+        """
+        print("--- 歌唱データ解析中 ---")
+        # ここにMusicXML等の解析ロジックを統合予定
+        pass
 
 # --- [4] メイン実行処理 ---
 def main():
