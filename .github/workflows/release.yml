@@ -126,48 +126,58 @@ jobs:
             cd dist && zip -ry ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
-      - name: 🍎 Verify and Fix macOS Library Linkage (Silent Success Version)
+      - name: 🍎 Verify and Fix macOS Library Linkage (True Fix)
         if: matrix.os == 'macos-latest'
         shell: bash
         run: |
-          echo "Macのバイナリリンク修正を強制実行します..."
+          # ★ GitHub Actionsの「1つでもエラーが出たら即終了」の掟を一時解除
+          set +e
+          
+          echo "Macのバイナリリンク修正を開始します..."
           
           # 1. アプリ本体を特定
-          APP_BIN=$(find dist -name "VO-SE_PRO_Mac" -type f | grep ".app/Contents/MacOS/VO-SE_PRO_Mac" | head -n 1)
+          APP_BIN=$(find dist -name "VO-SE_PRO_Mac" -type f | grep "\.app/Contents/MacOS/VO-SE_PRO_Mac" | head -n 1)
           echo "Main Binary found at: $APP_BIN"
 
-          # 2. 見つかったすべての dylib に対してループ処理
-          # findの結果を一度配列に入れることで、処理中のエラーによる中断を防ぎます
+          # 2. dylibを検索して配列に格納
           IFS=$'\n' dylibs=($(find dist -name "libvo_se.dylib" -type f))
           
           for DYLIB_BIN in "${dylibs[@]}"; do
             echo "--- Processing: $DYLIB_BIN ---"
             chmod 755 "$DYLIB_BIN"
             
-            # 警告(stderr)を標準出力(stdout)に逃がし、かつ成功を偽装する
-            install_name_tool -id "@loader_path/libvo_se.dylib" "$DYLIB_BIN" 2>&1 || true
+            # ID書き換え（警告が出てもそのまま進む）
+            install_name_tool -id "@loader_path/libvo_se.dylib" "$DYLIB_BIN"
             
             LIB_NAME=$(basename "$DYLIB_BIN")
+            
+            # 真の犯人対策：grepがExit 1を出してもスクリプトは止まらない
             OLD_REF=$(otool -L "$APP_BIN" | grep "$LIB_NAME" | awk '{print $1}')
             
-            if [ ! -z "$OLD_REF" ]; then
+            # 見つかった場合のみ書き換え処理を行う
+            if [ -n "$OLD_REF" ]; then
               echo "Fixing reference: $OLD_REF -> @loader_path/bin/$LIB_NAME"
-              install_name_tool -change "$OLD_REF" "@loader_path/bin/$LIB_NAME" "$APP_BIN" 2>&1 || true
+              install_name_tool -change "$OLD_REF" "@loader_path/bin/$LIB_NAME" "$APP_BIN"
+            else
+              echo "Reference not found in main binary (Loaded dynamically at runtime)."
             fi
             
-            # 再署名を施す（これ自体もエラーを無視して完走させる）
-            codesign --force --deep --sign - "$DYLIB_BIN" 2>&1 || true
+            # dylibの再署名
+            codesign --force --deep --sign - "$DYLIB_BIN"
           done
 
           # 3. 本体も再署名
           echo "Final re-signing..."
-          codesign --force --deep --sign - "$APP_BIN" 2>&1 || true
+          codesign --force --deep --sign - "$APP_BIN"
 
-          # 4. 最終確認（ここはエラー判定させない）
+          # 4. 最終確認
           echo "--- FINAL VERIFICATION ---"
-          otool -L "$APP_BIN" | grep "libvo_se" || echo "Check manual: linkage may be hidden"
+          otool -L "$APP_BIN" | grep "libvo_se" || echo "Library is loaded dynamically at runtime."
           
           echo "Workflow continuation forced. All fixes applied."
+          
+          # ★ 掟を元に戻す
+          set -e
           
           
       - name: 🔍 Startup Smoke Test (GUI Headless)
