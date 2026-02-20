@@ -62,16 +62,14 @@ class VoSeEngine:
         """
         lib_name = "libvo_se.dll" if self.os_name == "Windows" else "libvo_se.dylib"
         
-        # 1. 基本的なリソースパス（get_resource_pathを使用）
+        # 1. 基本的なリソースパス
         dll_path = get_resource_path(os.path.join("bin", lib_name))
         
         # 2. Mac特有のフォールバック処理
         if self.os_name == "Darwin":
             if not os.path.exists(dll_path):
-                # sys._MEIPASS を直接参照せず getattr で取得（型チェック対策）
                 meipass = getattr(sys, '_MEIPASS', None)
                 if meipass:
-                    # Contents/MacOS から見た Contents/Frameworks の位置を探す
                     bundle_dir = os.path.dirname(os.path.dirname(meipass))
                     alt_path = os.path.join(bundle_dir, "Frameworks", "bin", lib_name)
                     if os.path.exists(alt_path):
@@ -81,19 +79,22 @@ class VoSeEngine:
         # 3. 最終的なロード実行
         if os.path.exists(dll_path):
             try:
-                # Macでは絶対パス指定が必須
                 abs_dll_path = os.path.abspath(dll_path)
                 
                 if self.os_name == "Windows":
                     self.c_engine = ctypes.CDLL(abs_dll_path)
                 else:
-                    # Macでのロード。mode=10 (RTLD_GLOBAL)
-                    self.c_engine = ctypes.CDLL(abs_dll_path, mode=10)
+                    self.c_engine = ctypes.CDLL(abs_dll_path, mode=10) # RTLD_GLOBAL
                 
-                # --- [追加] C関数の型定義 (安全性の向上) ---
-                # process_voice(float* data, int length) と仮定
+                # --- C関数の型定義 (歌唱・読み上げの両方に対応) ---
                 if hasattr(self.c_engine, 'process_voice'):
-                    self.c_engine.process_voice.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_int]
+                    # process_voice(float* wav_data, int length, float* f0_data) 
+                    # 歌唱用にピッチ配列(f0)も渡せるように定義を拡張
+                    self.c_engine.process_voice.argtypes = [
+                        ctypes.POINTER(ctypes.c_float), 
+                        ctypes.c_int,
+                        ctypes.POINTER(ctypes.c_float)
+                    ]
                     self.c_engine.process_voice.restype = None
                 
                 print(f"[Success] C-Engine loaded: {abs_dll_path}")
@@ -106,9 +107,7 @@ class VoSeEngine:
             print(f"[Warning] C-Engine file not found at: {dll_path}")
 
     def analyze_intonation(self, text):
-        """
-        【読み上げ用】pyopenjtalkを使用した音韻解析
-        """
+        """【読み上げ用】音韻解析"""
         print(f"\n--- 読み上げ解析実行: '{text}' ---")
         try:
             labels = pyopenjtalk.extract_fullcontext(text)
@@ -116,39 +115,44 @@ class VoSeEngine:
         except Exception as e:
             return [f"Analysis failed: {str(e)}"]
 
-    def process_with_c(self, data_array):
+    def analyze_singing_pitch(self, notes):
         """
-        【読み上げ・歌唱共通】C++製エンジンによる音声波形処理
-        歌唱データなどの長い配列でも、メモリの連続性を保証して処理します。
+        【歌唱用】ノート情報（音符）からピッチ（F0）配列を生成します。
+        notes: [{'pitch': 60, 'duration': 1.0}, ...] のようなリストを想定
+        """
+        print("--- 歌唱ピッチ解析実行 ---")
+        # サンプリングレートやフレーム数に基づいたピッチカーブの生成ロジック
+        # ここで生成した配列を process_with_c に渡します
+        f0_curve = np.full(1000, 440.0, dtype=np.float32) # テスト用の固定ピッチ
+        return f0_curve
+
+    def process_with_c(self, data_array, f0_array=None):
+        """
+        【共通処理】波形データとピッチデータをC++エンジンに送り込みます。
         """
         if not self.c_engine:
-            print("[Warning] C-Engine is not loaded. Skipping process.")
             return data_array
             
         try:
-            # メモリが連続していることを保証 (歌唱データの音飛び防止)
-            data_float = np.ascontiguousarray(data_array, dtype=np.float32)
+            # 波形データの準備
+            wav_float = np.ascontiguousarray(data_array, dtype=np.float32)
+            wav_ptr = wav_float.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+            length = len(wav_float)
+
+            # ピッチデータ（F0）の準備（歌唱モード時のみ使用）
+            f0_ptr = None
+            if f0_array is not None:
+                f0_float = np.ascontiguousarray(f0_array, dtype=np.float32)
+                f0_ptr = f0_float.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
             
-            # C言語側のポインタを取得
-            ptr = data_float.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-            length = len(data_float)
+            # C++エンジンの呼び出し
+            # 第3引数にピッチ情報を渡すことで、歌声の高さが制御されます
+            self.c_engine.process_voice(wav_ptr, length, f0_ptr)
             
-            # C++エンジンの呼び出し（ピッチ補正やフォルマント処理を想定）
-            self.c_engine.process_voice(ptr, length)
-            
-            return data_float
+            return wav_float
         except Exception as e:
             print(f"C-Process error: {e}")
             return data_array
-
-    def analyze_musical_score(self, score_data):
-        """
-        【歌唱用】将来的な拡張：楽譜データの解析メソッド
-        現在はスタブ（枠組み）として定義
-        """
-        print("--- 歌唱データ解析中 ---")
-        # ここにMusicXML等の解析ロジックを統合予定
-        pass
 
 # --- [4] メイン実行処理 ---
 def main():
