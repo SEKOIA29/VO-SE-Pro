@@ -58,21 +58,21 @@ class VoSeEngine:
     def _load_c_engine(self):
         """
         OSに応じたライブラリ（DLL/dylib）を最適なパスからロードします。
-        Mac実機での構造（App Bundle）特有のパス解決にも対応しています。
+        型チェックエラー（_MEIPASS）を回避し、Mac実機構造に対応した完全版です。
         """
         lib_name = "libvo_se.dll" if self.os_name == "Windows" else "libvo_se.dylib"
         
-        # 1. 基本的なリソースパス（PyInstallerのデフォルト）
+        # 1. 基本的なリソースパス（get_resource_pathを使用）
         dll_path = get_resource_path(os.path.join("bin", lib_name))
         
         # 2. Mac特有のフォールバック処理
-        # .app/Contents/Frameworks/bin に配置された場合にも対応
         if self.os_name == "Darwin":
             if not os.path.exists(dll_path):
-                if getattr(sys, 'frozen', False):
-                    # PyInstallerでビルドされたMacアプリ内の相対構造を考慮
+                # sys._MEIPASS を直接参照せず getattr で取得（型チェック対策）
+                meipass = getattr(sys, '_MEIPASS', None)
+                if meipass:
                     # Contents/MacOS から見た Contents/Frameworks の位置を探す
-                    bundle_dir = os.path.dirname(os.path.dirname(sys._MEIPASS))
+                    bundle_dir = os.path.dirname(os.path.dirname(meipass))
                     alt_path = os.path.join(bundle_dir, "Frameworks", "bin", lib_name)
                     if os.path.exists(alt_path):
                         dll_path = alt_path
@@ -81,20 +81,18 @@ class VoSeEngine:
         # 3. 最終的なロード実行
         if os.path.exists(dll_path):
             try:
-                # Macでは相対パス指定によるエラーを防ぐため絶対パスに変換
+                # Macでは絶対パス指定が必須
                 abs_dll_path = os.path.abspath(dll_path)
                 
-                # Windowsでの読み込み（通常通り）
                 if self.os_name == "Windows":
                     self.c_engine = ctypes.CDLL(abs_dll_path)
-                # Macでの読み込み（ハンドルを確実に確保）
                 else:
-                    self.c_engine = ctypes.CDLL(abs_dll_path, mode=ctypes.RTLD_GLOBAL)
+                    # Macでのロード。mode=ctypes.RTLD_GLOBAL は int 扱いなので安全
+                    self.c_engine = ctypes.CDLL(abs_dll_path, mode=10) # 10 = RTLD_GLOBAL (Mac/Unix)
                 
                 print(f"[Success] C-Engine loaded: {abs_dll_path}")
             except Exception as e:
                 print(f"[Error] Failed to load C-Engine: {e}")
-                # ロード失敗時の詳細情報をコンソールに出力
                 if hasattr(sys, 'stderr'):
                     import traceback
                     traceback.print_exc()
@@ -115,12 +113,10 @@ class VoSeEngine:
         if not self.c_engine:
             return data_array
             
-        # numpy配列をC言語互換のfloatポインタに変換
         data_float = np.array(data_array, dtype=np.float32)
         ptr = data_float.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
         
         try:
-            # C++側の関数 process_voice(float* data, int length) を呼び出し
             self.c_engine.process_voice(ptr, len(data_float))
             return data_float
         except Exception as e:
