@@ -188,18 +188,20 @@ jobs:
         run: |
           echo "Starting startup test..."
           export QT_QPA_PLATFORM=offscreen
-          # Pythonの標準出力を強制的にUTF-8に設定してエンコードエラーを回避
           export PYTHONIOENCODING=utf-8
           
+          # Windows/Mac共通で、作成されたバイナリがライブラリを読めるか直接叩く
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            echo "Running Windows Import Test..."
-            python -c "import sys; sys.path.append('.'); import main; print('SUCCESS: Windows Import Check Passed')"
+            echo "Running Windows Binary Check..."
+            # exeがライブラリ読み込みで落ちないか、インポートテスト
+            python -c "import ctypes; print('DLL Load Test:', ctypes.CDLL('./bin/libvo_se.dll'))" || exit 1
+            python -c "import main; print('SUCCESS: Windows App Import Passed')"
           else
-            echo "Running macOS Import Test..."
-            # MacのApp構造を考慮した実行テスト
-            chmod +x dist/VO-SE_PRO_Mac.app/Contents/MacOS/VO-SE_PRO_Mac
-            python -c "import sys; sys.path.append('.'); import main; print('SUCCESS: macOS Import Check Passed')"
-          fi 
+            echo "Running macOS Binary Check..."
+            # Macのdylibが正しくリンクされているか確認
+            python -c "import ctypes; print('Dylib Load Test:', ctypes.CDLL('./bin/libvo_se.dylib'))" || exit 1
+            python -c "import main; print('SUCCESS: macOS App Import Passed')"
+          fi
 
       - name: 📦 Save Artifacts
         uses: actions/upload-artifact@v4
