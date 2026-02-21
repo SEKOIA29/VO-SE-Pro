@@ -190,17 +190,17 @@ jobs:
           export QT_QPA_PLATFORM=offscreen
           export PYTHONIOENCODING=utf-8
           
-          # Windows/Mac共通で、作成されたバイナリがライブラリを読めるか直接叩く
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             echo "Running Windows Binary Check..."
-            # exeがライブラリ読み込みで落ちないか、インポートテスト
-            python -c "import ctypes; print('DLL Load Test:', ctypes.CDLL('./bin/libvo_se.dll'))" || exit 1
-            python -c "import main; print('SUCCESS: Windows App Import Passed')"
+            # Windowsでは明示的にカレントディレクトリをパスに追加し、
+            # DLLが実際に存在するかとロード可能かをダブルチェックします
+            python -c "import os, ctypes; dll_path=os.path.abspath('bin/libvo_se.dll'); print(f'Checking {dll_path}'); print('DLL Load Test:', ctypes.CDLL(dll_path))" || exit 1
+            python -c "import sys; sys.path.append('.'); import main; print('SUCCESS: Windows App Import Passed')"
           else
             echo "Running macOS Binary Check..."
-            # Macのdylibが正しくリンクされているか確認
-            python -c "import ctypes; print('Dylib Load Test:', ctypes.CDLL('./bin/libvo_se.dylib'))" || exit 1
-            python -c "import main; print('SUCCESS: macOS App Import Passed')"
+            # Macは代表の書いた install_name_tool の成果を確認します
+            python -c "import os, ctypes; dylib_path=os.path.abspath('bin/libvo_se.dylib'); print(f'Checking {dylib_path}'); print('Dylib Load Test:', ctypes.CDLL(dylib_path))" || exit 1
+            python -c "import sys; sys.path.append('.'); import main; print('SUCCESS: macOS App Import Passed')"
           fi
 
       - name: 📦 Save Artifacts
