@@ -29,6 +29,14 @@
         .btn-main { background: #fff; color: #000; box-shadow: 0 0 30px rgba(255,255,255,0.2); transition: all 0.3s ease; }
         .btn-main:hover { transform: scale(1.05); box-shadow: 0 0 50px rgba(255,255,255,0.4); }
     </style>
+
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-XXXXXXXXXX');
+    </script>
 </head>
 <body class="antialiased">
 
@@ -157,6 +165,45 @@
             <p class="text-zinc-700 text-[10px] tracking-[0.5em] uppercase">VO-SE Project 2026 | No Fortress, No Chains.</p>
         </div>
     </footer>
+
+    <script>
+        // 代表、この関数が「クリックの瞬間」を記録します。
+        function trackDownload(platform) {
+            // 現在の日時を取得
+            const now = new Date().toLocaleString('ja-JP');
+        
+            // 1. ローカルストレージ（ブラウザ）に記録（簡易的な自分用）
+            let count = localStorage.getItem('vose_dl_' + platform) || 0;
+            count = parseInt(count) + 1;
+            localStorage.setItem('vose_dl_' + platform, count);
+        
+            console.log(`[Aural Monitor] ${platform} download tracked. Total: ${count}`);
+
+            // 2. Google Analytics(GA4)を導入している場合、自動でイベントを送信
+            if (typeof gtag === 'function') {
+                gtag('event', 'download', {
+                    'event_category': 'software',
+                    'event_label': platform,
+                    'value': 1
+                });
+            }
+         }
+
+        // HTML上のボタンにイベントを紐付けます
+        document.addEventListener('DOMContentLoaded', () => {
+            // Windowsボタンの取得（セレクタで指定）
+            const winBtn = document.querySelector('a[href*="VO-SE_PRO_Win.exe"]');
+            if (winBtn) {
+                winBtn.addEventListener('click', () => trackDownload('Windows'));
+            }
+
+            // Macボタンの取得
+            const macBtn = document.querySelector('a[href*="VO-SE_PRO_Mac.zip"]');
+            if (macBtn) {
+                macBtn.addEventListener('click', () => trackDownload('macOS'));
+            }
+        });
+    </script>
 
 </body>
 </html>
