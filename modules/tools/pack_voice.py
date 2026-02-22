@@ -11,6 +11,9 @@ def pack_all_voices():
     
     with open(output_path, 'w', encoding='utf-8') as h:
         h.write("#pragma once\n#include <stdint.h>\n\n")
+
+        h.write("// C++側の関数を呼び出すための宣言\n")
+        h.write('extern "C" void load_embedded_resource(const char* phoneme, const int16_t* raw_data, int sample_count);\n\n')
         
         voice_entries = []
         
