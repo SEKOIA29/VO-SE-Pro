@@ -191,15 +191,36 @@ jobs:
           export PYTHONIOENCODING=utf-8
           
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            echo "Running Windows Binary Check..."
-            # Windowsでは明示的にカレントディレクトリをパスに追加し、
-            # DLLが実際に存在するかとロード可能かをダブルチェックします
-            python -c "import os, ctypes; dll_path=os.path.abspath('bin/libvo_se.dll'); print(f'Checking {dll_path}'); print('DLL Load Test:', ctypes.CDLL(dll_path))" || exit 1
+            echo "Running Windows Binary Check with Path Fix..."
+            # WindowsのDLL検索パスにbinディレクトリを強制追加し、
+            # 万が一の依存関係（libgcc等）の不足も検知できるようにします
+            python -c "
+            import os, ctypes, sys
+            dll_path = os.path.abspath('bin/libvo_se.dll')
+            bin_dir = os.path.dirname(dll_path)
+            
+            print(f'Target DLL: {dll_path}')
+            if not os.path.exists(dll_path):
+                print('Error: DLL file not found!'); sys.exit(1)
+            
+            # Windows特有のDLL検索パス追加
+            if hasattr(os, 'add_dll_directory'):
+                os.add_dll_directory(bin_dir)
+            else:
+                os.environ['PATH'] = bin_dir + os.pathpathsep + os.environ['PATH']
+            
+            try:
+                lib = ctypes.CDLL(dll_path)
+                print('SUCCESS: DLL Loaded successfully.')
+            except Exception as e:
+                print(f'Error: Failed to load DLL. {e}')
+                # 依存関係を調べるためのヒントを出力
+                sys.exit(1)
+            " || exit 1
             python -c "import sys; sys.path.append('.'); import main; print('SUCCESS: Windows App Import Passed')"
           else
             echo "Running macOS Binary Check..."
-            # Macは代表の書いた install_name_tool の成果を確認します
-            python -c "import os, ctypes; dylib_path=os.path.abspath('bin/libvo_se.dylib'); print(f'Checking {dylib_path}'); print('Dylib Load Test:', ctypes.CDLL(dylib_path))" || exit 1
+            python -c "import os, ctypes, sys; dylib_path=os.path.abspath('bin/libvo_se.dylib'); print(f'Checking {dylib_path}'); print('Dylib Load Test:', ctypes.CDLL(dylib_path))" || exit 1
             python -c "import sys; sys.path.append('.'); import main; print('SUCCESS: macOS App Import Passed')"
           fi
 
