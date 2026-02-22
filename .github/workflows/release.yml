@@ -190,92 +190,22 @@ jobs:
           export QT_QPA_PLATFORM=offscreen
           export PYTHONIOENCODING=utf-8
           
+          # Windows用のテストスクリプトを生成
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            echo "Running Windows Binary Check..."
-            # 省略なしのPythonスクリプト実行
-            python -c "
-import os
-import ctypes
-import sys
-
-# パスの解決
-dll_path = os.path.abspath('bin/libvo_se.dll')
-bin_dir = os.path.dirname(dll_path)
-
-print(f'Target DLL Path: {dll_path}')
-print(f'Checking directory: {bin_dir}')
-
-# ファイルの存在確認
-if not os.path.exists(dll_path):
-    print('Critical Error: libvo_se.dll not found in bin directory.')
-    sys.exit(1)
-
-# WindowsのDLL検索パスへの追加処理
-if hasattr(os, 'add_dll_directory'):
-    print('Detected Python 3.8+, using os.add_dll_directory')
-    os.add_dll_directory(bin_dir)
-else:
-    print('Legacy Python detected, updating PATH environment variable')
-    os.environ['PATH'] = bin_dir + os.pathsep + os.environ.get('PATH', '')
-
-# 実際のロードテスト
-try:
-    # 依存関係を含めてロードを試行
-    lib = ctypes.CDLL(dll_path)
-    print('SUCCESS: libvo_se.dll and its dependencies loaded successfully.')
-except Exception as e:
-    print('--- DLL Load Failure Report ---')
-    print(f'Error Type: {type(e).__name__}')
-    print(f'Error Message: {e}')
-    print('Possible cause: Missing C++ Runtime or static linking failure.')
-    sys.exit(1)
-            "
+            echo "Building Windows Test Script..."
+            printf "import os\nimport ctypes\nimport sys\n\ndll_path = os.path.abspath('bin/libvo_se.dll')\nbin_dir = os.path.dirname(dll_path)\n\nprint(f'Target: {dll_path}')\nif not os.path.exists(dll_path):\n    print('Error: DLL not found')\n    sys.exit(1)\n\nif hasattr(os, 'add_dll_directory'):\n    os.add_dll_directory(bin_dir)\nelse:\n    os.environ['PATH'] = bin_dir + os.pathsep + os.environ.get('PATH', '')\n\ntry:\n    lib = ctypes.CDLL(dll_path)\n    print('SUCCESS: DLL Loaded')\nexcept Exception as e:\n    print(f'Failure: {e}')\n    sys.exit(1)\n\nsys.path.append(os.getcwd())\nimport main\nprint('SUCCESS: main.py loaded')\n" > smoke_test.py
             
-            # メインモジュールのインポートテスト
-            python -c "
-import sys
-import os
-sys.path.append(os.getcwd())
-try:
-    import main
-    print('SUCCESS: main.py and modules imported successfully.')
-except Exception as e:
-    print(f'Import Error: {e}')
-    sys.exit(1)
-            "
+            python smoke_test.py
+          
+          # macOS用のテストスクリプトを生成
           else
-            echo "Running macOS Binary Check..."
-            # macOS向けの省略なし検証
-            python -c "
-import os
-import ctypes
-import sys
-dylib_path = os.path.abspath('bin/libvo_se.dylib')
-print(f'Checking macOS Dylib: {dylib_path}')
-if not os.path.exists(dylib_path):
-    print('Error: libvo_se.dylib not found.')
-    sys.exit(1)
-try:
-    lib = ctypes.CDLL(dylib_path)
-    print('SUCCESS: libvo_se.dylib loaded successfully.')
-except Exception as e:
-    print(f'macOS Load Error: {e}')
-    sys.exit(1)
-            "
-            # macOSのインポートテスト
-            python -c "
-import sys
-import os
-sys.path.append(os.getcwd())
-try:
-    import main
-    print('SUCCESS: main.py imported successfully on macOS.')
-except Exception as e:
-    print(f'macOS Import Error: {e}')
-    sys.exit(1)
-            "
+            echo "Building macOS Test Script..."
+            printf "import os\nimport ctypes\nimport sys\n\ndylib_path = os.path.abspath('bin/libvo_se.dylib')\nprint(f'Target: {dylib_path}')\n\ntry:\n    lib = ctypes.CDLL(dylib_path)\n    print('SUCCESS: Dylib Loaded')\nexcept Exception as e:\n    print(f'Failure: {e}')\n    sys.exit(1)\n\nsys.path.append(os.getcwd())\nimport main\nprint('SUCCESS: main.py loaded')\n" > smoke_test.py
+            
+            python smoke_test.py
           fi
 
+          
       - name: 📦 Save Artifacts
         uses: actions/upload-artifact@v4
         with:
