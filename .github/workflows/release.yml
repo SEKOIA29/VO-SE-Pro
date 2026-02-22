@@ -189,21 +189,52 @@ jobs:
           echo "Starting startup test..."
           export QT_QPA_PLATFORM=offscreen
           export PYTHONIOENCODING=utf-8
-          
-          # Windows用のテストスクリプトを生成
+
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            echo "Building Windows Test Script..."
-            printf "import os\nimport ctypes\nimport sys\n\ndll_path = os.path.abspath('bin/libvo_se.dll')\nbin_dir = os.path.dirname(dll_path)\n\nprint(f'Target: {dll_path}')\nif not os.path.exists(dll_path):\n    print('Error: DLL not found')\n    sys.exit(1)\n\nif hasattr(os, 'add_dll_directory'):\n    os.add_dll_directory(bin_dir)\nelse:\n    os.environ['PATH'] = bin_dir + os.pathsep + os.environ.get('PATH', '')\n\ntry:\n    lib = ctypes.CDLL(dll_path)\n    print('SUCCESS: DLL Loaded')\nexcept Exception as e:\n    print(f'Failure: {e}')\n    sys.exit(1)\n\nsys.path.append(os.getcwd())\nimport main\nprint('SUCCESS: main.py loaded')\n" > smoke_test.py
-            
-            python smoke_test.py
-          
-          # macOS用のテストスクリプトを生成
+            echo "Running Windows Binary Check (src/include/bin structure)..."
+            # 改行をバックスラッシュで繋ぎ、インデントを維持したままPythonに渡す
+            python -c "
+            import os, ctypes, sys; \
+            root_dir = os.path.abspath(os.getcwd()); \
+            bin_dir = os.path.join(root_dir, 'bin'); \
+            src_dir = os.path.join(root_dir, 'src'); \
+            dll_path = os.path.join(bin_dir, 'libvo_se.dll'); \
+            print(f'Target: {dll_path}'); \
+            os.environ['PATH'] = bin_dir + os.pathsep + os.environ.get('PATH', ''); \
+            if hasattr(os, 'add_dll_directory'): os.add_dll_directory(bin_dir); \
+            os.chdir(bin_dir); \
+            try: \
+                lib = ctypes.CDLL('./libvo_se.dll'); \
+                print('SUCCESS: DLL Loaded'); \
+            except Exception as e: \
+                print(f'DLL Error: {e}'); sys.exit(1); \
+            os.chdir(root_dir); \
+            sys.path.extend([root_dir, src_dir]); \
+            try: \
+                import main; \
+                print('SUCCESS: App Import Passed'); \
+            except Exception as e: \
+                print(f'Import Error: {e}'); sys.exit(1); \
+            "
           else
-            echo "Building macOS Test Script..."
-            printf "import os\nimport ctypes\nimport sys\n\ndylib_path = os.path.abspath('bin/libvo_se.dylib')\nprint(f'Target: {dylib_path}')\n\ntry:\n    lib = ctypes.CDLL(dylib_path)\n    print('SUCCESS: Dylib Loaded')\nexcept Exception as e:\n    print(f'Failure: {e}')\n    sys.exit(1)\n\nsys.path.append(os.getcwd())\nimport main\nprint('SUCCESS: main.py loaded')\n" > smoke_test.py
-            
-            python smoke_test.py
+            echo "Running macOS Binary Check..."
+            python -c "
+            import os, ctypes, sys; \
+            root_dir = os.path.abspath(os.getcwd()); \
+            src_dir = os.path.join(root_dir, 'src'); \
+            dylib_path = os.path.join(root_dir, 'bin', 'libvo_se.dylib'); \
+            try: \
+                lib = ctypes.CDLL(dylib_path); \
+                print('SUCCESS: Dylib Loaded'); \
+            except Exception as e: \
+                print(f'Error: {e}'); sys.exit(1); \
+            sys.path.extend([root_dir, src_dir]); \
+            import main; \
+            print('SUCCESS: macOS Import Passed'); \
+            "
           fi
+
+          
 
           
       - name: 📦 Save Artifacts
