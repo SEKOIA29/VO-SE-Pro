@@ -4,18 +4,16 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <cstdint> // 追加: int16_t のために必要
 #include "vose_core.h"
 #include "voice_data.h" // AとかBとかバラバラにしない
-
-
-
-
 
 // WORLDライブラリ (徹底的に使い倒す)
 #include "world/synthesis.h"
 #include "world/cheaptrick.h"
 #include "world/d4c.h"
 #include "world/audioio.h"
+#include "world/constantnumbers.h" // 追加: GetFFTSizeForCheapTrick のために必要
 
 // --- グローバルデータベース (スレッドセーフへの布石) ---
 struct EmbeddedVoice {
@@ -25,7 +23,6 @@ struct EmbeddedVoice {
 static std::map<std::string, EmbeddedVoice> g_voice_db;
 
 extern "C" {
-
 
 void init_official_engine() {
     // Pythonが自動生成した「全登録関数」を叩く
@@ -103,7 +100,8 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         std::vector<double> time_axis(f0_length);
         double source_duration = static_cast<double>(ev.waveform.size()) / fs;
         for (int j = 0; j < f0_length; ++j) {
-            time_axis[j] = (static_cast<double>(j) / (f0_length - 1)) * source_duration;
+            // 0除算によるクラッシュ対策 (std::max を追加)
+            time_axis[j] = (static_cast<double>(j) / std::max(1, f0_length - 1)) * source_duration;
         }
 
         // WORLD解析：F0固定でのスペクトル抽出
@@ -135,6 +133,8 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
                 // 2. 高域特性の調整 (Tension / Breath)
                 double freq_weight = static_cast<double>(k) / (spec_bins - 1);
                 spec_data[j][k] *= (1.0 + (t_val - 0.5) * freq_weight);
+                
+                // ノイズ爆発防止のガード (std::clamp を追加)
                 ap_data[j][k] = std::clamp(ap_data[j][k] + (b_val * freq_weight), 0.0, 1.0);
             }
         }
