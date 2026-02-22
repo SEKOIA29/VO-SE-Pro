@@ -192,7 +192,7 @@ jobs:
 
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             echo "Building Windows Script using printf..."
-            # 行ごとにダブルクォートで囲むことで、YAMLのインデントを完全に無視してファイルに書き込みます
+            # インデントを維持したまま、winmode=0 を追加して依存関係を強制ロードさせます
             printf "%s\n" \
               "import os, ctypes, sys" \
               "root_dir = os.path.abspath(os.getcwd())" \
@@ -204,10 +204,15 @@ jobs:
               "if hasattr(os, 'add_dll_directory'): os.add_dll_directory(bin_dir)" \
               "try:" \
               "    os.chdir(bin_dir)" \
-              "    lib = ctypes.CDLL('./libvo_se.dll')" \
-              "    print('SUCCESS: DLL Loaded')" \
+              "    # winmode=0 を指定し、Windowsの従来のDLL検索ルール（PATH等を含む）を強制適用します" \
+              "    lib = ctypes.CDLL(dll_path, winmode=0)" \
+              "    print('SUCCESS: DLL and dependencies Loaded')" \
               "except Exception as e:" \
-              "    print(f'DLL Error: {e}'); sys.exit(1)" \
+              "    print(f'DLL Error: {e}')" \
+              "    print('--- DEBUG: Contents of bin directory ---')" \
+              "    print(os.listdir(bin_dir) if os.path.exists(bin_dir) else 'bin folder not found')" \
+              "    print('----------------------------------------')" \
+              "    sys.exit(1)" \
               "os.chdir(root_dir)" \
               "sys.path.extend([root_dir, src_dir])" \
               "try:" \
