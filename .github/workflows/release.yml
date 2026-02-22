@@ -191,37 +191,89 @@ jobs:
           export PYTHONIOENCODING=utf-8
           
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            echo "Running Windows Binary Check with Path Fix..."
-            # WindowsのDLL検索パスにbinディレクトリを強制追加し、
-            # 万が一の依存関係（libgcc等）の不足も検知できるようにします
+            echo "Running Windows Binary Check..."
+            # 省略なしのPythonスクリプト実行
             python -c "
-            import os, ctypes, sys
-            dll_path = os.path.abspath('bin/libvo_se.dll')
-            bin_dir = os.path.dirname(dll_path)
+import os
+import ctypes
+import sys
+
+# パスの解決
+dll_path = os.path.abspath('bin/libvo_se.dll')
+bin_dir = os.path.dirname(dll_path)
+
+print(f'Target DLL Path: {dll_path}')
+print(f'Checking directory: {bin_dir}')
+
+# ファイルの存在確認
+if not os.path.exists(dll_path):
+    print('Critical Error: libvo_se.dll not found in bin directory.')
+    sys.exit(1)
+
+# WindowsのDLL検索パスへの追加処理
+if hasattr(os, 'add_dll_directory'):
+    print('Detected Python 3.8+, using os.add_dll_directory')
+    os.add_dll_directory(bin_dir)
+else:
+    print('Legacy Python detected, updating PATH environment variable')
+    os.environ['PATH'] = bin_dir + os.pathsep + os.environ.get('PATH', '')
+
+# 実際のロードテスト
+try:
+    # 依存関係を含めてロードを試行
+    lib = ctypes.CDLL(dll_path)
+    print('SUCCESS: libvo_se.dll and its dependencies loaded successfully.')
+except Exception as e:
+    print('--- DLL Load Failure Report ---')
+    print(f'Error Type: {type(e).__name__}')
+    print(f'Error Message: {e}')
+    print('Possible cause: Missing C++ Runtime or static linking failure.')
+    sys.exit(1)
+            "
             
-            print(f'Target DLL: {dll_path}')
-            if not os.path.exists(dll_path):
-                print('Error: DLL file not found!'); sys.exit(1)
-            
-            # Windows特有のDLL検索パス追加
-            if hasattr(os, 'add_dll_directory'):
-                os.add_dll_directory(bin_dir)
-            else:
-                os.environ['PATH'] = bin_dir + os.pathpathsep + os.environ['PATH']
-            
-            try:
-                lib = ctypes.CDLL(dll_path)
-                print('SUCCESS: DLL Loaded successfully.')
-            except Exception as e:
-                print(f'Error: Failed to load DLL. {e}')
-                # 依存関係を調べるためのヒントを出力
-                sys.exit(1)
-            " || exit 1
-            python -c "import sys; sys.path.append('.'); import main; print('SUCCESS: Windows App Import Passed')"
+            # メインモジュールのインポートテスト
+            python -c "
+import sys
+import os
+sys.path.append(os.getcwd())
+try:
+    import main
+    print('SUCCESS: main.py and modules imported successfully.')
+except Exception as e:
+    print(f'Import Error: {e}')
+    sys.exit(1)
+            "
           else
             echo "Running macOS Binary Check..."
-            python -c "import os, ctypes, sys; dylib_path=os.path.abspath('bin/libvo_se.dylib'); print(f'Checking {dylib_path}'); print('Dylib Load Test:', ctypes.CDLL(dylib_path))" || exit 1
-            python -c "import sys; sys.path.append('.'); import main; print('SUCCESS: macOS App Import Passed')"
+            # macOS向けの省略なし検証
+            python -c "
+import os
+import ctypes
+import sys
+dylib_path = os.path.abspath('bin/libvo_se.dylib')
+print(f'Checking macOS Dylib: {dylib_path}')
+if not os.path.exists(dylib_path):
+    print('Error: libvo_se.dylib not found.')
+    sys.exit(1)
+try:
+    lib = ctypes.CDLL(dylib_path)
+    print('SUCCESS: libvo_se.dylib loaded successfully.')
+except Exception as e:
+    print(f'macOS Load Error: {e}')
+    sys.exit(1)
+            "
+            # macOSのインポートテスト
+            python -c "
+import sys
+import os
+sys.path.append(os.getcwd())
+try:
+    import main
+    print('SUCCESS: main.py imported successfully on macOS.')
+except Exception as e:
+    print(f'macOS Import Error: {e}')
+    sys.exit(1)
+            "
           fi
 
       - name: 📦 Save Artifacts
