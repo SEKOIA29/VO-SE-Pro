@@ -191,47 +191,52 @@ jobs:
           export PYTHONIOENCODING=utf-8
 
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            echo "Running Windows Binary Check (src/include/bin structure)..."
-            # 改行をバックスラッシュで繋ぎ、インデントを維持したままPythonに渡す
-            python -c "
-            import os, ctypes, sys; \
-            root_dir = os.path.abspath(os.getcwd()); \
-            bin_dir = os.path.join(root_dir, 'bin'); \
-            src_dir = os.path.join(root_dir, 'src'); \
-            dll_path = os.path.join(bin_dir, 'libvo_se.dll'); \
-            print(f'Target: {dll_path}'); \
-            os.environ['PATH'] = bin_dir + os.pathsep + os.environ.get('PATH', ''); \
-            if hasattr(os, 'add_dll_directory'): os.add_dll_directory(bin_dir); \
-            os.chdir(bin_dir); \
-            try: \
-                lib = ctypes.CDLL('./libvo_se.dll'); \
-                print('SUCCESS: DLL Loaded'); \
-            except Exception as e: \
-                print(f'DLL Error: {e}'); sys.exit(1); \
-            os.chdir(root_dir); \
-            sys.path.extend([root_dir, src_dir]); \
-            try: \
-                import main; \
-                print('SUCCESS: App Import Passed'); \
-            except Exception as e: \
-                print(f'Import Error: {e}'); sys.exit(1); \
-            "
+            echo "Building Windows Script using printf..."
+            # 行ごとにダブルクォートで囲むことで、YAMLのインデントを完全に無視してファイルに書き込みます
+            printf "%s\n" \
+              "import os, ctypes, sys" \
+              "root_dir = os.path.abspath(os.getcwd())" \
+              "bin_dir = os.path.join(root_dir, 'bin')" \
+              "src_dir = os.path.join(root_dir, 'src')" \
+              "dll_path = os.path.join(bin_dir, 'libvo_se.dll')" \
+              "print(f'Target DLL: {dll_path}')" \
+              "os.environ['PATH'] = bin_dir + os.pathsep + os.environ.get('PATH', '')" \
+              "if hasattr(os, 'add_dll_directory'): os.add_dll_directory(bin_dir)" \
+              "try:" \
+              "    os.chdir(bin_dir)" \
+              "    lib = ctypes.CDLL('./libvo_se.dll')" \
+              "    print('SUCCESS: DLL Loaded')" \
+              "except Exception as e:" \
+              "    print(f'DLL Error: {e}'); sys.exit(1)" \
+              "os.chdir(root_dir)" \
+              "sys.path.extend([root_dir, src_dir])" \
+              "try:" \
+              "    import main" \
+              "    print('SUCCESS: App Import Passed')" \
+              "except Exception as e:" \
+              "    print(f'Import Error: {e}'); sys.exit(1)" > smoke_test.py
+            
+            python smoke_test.py
           else
-            echo "Running macOS Binary Check..."
-            python -c "
-            import os, ctypes, sys; \
-            root_dir = os.path.abspath(os.getcwd()); \
-            src_dir = os.path.join(root_dir, 'src'); \
-            dylib_path = os.path.join(root_dir, 'bin', 'libvo_se.dylib'); \
-            try: \
-                lib = ctypes.CDLL(dylib_path); \
-                print('SUCCESS: Dylib Loaded'); \
-            except Exception as e: \
-                print(f'Error: {e}'); sys.exit(1); \
-            sys.path.extend([root_dir, src_dir]); \
-            import main; \
-            print('SUCCESS: macOS Import Passed'); \
-            "
+            echo "Building macOS Script using printf..."
+            printf "%s\n" \
+              "import os, ctypes, sys" \
+              "root_dir = os.path.abspath(os.getcwd())" \
+              "src_dir = os.path.join(root_dir, 'src')" \
+              "dylib_path = os.path.join(root_dir, 'bin', 'libvo_se.dylib')" \
+              "try:" \
+              "    lib = ctypes.CDLL(dylib_path)" \
+              "    print('SUCCESS: Dylib Loaded')" \
+              "except Exception as e:" \
+              "    print(f'Error: {e}'); sys.exit(1)" \
+              "sys.path.extend([root_dir, src_dir])" \
+              "try:" \
+              "    import main" \
+              "    print('SUCCESS: macOS Import Passed')" \
+              "except Exception as e:" \
+              "    print(f'Import Error: {e}'); sys.exit(1)" > smoke_test.py
+            
+            python smoke_test.py
           fi
 
           
