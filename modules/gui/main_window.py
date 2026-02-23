@@ -910,6 +910,18 @@ class VoiceCardGallery(QWidget):
         # 初期状態のスタイル適用
         self.set_selected(False)
 
+        # 1. ここで「使う予定の変数」をすべて宣言する（住民登録）
+        self.manager = voice_manager
+        self.cards = {}          # 初期値は空でも、存在を教えることが大事
+        self.partner_data = {}   # 同上
+        self.grid = None         # まだ作ってなくても、名前だけ登録しておく
+        
+        # 2. その後、実際のオブジェクトを作成・代入する
+        self.main_layout = QVBoxLayout(self) # layout という名前は避ける
+        
+        self.container = QWidget()
+        self.grid = QGridLayout(self.container) # ここで None が上書きされ、確定する
+
     def set_partner_data(self, partners: dict):
         """MainWindowから10枠の募集情報を注入する"""
         self.partner_data = partners
