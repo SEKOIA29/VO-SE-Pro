@@ -75,9 +75,23 @@ jobs:
 
       # 1. 音源をパッキングして voice_data.h を生成
       - name: Pack Official Voice Data
+        shell: bash
         run: |
-          # スクリプトの場所をプロジェクトの構造に合わせる
-          python tools/wav_to_cpp.py
+          # 1. 代表が書いたスクリプトファイルをプロジェクト全体から探す
+          # (pack_voice.py という名前で保存されていることを想定)
+          TARGET_SCRIPT=$(find . -name "pack_voice.py" -o -name "pack_all_voices.py" | head -n 1)
+          
+          if [ -n "$TARGET_SCRIPT" ]; then
+            echo "Found script: $TARGET_SCRIPT"
+            # 2. そのファイルがあるディレクトリに移動して実行（パスの食い違いを防ぐ）
+            SCRIPT_DIR=$(dirname "$TARGET_SCRIPT")
+            cd "$SCRIPT_DIR"
+            python $(basename "$TARGET_SCRIPT")
+            cd - # 元のディレクトリに戻る
+          else
+            echo "Error: Packing script not found. Please check the filename in your repository."
+            exit 1
+          fi
 
       # 2. C++ エンジンをビルド（生成された voice_data.h を含める）
       - name: Build C++ Engine
