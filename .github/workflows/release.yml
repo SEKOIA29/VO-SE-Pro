@@ -73,21 +73,26 @@ jobs:
         run: |
           pyright .
 
+      # 1. 音源をパッキングして voice_data.h を生成
       - name: Pack Official Voice Data
-        run: python modules/tools/pack_voice.py
+        run: |
+          # スクリプトの場所をプロジェクトの構造に合わせる
+          python tools/wav_to_cpp.py
 
+      # 2. C++ エンジンをビルド（生成された voice_data.h を含める）
       - name: Build C++ Engine
         shell: bash
         run: |
           mkdir -p bin
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # vose_core.cpp が voice_data.h を読み込んで register する想定
             g++ -std=c++17 -shared -fPIC -o bin/libvo_se.dll src/vose_core.cpp src/world/*.cpp \
               -I. -Isrc -Iinclude -Iinclude/world -O2 -static-libgcc -static-libstdc++
           else
             clang++ -std=c++17 -shared -fPIC -o bin/libvo_se.dylib src/vose_core.cpp src/world/*.cpp \
               -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O3 -w
           fi
-
+          
       - name: Package App
         shell: bash
         run: |
