@@ -196,14 +196,20 @@ class TimelineWidget(QWidget):
 
     # --- C言語エンジン連携ブリッジ ---
     def export_all_data(self, file_path: str = "engine_input.json") -> None:
+        """全ノートとパラメータを JSON 形式で出力し、Cエンジンとの連携を完遂する"""
         data = {
-            "metadata": {"tempo": self.tempo, "version": "1.4.0"},
+            "metadata": {
+                "tempo": self.tempo, 
+                "version": "1.4.0",
+                "project": "VO-SE_Project"
+            },
             "notes": [
                 {
                     "t": n.start_time, 
                     "d": n.duration, 
                     "n": n.note_number, 
                     "p": self.analyze_lyric_to_phoneme(n.lyrics),
+                    "lyric": n.lyrics,
                     "onset": float(getattr(n, 'onset', 0.0)),
                     "overlap": float(getattr(n, 'overlap', 0.0)),
                     "pre_utterance": float(getattr(n, 'pre_utterance', 0.0)),
@@ -212,9 +218,14 @@ class TimelineWidget(QWidget):
             ],
             "parameters": self.parameters
         }
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"✅ Exported to {file_path}")
+        
+        # ファイル書き込み実行
+        try:
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            print(f"✅ Successfully exported all data to: {file_path}")
+        except Exception as e:
+            print(f"❌ Export failed: {e}")
 
     def init_voice_engine(self) -> None:
         voice_db_path = "assets/voice_db/"
@@ -278,55 +289,49 @@ class TimelineWidget(QWidget):
 
     def _draw_audio_waveform(self, p: QPainter) -> None:
         """タイムラインの背景としてオーディオ波形を描画する（同期修正版）"""
-        # 親オブジェクトへのアクセスを安全に行う
-        parent_obj = self.parent()
-        if parent_obj is None:
-            return
-            
-        # getattrを使用して動的属性アクセスによる型エラーを回避
-        target_idx_val = getattr(parent_obj, 'current_track_idx', 0)
-        tracks_val = getattr(parent_obj, 'tracks', [])
+        # 親ウィンドウ（MainWindow）を取得
+        main_win = self.window()
         
-        target_idx: int = int(target_idx_val)
-        tracks: List[Any] = list(tracks_val) if isinstance(tracks_val, list) else []
-        
-        if target_idx >= len(tracks):
-            return
-            
-        track = tracks[target_idx]
-        
-        track_type = str(getattr(track, 'track_type', ''))
-        audio_path = str(getattr(track, 'audio_path', ''))
+        # 参照先を MainWindow の 'current_audio_path' に一本化
+        audio_path = str(getattr(main_win, 'current_audio_path', ''))
 
-        if track_type != "wave" or not audio_path:
+        if not audio_path or not os.path.exists(audio_path):
             return
 
-        # ピークデータのキャッシュ確認
-        if not hasattr(track, 'vose_peaks'):
-            setattr(track, 'vose_peaks', self.get_audio_peaks(audio_path))
-            
-        vose_peaks = getattr(track, 'vose_peaks', [])
-        if not vose_peaks or not isinstance(vose_peaks, list):
+        # ピークデータのキャッシュ（パスが変わった時だけ再解析）
+        if not hasattr(self, '_wave_cache_path') or self._wave_cache_path != audio_path:
+            self._wave_cache = self.get_audio_peaks(audio_path)
+            self._wave_cache_path = audio_path
+        
+        vose_peaks = self._wave_cache
+        if not vose_peaks:
             return
 
-        pixels_per_second = (self.tempo / 60.0) * self.pixels_per_beat
-        data_interval_px = pixels_per_second * 0.05 
-        
+        # --- 描画ロジック ---
         p.setPen(QPen(QColor(0, 255, 255, 60), 1))
         
+        # 描画の基準線を設定
         mid_y = float(self.height() / 2)
         max_h = float(self.height() * 0.7)
         
+        # テンポに基づいた描画間隔の計算
+        pixels_per_second = (self.tempo / 60.0) * self.pixels_per_beat
+        data_interval_px = pixels_per_second * 0.05 
+        
+        # キャッシュされたピークデータをループして描画
         for i, peak in enumerate(vose_peaks):
             x = (i * data_interval_px) - self.scroll_x_offset
+            
+            # 画面外の描画をスキップ（Core i3環境への配慮）
             if x < -data_interval_px:
                 continue
             if x > self.width():
                 break
             
+            # ピーク値に基づいた垂直線の高さを計算
             h = peak * max_h
             p.drawLine(int(x), int(mid_y - h/2), int(x), int(mid_y + h/2))
-
+            
     def paintEvent(self, event: QPaintEvent) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
