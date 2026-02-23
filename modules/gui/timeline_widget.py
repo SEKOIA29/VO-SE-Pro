@@ -195,28 +195,34 @@ class TimelineWidget(QWidget):
         except Exception: 
             return text
 
-    # --- C言語エンジン連携ブリッジ ---
     def export_all_data(self, file_path: str = "engine_input.json") -> None:
         """
         全ノート、パラメータ、および選択中のボイス情報を JSON 形式で出力。
         Cエンジン (vose_core) との連携を完遂する。
         """
+        import json
+        import os
+        from datetime import datetime
+        from PySide6.QtWidgets import QMainWindow
+
         # 1. 親ウィンドウ (MainWindow) から現在のボイス情報を取得
-        # MainWindow の属性として定義されている current_voice と current_voice_id を使用
-        main_win = self.window()
-        char_name = getattr(main_win, 'current_voice', "Default_Standard")
-        char_id = getattr(main_win, 'current_voice_id', "__INTERNAL__:standard")
-        active_device = getattr(main_win, 'active_device', "CPU")
+        # MainWindowを取得し、型安全のためにチェック
+        top_level = self.window()
+        
+        # 属性の取得（MainWindowでない場合や属性がない場合のデフォルト値を設定）
+        char_name = getattr(top_level, 'current_voice', "Default_Standard")
+        char_id = getattr(top_level, 'current_voice_id', "__INTERNAL__:standard")
+        active_device = getattr(top_level, 'active_device', "CPU")
 
         data = {
             "metadata": {
-                "tempo": self.tempo, 
+                "tempo": getattr(self, 'tempo', 120.0), 
                 "version": "1.4.0",
                 "project": "VO-SE_Project",
                 "character_name": char_name,      # 歌唱キャラクター名
                 "character_id": char_id,          # UTAUパスまたは内部ID
                 "render_device": active_device,   # NPU/GPU/CPU の識別
-                "timestamp": datetime.now().isoformat() if 'datetime' in globals() else ""
+                "timestamp": datetime.now().isoformat()
             },
             "notes": [
                 {
@@ -241,23 +247,24 @@ class TimelineWidget(QWidget):
         
         # 2. ファイル書き込み実行
         try:
-            import json
-            import os
+            # 保存先ディレクトリの絶対パス解決と作成
+            abs_path = os.path.abspath(file_path)
+            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
             
-            # 保存先ディレクトリの存在確認
-            os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
-            
-            with open(file_path, "w", encoding="utf-8") as f:
+            with open(abs_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             
-            print(f"✅ Successfully exported all data (Voice: {char_name}) to: {file_path}")
+            print(f"✅ Successfully exported all data (Voice: {char_name}) to: {abs_path}")
             
-            # ステータスバーへの通知（MainWindowにアクセス可能な場合）
-            if hasattr(main_win, 'statusBar') and main_win.statusBar():
-                main_win.statusBar().showMessage(f"Export Complete: {char_name}", 5000)
+            # ステータスバーへの通知 (QMainWindow のインスタンスであることを確認して安全に呼ぶ)
+            if isinstance(top_level, QMainWindow):
+                status_bar = top_level.statusBar()
+                if status_bar:
+                    status_bar.showMessage(f"Export Complete: {char_name}", 5000)
 
         except Exception as e:
             print(f"❌ Export failed: {e}")
+            
 
     def init_voice_engine(self) -> None:
         voice_db_path = "assets/voice_db/"
