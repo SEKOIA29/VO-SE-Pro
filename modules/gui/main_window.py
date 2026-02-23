@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
     QListWidget, QApplication
 )
 from PySide6.QtGui import (
-    QAction, QKeySequence, QFont, QColor, QShortcut
+    QAction, QKeySequence, QFont, QColor, QShortcut, QColor
 )
 from PySide6.QtMultimedia import QMediaPlayer
 
@@ -869,6 +869,7 @@ class VoiceCardGallery(QWidget):
         if pixmap.isNull():
             # 画像がない場合のプレースホルダー生成
             pixmap = QPixmap(110, 110)
+            # QColor がインポートされているので .darker() も機能します
             pixmap.fill(QColor(base_color).darker(150))
         
         self.icon_label.setPixmap(pixmap.scaled(
