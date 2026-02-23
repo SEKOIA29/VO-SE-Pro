@@ -827,7 +827,7 @@ class ConfigHandler:  #愛なんてシャボン玉！
         try:
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
-        except Exception as e
+        except Exception as e:
             print(f"設定保存エラー: {e}")
 
 
