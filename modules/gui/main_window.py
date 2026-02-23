@@ -1314,6 +1314,18 @@ class MainWindow(QMainWindow):
             # current_time = self.vo_se_engine.get_current_time()
             pass
 
+    def setup_voice_gallery(self):
+        """
+        ボイスギャラリーのセットアップ。
+        ここで self.confirmed_partners の情報をギャラリーに反映させる。
+        """
+        # ギャラリーウィジェットのインスタンス化（MainWindowが保持）
+        if hasattr(self, 'voice_gallery') and self.voice_gallery:
+            # ギャラリーに対して「募集枠の情報」を渡して更新をかける
+            # 内部で先ほどの refresh_gallery(self.confirmed_partners) が呼ばれる
+            self.voice_gallery.set_partner_data(self.confirmed_partners)
+            self.voice_gallery.refresh_gallery()
+
     @Slot(str, str)
     def on_voice_changed(self, display_name: str, internal_id: str):
         """
