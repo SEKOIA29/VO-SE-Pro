@@ -997,6 +997,33 @@ class VoiceCardGallery(QWidget):
         # 管理用辞書に保存（internal_id をキーにして一意性を確保）
         self.cards[internal_id] = card
 
+    def set_selected(self, selected: bool):
+        """選択状態に応じた枠線の変更（省略なし）"""
+        border_color = "#00FFCC" if selected else "#333333"
+        bg_color = self.base_color if not selected else QColor(self.base_color).lighter(120).name()
+        
+        # 募集枠の場合は少し透過させるなどの演出
+        opacity = "1.0" if not self.is_recruiting else "0.7"
+
+        self.setStyleSheet(f"""
+            VoiceCardWidget {{
+                background-color: {bg_color};
+                border: 2px solid {border_color};
+                border-radius: 12px;
+                opacity: {opacity};
+            }}
+            VoiceCardWidget:hover {{
+                border: 2px solid #00FFCC;
+                background-color: {QColor(bg_color).lighter(110).name()};
+            }}
+        """)
+
+    def mousePressEvent(self, event):
+        """クリックイベントを検知して信号を発行（省略なし）"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+            super().mousePressEvent(event)
+
     def on_card_clicked(self, name, internal_id):
         """
         カード選択時のトグル処理と信号発行（省略なし）。
