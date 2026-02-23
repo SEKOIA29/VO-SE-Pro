@@ -1459,7 +1459,7 @@ class MainWindow(QMainWindow):
 
         # 右端を整えるためのスペーサー
         spacer = QWidget()
-        spacer.setSizePolicy(size_policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred), QSizePolicy.Preferred)
+        self.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred))
         self.toolbar.addWidget(spacer)
 
     def setup_main_editor_area(self):
