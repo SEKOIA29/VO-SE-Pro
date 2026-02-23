@@ -47,7 +47,7 @@ from PySide6.QtMultimedia import QMediaPlayer
 # 4. 型チェック時のみのインポート (reportAssignmentType エラーを根本解決)
 # ==========================================================================
 if TYPE_CHECKING:
-    # 🔴 ここを「modules.xxx」で統一することで、VS Codeのパニックを止めます
+
     from modules.gui.timeline_widget import TimelineWidget # type: ignore
     from modules.gui.graph_editor_widget import GraphEditorWidget # type: ignore
     from modules.gui.keyboard_sidebar_widget import KeyboardSidebarWidget # type: ignore
