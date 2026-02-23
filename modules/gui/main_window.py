@@ -1195,6 +1195,12 @@ class MainWindow(QMainWindow):
         self.confirmed_partners = {}
         self.active_device = "CPU (Standard)"
         self.active_provider = "CPUExecutionProvider"
+        
+        self.timeline_widget = cast(Any, None)
+        self.timeline = self.timeline_widget # timelineへのアクセスをwidgetへ流す
+        self.voice_gallery = cast(Any, None)
+        self.current_voice_id = "__INTERNAL__:standard"
+        
 
     def _init_engines(self, engine, ai):
         """エンジン類の実体化ロジック（省略なし完全版）"""
@@ -1453,7 +1459,7 @@ class MainWindow(QMainWindow):
 
         # 右端を整えるためのスペーサー
         spacer = QWidget()
-        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        spacer.setSizePolicy(size_policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred), QSizePolicy.Preferred)
         self.toolbar.addWidget(spacer)
 
     def setup_main_editor_area(self):
