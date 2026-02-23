@@ -1325,27 +1325,93 @@ class MainWindow(QMainWindow):
         # ステータスバーへの初期メッセージ
         if self.statusBar():
             self.statusBar().showMessage("Engine Initialized. Ready for production.")
+
+
+    def open_audio(self) -> None:
+        """WAVファイルを選択し、TimelineWidgetに波形を描画させる"""
+        from PySide6.QtWidgets import QFileDialog
+        
+        # ファイル選択ダイアログを開く
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, 
+            "オーディオファイルを選択", 
+            "", 
+            "Wave Files (*.wav)"
+        )
+        
+        if file_path:
+            # 1. 属性にパスを保存（TimelineWidgetがこれを参照する）
+            self.current_audio_path = file_path
+            
+            # 2. TimelineWidgetにキャッシュを捨てさせて再描画を促す
+            if hasattr(self.timeline, '_wave_cache_path'):
+                del self.timeline._wave_cache_path
+            
+            self.timeline.update()
+            
+            # 3. ステータスバーに通知
+            self.statusBar().showMessage(f"読み込み完了: {os.path.basename(file_path)}", 3000)
             
     # ==========================================================================
     # UI セクション構築
     # ==========================================================================
 
     def setup_toolbar(self):
-        """上部ツールバー：再生・録音・テンポ"""
+        """上部ツールバー：再生・録音・テンポ・ファイル操作（省略なし統合版）"""
+        from PySide6.QtWidgets import QToolBar, QPushButton, QLabel, QLineEdit, QWidget, QSizePolicy
+        
         self.toolbar = QToolBar("Main Toolbar")
         self.addToolBar(self.toolbar)
+        self.toolbar.setMovable(False)
 
+        # 1. 再生コントロール
         self.play_btn = QPushButton("▶ 再生")
         self.play_btn.clicked.connect(self.on_play_pause_toggled)
         self.toolbar.addWidget(self.play_btn)
 
         self.toolbar.addSeparator()
         
+        # 2. テンポ設定
         self.toolbar.addWidget(QLabel(" Tempo: "))
         self.tempo_input = QLineEdit("120")
         self.tempo_input.setFixedWidth(40)
         self.tempo_input.returnPressed.connect(self.update_tempo_from_input)
         self.toolbar.addWidget(self.tempo_input)
+
+        self.toolbar.addSeparator()
+
+        # 3. WAVファイル読み込み（追加）
+        self.open_wav_btn = QPushButton("OPEN WAV")
+        self.open_wav_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #333333;
+                color: white;
+                border: 1px solid #555555;
+                padding: 2px 10px;
+            }
+            QPushButton:hover { background-color: #444444; }
+        """)
+        self.open_wav_btn.clicked.connect(self.open_audio)
+        self.toolbar.addWidget(self.open_wav_btn)
+
+        # 4. Cエンジン・レンダリング（追加）
+        self.render_btn = QPushButton("RENDER (C++ ENGINE)")
+        self.render_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #FF9F0A;
+                color: black;
+                font-weight: bold;
+                padding: 2px 10px;
+            }
+            QPushButton:hover { background-color: #FFB340; }
+        """)
+        self.render_btn.clicked.connect(self.execute_render)
+        self.toolbar.addWidget(self.render_btn)
+
+        # 右端を整えるためのスペーサー
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.toolbar.addWidget(spacer)
 
     def setup_main_editor_area(self):
         """メインエディタエリア（トラックリスト + タイムライン）"""
@@ -1418,6 +1484,22 @@ class MainWindow(QMainWindow):
         
         # フォルマントやパフォーマンス等のボタンもここに追加
         self.main_layout.addLayout(bottom_box)
+
+    def update_tempo_from_input(self):
+        """入力されたテンポをシステム全体に反映する（省略なし）"""
+        try:
+            new_tempo = float(self.tempo_input.text())
+            if 20 <= new_tempo <= 300: # 現実的な範囲に制限
+                # 1. TimelineWidgetの数値を更新
+                self.timeline.tempo = new_tempo
+                # 2. 画面を再描画（グリッドや波形の間隔が変わるため）
+                self.timeline.update()
+                self.statusBar().showMessage(f"Tempo changed to: {new_tempo}", 2000)
+            else:
+                self.tempo_input.setText(str(self.timeline.tempo))
+        except ValueError:
+            # 数字以外が入力された場合は元に戻す
+            self.tempo_input.setText(str(self.timeline.tempo))
 
 
     
