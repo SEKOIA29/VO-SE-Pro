@@ -1292,6 +1292,23 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("VO-SE Pro")
         self.resize(1200, 800)
 
+    def execute_render(self):
+        """オーディオ書き出しの実行（省略なし）"""
+        print("DEBUG: Rendering started...")
+        # 将来的に self.vo_se_engine.render() を呼び出す
+
+    def toggle_recording(self):
+        """録音状態の切り替え（省略なし）"""
+        self.is_recording = not getattr(self, 'is_recording', False)
+        print(f"DEBUG: Recording toggled to: {self.is_recording}")
+
+    def update_playback_ui(self):
+        """再生中のUI（時間、スライダー等）を更新（省略なし）"""
+        # playback_timer から定期的に呼ばれる想定
+        if hasattr(self, 'vo_se_engine') and self.vo_se_engine:
+            # current_time = self.vo_se_engine.get_current_time()
+            pass
+
     @Slot(str, str)
     def on_voice_changed(self, display_name: str, internal_id: str):
         """
