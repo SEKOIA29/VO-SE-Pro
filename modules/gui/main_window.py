@@ -5353,19 +5353,40 @@ class MainWindow(QMainWindow):
         else:
             print(f"Error: Parameter layer '{layer_name}' not found.")
 
+
     @Slot()
     def on_timeline_updated(self):
-        """タイムライン更新時の処理"""
+        """
+        タイムライン更新時の処理（省略なし完全版）。
+        ノートデータを同期し、バックグラウンドでキャッシュを先行生成する。
+        """
         import threading
-        self.statusBar().showMessage("更新中...", 1000)
-        updated_notes = self.timeline_widget.notes_list
         
+        if self.status_label:
+            self.status_label.setText("エンジン同期中...")
+        elif self.statusBar():
+            self.statusBar().showMessage("レンダリングキャッシュ更新中...", 1000)
+
+        # 1. タイムラインから最新のノートリストを取得
+        if not hasattr(self, 'timeline_widget') or not self.timeline_widget:
+            return
+            
+        updated_notes = self.timeline_widget.notes_list
+        self.notes = updated_notes # MainWindow側のリストも同期
+
+        # 2. Cエンジンへの先行キャッシュ指示
+        # ※UIスレッドをブロックしないよう、重い処理（波形生成の準備）は別スレッドで実行
         if hasattr(self, 'vo_se_engine') and self.vo_se_engine:
-            threading.Thread(
-                target=self.vo_se_engine.prepare_cache,
-                args=(updated_notes,),
-                daemon=True
-            ).start()
+            try:
+                # 既存のスレッドと衝突しないよう、デーモンスレッドとして開始
+                cache_thread = threading.Thread(
+                    target=self._run_engine_cache,
+                    args=(updated_notes,),
+                    daemon=True
+                )
+                cache_thread.start()
+            except Exception as e:
+                print(f"❌ Cache thread failed to start: {e}"))
 
     @Slot()
     def on_notes_modified(self):
