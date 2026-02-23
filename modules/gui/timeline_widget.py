@@ -196,12 +196,26 @@ class TimelineWidget(QWidget):
 
     # --- C言語エンジン連携ブリッジ ---
     def export_all_data(self, file_path: str = "engine_input.json") -> None:
-        """全ノートとパラメータを JSON 形式で出力し、Cエンジンとの連携を完遂する"""
+        """
+        全ノート、パラメータ、および選択中のボイス情報を JSON 形式で出力。
+        Cエンジン (vose_core) との連携を完遂する。
+        """
+        # 1. 親ウィンドウ (MainWindow) から現在のボイス情報を取得
+        # MainWindow の属性として定義されている current_voice と current_voice_id を使用
+        main_win = self.window()
+        char_name = getattr(main_win, 'current_voice', "Default_Standard")
+        char_id = getattr(main_win, 'current_voice_id', "__INTERNAL__:standard")
+        active_device = getattr(main_win, 'active_device', "CPU")
+
         data = {
             "metadata": {
                 "tempo": self.tempo, 
                 "version": "1.4.0",
-                "project": "VO-SE_Project"
+                "project": "VO-SE_Project",
+                "character_name": char_name,      # 歌唱キャラクター名
+                "character_id": char_id,          # UTAUパスまたは内部ID
+                "render_device": active_device,   # NPU/GPU/CPU の識別
+                "timestamp": datetime.now().isoformat() if 'datetime' in globals() else ""
             },
             "notes": [
                 {
@@ -216,14 +230,31 @@ class TimelineWidget(QWidget):
                     "optimized": bool(getattr(n, 'has_analysis', False))
                 } for n in self.notes_list
             ],
-            "parameters": self.parameters
+            "parameters": {
+                "pitch": self.parameters.get("Pitch", []),
+                "gender": self.parameters.get("Gender", []),
+                "tension": self.parameters.get("Tension", []),
+                "breath": self.parameters.get("Breath", [])
+            }
         }
         
-        # ファイル書き込み実行
+        # 2. ファイル書き込み実行
         try:
+            import json
+            import os
+            
+            # 保存先ディレクトリの存在確認
+            os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
+            
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-            print(f"✅ Successfully exported all data to: {file_path}")
+            
+            print(f"✅ Successfully exported all data (Voice: {char_name}) to: {file_path}")
+            
+            # ステータスバーへの通知（MainWindowにアクセス可能な場合）
+            if hasattr(main_win, 'statusBar') and main_win.statusBar():
+                main_win.statusBar().showMessage(f"Export Complete: {char_name}", 5000)
+
         except Exception as e:
             print(f"❌ Export failed: {e}")
 
