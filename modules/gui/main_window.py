@@ -1286,6 +1286,49 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("VO-SE Pro")
         self.resize(1200, 800)
 
+    @Slot(str, str)
+    def on_voice_changed(self, display_name: str, internal_id: str):
+        """
+        キャラクター選択が変更された際の統合ハンドラ。
+        1. MainWindowの状態を更新
+        2. Cエンジン(VoSeEngine)に音源をロード
+        3. 既存のノートのキャッシュを新キャラクター用に更新
+        """
+        # --- 1. MainWindowの状態保持 ---
+        self.current_voice = display_name
+        self.current_voice_id = internal_id
+        
+        # --- 2. C++エンジンへのキャラクター適用 ---
+        # VoSeEngine側で __INTERNAL__ (公式) か フォルダパス (UTAU) かを判別
+        if hasattr(self, 'vo_se_engine') and self.vo_se_engine:
+            try:
+                # エンジン内部で音源バイナリ/WAV群をメモリに展開
+                self.vo_se_engine.set_active_character(internal_id)
+                print(f"DEBUG: Engine switched character to: {display_name} ({internal_id})")
+            except Exception as e:
+                print(f"❌ Engine character switch failed: {e}")
+
+        # --- 3. UIへのフィードバック ---
+        if self.status_label:
+            self.status_label.setText(f"歌手: {display_name}")
+        elif self.statusBar():
+            self.statusBar().showMessage(f"Voice Loaded: {display_name}", 3000)
+
+        # --- 4. 既存ノートの先行レンダリング(キャッシュ)更新 ---
+        # 声が変わったため、裏で作っていたキャッシュを新しい声で作り直す
+        # これにより、切り替え直後に再生しても「新しい声」で即座に鳴る
+        if hasattr(self, 'on_timeline_updated'):
+            self.on_timeline_updated()
+
+        # --- 5. 10枠のパートナーリスト(confirmed_partners)との照合 ---
+        # 選択されたIDが募集中のID（1, 2, 3...）に含まれる場合、特別なフラグ処理
+        # ここに将来的なUIエフェクトや、募集中の透かしを消す処理などを追加可能
+        for partner_id, status in self.confirmed_partners.items():
+            if str(partner_id) in internal_id:
+                print(f"INFO: Partner ID-{partner_id:02d} ({status}) has been selected.")
+
+        print(f"✅ Character management: '{display_name}' is now active.")
+
 
     def init_ui(self) -> None:
 
