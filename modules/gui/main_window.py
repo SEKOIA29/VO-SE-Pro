@@ -1200,7 +1200,12 @@ class MainWindow(QMainWindow):
         self.timeline = self.timeline_widget # timelineへのアクセスをwidgetへ流す
         self.voice_gallery = cast(Any, None)
         self.current_voice_id = "__INTERNAL__:standard"
+
+        self.confirmed_partners = {i: "UNDER RECRUITMENT" for i in range(1, 11)}
         
+        # 現在選択されているボイス情報
+        self.current_voice = "未選択"
+        self.current_voice_id = "NONE"
 
     def _init_engines(self, engine, ai):
         """エンジン類の実体化ロジック（省略なし完全版）"""
