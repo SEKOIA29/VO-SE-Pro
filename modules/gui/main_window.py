@@ -5386,7 +5386,7 @@ class MainWindow(QMainWindow):
                 )
                 cache_thread.start()
             except Exception as e:
-                print(f"❌ Cache thread failed to start: {e}"))
+                print(f"❌ Cache thread failed to start: {e}")
 
     def _run_engine_cache(self, notes):
         """エンジン側のキャッシュ生成を安全に実行するサブメソッド"""
