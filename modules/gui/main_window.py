@@ -1485,22 +1485,6 @@ class MainWindow(QMainWindow):
         # フォルマントやパフォーマンス等のボタンもここに追加
         self.main_layout.addLayout(bottom_box)
 
-    def update_tempo_from_input(self):
-        """入力されたテンポをシステム全体に反映する（省略なし）"""
-        try:
-            new_tempo = float(self.tempo_input.text())
-            if 20 <= new_tempo <= 300: # 現実的な範囲に制限
-                # 1. TimelineWidgetの数値を更新
-                self.timeline.tempo = new_tempo
-                # 2. 画面を再描画（グリッドや波形の間隔が変わるため）
-                self.timeline.update()
-                self.statusBar().showMessage(f"Tempo changed to: {new_tempo}", 2000)
-            else:
-                self.tempo_input.setText(str(self.timeline.tempo))
-        except ValueError:
-            # 数字以外が入力された場合は元に戻す
-            self.tempo_input.setText(str(self.timeline.tempo))
-
 
     
     def setup_control_panel(self):
@@ -1715,17 +1699,48 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(self.paste_action)
 
     def setup_connections(self):
-        """シグナル/スロット接続"""
-        # 1. 垂直スクロールの同期（鍵盤とノート）
-        self.v_scrollbar.valueChanged.connect(self.keyboard_sidebar.set_vertical_offset)
-        self.v_scrollbar.valueChanged.connect(self.timeline_widget.set_vertical_offset)
+        """
+        シグナル/スロット接続の完全版（省略なし）。
+        UI、エンジン、および各ウィジェット間の通信を確立します。
+        """
+        # --- 1. スクロール同期（垂直：鍵盤とノート領域） ---
+        if self.v_scrollbar and self.keyboard_sidebar and self.timeline_widget:
+            self.v_scrollbar.valueChanged.connect(self.keyboard_sidebar.set_vertical_offset)
+            self.v_scrollbar.valueChanged.connect(self.timeline_widget.set_vertical_offset)
 
-        # 2. 水平スクロールの同期（ノートとピッチグラフ）
-        self.h_scrollbar.valueChanged.connect(self.timeline_widget.set_horizontal_offset)
-        self.h_scrollbar.valueChanged.connect(self.graph_editor_widget.set_horizontal_offset)  
+        # --- 2. スクロール同期（水平：ノートとピッチグラフ領域） ---
+        if self.h_scrollbar and self.timeline_widget and self.graph_editor_widget:
+            self.h_scrollbar.valueChanged.connect(self.timeline_widget.set_horizontal_offset)
+            self.h_scrollbar.valueChanged.connect(self.graph_editor_widget.set_horizontal_offset)
 
-        # 3. データの更新通知
-        self.timeline_widget.notes_changed_signal.connect(self.on_timeline_updated)
+        # --- 3. タイムライン・データ更新の同期 ---
+        if self.timeline_widget:
+            # ノートが動いたときにメインウィンドウ側で受け取る
+            self.timeline_widget.notes_changed_signal.connect(self.on_timeline_updated)
+            # タイムラインからグラフエディタへ通知（ピッチ描画の基準更新）
+            if self.graph_editor_widget:
+                self.timeline_widget.notes_changed_signal.connect(self.graph_editor_widget.sync_with_notes)
+
+        # --- 4. テンポ入力の確定（Returnキー押下で反映） ---
+        if self.tempo_input:
+            self.tempo_input.returnPressed.connect(self.update_tempo_from_input)
+
+        # --- 5. ボイスギャラリーとの接続（キャラクター切り替え） ---
+        # VoiceCardGalleryが MainWindow の属性 (self.voice_gallery) として存在すると仮定
+        if hasattr(self, 'voice_gallery') and self.voice_gallery:
+            self.voice_gallery.voice_selected.connect(self.on_voice_changed)
+
+        # --- 6. 再生・停止・録音ボタンの制御 ---
+        if self.play_button:
+            self.play_button.clicked.connect(self.toggle_playback)
+        if self.record_button:
+            self.record_button.clicked.connect(self.toggle_recording)
+
+        # --- 7. エンジンからのフィードバック（再生位置の同期） ---
+        if self.playback_timer:
+            self.playback_timer.timeout.connect(self.update_playback_ui)
+
+        print("✅ All internal signals and slots have been connected.")
         
 
     def setup_formant_slider(self):
@@ -5261,34 +5276,71 @@ class MainWindow(QMainWindow):
     # ==========================================================================
     # その他のスロット
     # ==========================================================================
-    @Slot()
+@Slot()
     def update_tempo_from_input(self):
-        """テンポ入力の反映"""
+        """
+        テンポ入力をシステム全体（Timeline, GraphEditor, Engine）に反映する。
+        Ruff F811を解消した統合版（省略なし）。
+        """
         try:
-            if self.tempo_input is None or self.timeline_widget is None:
+            # 1. 必須ウィジェットの存在チェック
+            if self.tempo_input is None:
                 return
+            
+            # 安全な型変換
+            try:
+                new_tempo = float(self.tempo_input.text())
+            except ValueError:
+                raise ValueError("数値形式が正しくありません")
 
-            new_tempo = float(self.tempo_input.text())
+            # 2. テンポの範囲バリデーション（30-300 BPM）
             if not (30.0 <= new_tempo <= 300.0):
-                raise ValueError("テンポは30-300の範囲で入力してください")
- 
-            self.timeline_widget.tempo = int(new_tempo)
-             
-            if self.vo_se_engine is not None:
-                self.vo_se_engine.set_tempo(new_tempo)
-  
-            if self.graph_editor_widget is not None:
-                self.graph_editor_widget.tempo = int(new_tempo)
+                raise ValueError("テンポは30.0〜300.0の範囲で入力してください")
 
+            # 3. 各コンポーネントへの伝播
+            # TimelineWidgetへの反映
+            if hasattr(self, 'timeline_widget') and self.timeline_widget is not None:
+                self.timeline_widget.tempo = int(new_tempo)
+                self.timeline_widget.update() # 再描画強制
+            elif hasattr(self, 'timeline') and self.timeline is not None:
+                # 変数名の揺れ対策
+                self.timeline.tempo = int(new_tempo)
+                self.timeline.update()
+
+            # グラフエディタへの反映
+            if hasattr(self, 'graph_editor_widget') and self.graph_editor_widget is not None:
+                self.graph_editor_widget.tempo = int(new_tempo)
+                self.graph_editor_widget.update()
+
+            # C++エンジンへの即時通知
+            if self.vo_se_engine is not None:
+                # エンジン側は精度のために float で渡す
+                self.vo_se_engine.set_tempo(new_tempo)
+
+            # 4. UIの整合性維持
             self.update_scrollbar_range()
 
+            # ステータス表示
             if self.status_label is not None:
-                self.status_label.setText(f"テンポ: {new_tempo} BPM")
+                self.status_label.setText(f"テンポ: {new_tempo:.1f} BPM")
+            elif self.statusBar():
+                self.statusBar().showMessage(f"Tempo changed to: {new_tempo:.1f}", 2000)
+
+            print(f"DEBUG: System tempo synchronized to {new_tempo} BPM")
 
         except ValueError as e:
-            QMessageBox.warning(self, "エラー", str(e))
-            if self.tempo_input is not None and self.timeline_widget is not None:
-                self.tempo_input.setText(str(self.timeline_widget.tempo))
+            # エラー時は警告を出し、値を元に戻す
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "テンポ設定エラー", str(e))
+            
+            # 直近の有効な値（timeline_widget保持分）をUIに復元
+            valid_tempo = 120
+            if hasattr(self, 'timeline_widget') and self.timeline_widget:
+                valid_tempo = self.timeline_widget.tempo
+            elif hasattr(self, 'timeline') and self.timeline:
+                valid_tempo = self.timeline.tempo
+                
+            self.tempo_input.setText(str(valid_tempo))
 
     @Slot(str)
     def set_current_parameter_layer(self, layer_name: str):
