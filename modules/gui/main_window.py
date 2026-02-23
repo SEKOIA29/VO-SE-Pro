@@ -832,97 +832,185 @@ class ConfigHandler:  #愛なんてシャボン玉！
 
 
 # ==============================================================================
-# ボイスカードウィジェット
+# ボイスカードギャラリー（実音源優先 ＋ 募集枠を最下段に配置）
 # ==============================================================================
 
 class VoiceCardGallery(QWidget):
-    """カードを並べて表示するメインコンテナ"""
+    """
+    音源カードを並べて表示するメインコンテナ。
+    実在する音源を優先的に表示し、その後に10枠のパートナー募集枠を表示する。
+    """
     voice_selected = Signal(str, str) # (表示名, 内部ID)
+    clicked = Signal()
 
-    def __init__(self, voice_manager):
-        super().__init__()
-        self.manager = voice_manager
-        self.cards = {}
+    def __init__(self, display_name: str, icon_path: str, base_color: str, is_recruiting: bool = False, parent=None):
+        super().__init__(parent)
+        self.display_name = display_name
+        self.is_recruiting = is_recruiting
+        self.base_color = base_color
+        
+        # カードの固定サイズ設定（黄金比に近いDAW標準サイズ）
+        self.setFixedSize(140, 180)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        # レイアウト構築
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(10, 10, 10, 10)
+        self.layout.setSpacing(8)
 
-        # メインレイアウト
-        self.main_layout = QVBoxLayout(self)
+        # 1. アイコン（キャラクター画像）エリア
+        self.icon_label = QLabel()
+        self.icon_label.setFixedSize(110, 110)
+        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.icon_label.setStyleSheet("background-color: rgba(0, 0, 0, 40); border-radius: 8px;")
         
-        # スクロールエリアの設定（音源が増えても大丈夫なように）
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setStyleSheet("background-color: #1E1E1E; border: none;")
+        # 画像の読み込みとリサイズ
+        pixmap = QPixmap(icon_path)
+        if pixmap.isNull():
+            # 画像がない場合のプレースホルダー生成
+            pixmap = QPixmap(110, 110)
+            pixmap.fill(QColor(base_color).darker(150))
         
-        self.container = QWidget()
-        self.grid = QGridLayout(self.container)
-        self.grid.setSpacing(15)
-        self.scroll_area.setWidget(self.container)
+        self.icon_label.setPixmap(pixmap.scaled(
+            110, 110, 
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding, 
+            Qt.TransformationMode.SmoothTransformation
+        ))
         
-        self.main_layout.addWidget(self.scroll_area)
+        # 募集枠の場合の特殊文字オーバーレイ
+        if self.is_recruiting:
+            overlay_layout = QVBoxLayout(self.icon_label)
+            overlay_layout.setContentsMargins(0, 0, 0, 0)
+            
+            self.recruit_text = QLabel("UNDER\nRECRUITMENT")
+            self.recruit_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.recruit_text.setStyleSheet("""
+                color: #00FFCC; 
+                font-weight: bold; 
+                font-size: 10px;
+                background-color: rgba(0, 20, 20, 180);
+                border-radius: 4px;
+            """)
+            overlay_layout.addWidget(self.recruit_text)
+
+        self.layout.addWidget(self.icon_label, 0, Qt.AlignmentFlag.AlignCenter)
+
+        # 2. キャラクター名ラベル
+        self.name_label = QLabel(display_name)
+        self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.name_label.setWordWrap(True)
+        self.name_label.setStyleSheet(f"""
+            color: {'#888' if is_recruiting else 'white'};
+            font-weight: {'normal' if is_recruiting else 'bold'};
+            font-size: 11px;
+        """)
+        self.layout.addWidget(self.name_label)
+
+        # 初期状態のスタイル適用
+        self.set_selected(False)
+
+    def set_partner_data(self, partners: dict):
+        """MainWindowから10枠の募集情報を注入する"""
+        self.partner_data = partners
 
     def setup_gallery(self):
-        """音源をスキャンしてカードを生成・配置する"""
-        # 既存のカードをクリア
-        for i in reversed(range(self.grid.count())): 
-            item = self.grid.itemAt(i)
-            if item:
-                widget = item.widget()
-                if widget:
-                    widget.setParent(None)
+        """
+        全音源の再配置を実行（省略なし）。
+        1. 実在音源（公式・外部）
+        2. パートナー募集枠（10枠）
+        の順でグリッドを構築する。
+        """
+        # --- 1. 既存のカードを完全に消去（メモリリーク防止） ---
+        while self.grid.count():
+            item = self.grid.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.setParent(None)
+                widget.deleteLater()
         self.cards.clear()
 
-        # VoiceManagerから全音源（公式・外部）を取得
+        row, col = 0, 0
+        max_columns = 4 # 1列に並べるカード数
+
+        # --- 2. 【優先】実在する全音源（公式・外部UTAU）の生成 ---
         all_voices = self.manager.scan_voices()
         
-        row, col = 0, 0
         for display_name, internal_id in all_voices.items():
-            # 1. アイコンとカラーのパス解決
+            # パス解決のロジック
             if internal_id.startswith("__INTERNAL__"):
-                # 公式（内蔵）の場合: assets/official_voices/{キャラ名}/ から探す
+                # 公式内蔵キャラクター
                 char_dir = internal_id.split(":")[1]
-                base_path = os.path.join(self.manager.base_path, "assets", "official_voices", char_dir)
-                icon_path = os.path.join(base_path, "icon.png")
-                # 公式カラー（もしフォルダ内に設定ファイルがなければデフォルト色）
-                card_color = "#3A3A4A" 
+                base_path = getattr(self.manager, 'base_path', os.getcwd())
+                icon_path = os.path.join(base_path, "assets", "official_voices", char_dir, "icon.png")
+                card_color = "#3A3A4A"
             else:
-                # 外部UTAU音源の場合
-                icon_path = os.path.join(internal_id, "icon.png") # UTAUの標準アイコン
+                # 外部UTAU音源（フォルダパス）
+                icon_path = os.path.join(internal_id, "icon.png")
                 card_color = "#2D2D2D"
 
-            # 2. カードの生成
-            card = VoiceCardWidget(display_name, icon_path, card_color)
-            # --- QSS（スタイルシート）だけでホバーを制御する ---
-            card.setStyleSheet(f"""
-                VoiceCardWidget {{
-                    background-color: {card_color};
-                    border: 2px solid #2D2D2D;
-                    border-radius: 12px;
-                }}
-                VoiceCardWidget:hover {{
-                    background-color: #3D3D4D; /* ホバーで少し明るく */
-                    border: 2px solid #00AAFF; /* VO-SEブルー */
-                }}
-            """)   
-            card.clicked.connect(lambda name=display_name, iid=internal_id: self.on_card_clicked(name, iid))
-            
-            # 3. レイアウトに追加（4列で折り返し）
-            self.grid.addWidget(card, row, col)
-            self.cards[display_name] = card
+            # カードのインスタンス化
+            card = VoiceCardWidget(display_name, icon_path, card_color, is_recruiting=False)
+            self._finalize_card_setup(card, display_name, internal_id, row, col)
             
             col += 1
-            if col >= 4:
+            if col >= max_columns:
                 col = 0
                 row += 1
 
+        # --- 3. 【後置】パートナー募集枠（10枠）の生成 ---
+        # 実在音源の後の列から続けて配置する
+        loop_range = self.partner_data.keys() if self.partner_data else range(1, 11)
+        
+        for i in loop_range:
+            display_name = f"PARTNER ID-{i:02d}"
+            # 募集枠を識別するためのプレフィックスを付与
+            internal_id = f"__RECRUITING__:ID-{i:02d}"
+            
+            # 募集枠専用のプレースホルダー画像
+            base_path = getattr(self.manager, 'base_path', os.getcwd())
+            icon_path = os.path.join(base_path, "assets", "icons", "recruiting_placeholder.png")
+            card_color = "#1A2222" # 募集枠は少し沈んだ色にする
+
+            card = VoiceCardWidget(display_name, icon_path, card_color, is_recruiting=True)
+            self._finalize_card_setup(card, display_name, internal_id, row, col)
+            
+            col += 1
+            if col >= max_columns:
+                col = 0
+                row += 1
+
+        # グリッドの下部に伸縮用のスペース（スペーサー）を追加して上に詰める
+        self.grid.setRowStretch(row + 1, 1)
+
+    def _finalize_card_setup(self, card, display_name, internal_id, row, col):
+        """
+        生成したカードをグリッドに登録し、クリックイベントを接続する（省略なし）。
+        """
+        # クリックイベントの接続
+        # lambdaの引数にデフォルト値を設定することで、ループ内の変数を正しくキャプチャ
+        card.clicked.connect(
+            lambda d=display_name, i=internal_id: self.on_card_clicked(d, i)
+        )
+        
+        # グリッドレイアウトへ配置
+        self.grid.addWidget(card, row, col)
+        # 管理用辞書に保存（internal_id をキーにして一意性を確保）
+        self.cards[internal_id] = card
+
     def on_card_clicked(self, name, internal_id):
-        """カードがクリックされた時の処理"""
-        # 全カードの選択状態をリセット
-        for card in self.cards.values():
-            card.set_selected(False)
+        """
+        カード選択時のトグル処理と信号発行（省略なし）。
+        """
+        # 一旦すべてのカードの選択状態（枠線の色など）をオフにする
+        for card_widget in self.cards.values():
+            card_widget.set_selected(False)
         
-        # クリックされたカードを選択状態にする
-        self.cards[name].set_selected(True)
+        # 今回クリックされたカードだけをオンにする
+        if internal_id in self.cards:
+            self.cards[internal_id].set_selected(True)
         
-        # GUIメイン側に通知（これで再生エンジンが切り替わる）
+        # MainWindow (main_window.py) の on_voice_changed スロットへ飛ばす
+        print(f"DEBUG: Gallery selection -> {name} ({internal_id})")
         self.voice_selected.emit(name, internal_id)
 
 
