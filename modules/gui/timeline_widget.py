@@ -6,12 +6,9 @@ import numpy as np
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Protocol, runtime_checkable
 
-from PySide6.QtWidgets import QWidget, QApplication, QInputDialog, QLineEdit
+from PySide6.QtWidgets import QWidget, QApplication, QInputDialog, QLineEdit, QMainWindow
 from PySide6.QtCore import Qt, QRect, Signal, Slot, QPoint, QSize
 from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QFont, QLinearGradient, QPaintEvent
-
-
-
 
 
 # --- 1. データモデルの安全なインポートと型定義 ---
