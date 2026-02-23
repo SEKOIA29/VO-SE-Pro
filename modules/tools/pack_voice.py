@@ -8,6 +8,23 @@ def pack_all_voices():
     # サブフォルダまで全スキャンする設定 (**/*.wav)
     search_path = "assets/official_voices/**/*.wav"
     wav_files = glob.glob(search_path, recursive=True)
+
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+    output_path = os.path.join(base_dir, "src/voice_data.h")
+    search_path = os.path.join(base_dir, "assets/official_voices/**/*.wav")
+    
+    # --- 修正ポイント2: 出力先フォルダ(src)がなければ自動で作る ---
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    
+    # あとのスキャン処理はそのまま
+    wav_files = glob.glob(search_path, recursive=True)
+    
+    # デバッグ用にパスを表示（Actionsのログで見れる）
+    print(f"Target Output: {output_path}")
+    print(f"Searching in: {search_path}")
+    
+    if not wav_files:
+        print("Warning: No wav files found. Check your assets path!")
     
     with open(output_path, 'w', encoding='utf-8') as h:
         h.write("#pragma once\n#include <stdint.h>\n\n")
