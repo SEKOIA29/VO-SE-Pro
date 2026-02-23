@@ -827,7 +827,7 @@ class ConfigHandler:  #愛なんてシャボン玉！
         try:
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
-        except Exception as e:
+        except Exception as e
             print(f"設定保存エラー: {e}")
 
 
@@ -853,10 +853,10 @@ class VoiceCardGallery(QWidget):
         self.setFixedSize(140, 180)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        # レイアウト構築
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(10, 10, 10, 10)
-        self.layout.setSpacing(8)
+        # レイアウト構築（self.main_layout ではなく self.card_layout を使用して名前衝突を回避）
+        self.card_layout = QVBoxLayout(self)
+        self.card_layout.setContentsMargins(10, 10, 10, 10)
+        self.card_layout.setSpacing(8)
 
         # 1. アイコン（キャラクター画像）エリア
         self.icon_label = QLabel()
@@ -894,7 +894,7 @@ class VoiceCardGallery(QWidget):
             """)
             overlay_layout.addWidget(self.recruit_text)
 
-        self.layout.addWidget(self.icon_label, 0, Qt.AlignmentFlag.AlignCenter)
+        self.card_layout.addWidget(self.icon_label, 0, Qt.AlignmentFlag.AlignCenter)
 
         # 2. キャラクター名ラベル
         self.name_label = QLabel(display_name)
@@ -905,7 +905,7 @@ class VoiceCardGallery(QWidget):
             font-weight: {'normal' if is_recruiting else 'bold'};
             font-size: 11px;
         """)
-        self.layout.addWidget(self.name_label)
+        self.card_layout.addWidget(self.name_label)
 
         # 初期状態のスタイル適用
         self.set_selected(False)
