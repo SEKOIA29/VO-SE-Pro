@@ -5276,7 +5276,7 @@ class MainWindow(QMainWindow):
     # ==========================================================================
     # その他のスロット
     # ==========================================================================
-@Slot()
+    @Slot()
     def update_tempo_from_input(self):
         """
         テンポ入力をシステム全体（Timeline, GraphEditor, Engine）に反映する。
@@ -5387,6 +5387,16 @@ class MainWindow(QMainWindow):
                 cache_thread.start()
             except Exception as e:
                 print(f"❌ Cache thread failed to start: {e}"))
+
+    def _run_engine_cache(self, notes):
+        """エンジン側のキャッシュ生成を安全に実行するサブメソッド"""
+        try:
+            # エンジン側でNoteEvent構造体への変換と、先行波形計算（UTAUならresampler呼び出し等）を行う
+            if self.vo_se_engine:
+                self.vo_se_engine.prepare_cache(notes)
+                print(f"DEBUG: Cache prepared for {len(notes)} notes.")
+        except Exception as e:
+            print(f"❌ Engine Cache Error: {e}")
 
     @Slot()
     def on_notes_modified(self):
