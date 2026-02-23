@@ -200,10 +200,6 @@ class TimelineWidget(QWidget):
         全ノート、パラメータ、および選択中のボイス情報を JSON 形式で出力。
         Cエンジン (vose_core) との連携を完遂する。
         """
-        import json
-        import os
-        from datetime import datetime
-        from PySide6.QtWidgets import QMainWindow
 
         # 1. 親ウィンドウ (MainWindow) から現在のボイス情報を取得
         # MainWindowを取得し、型安全のためにチェック
