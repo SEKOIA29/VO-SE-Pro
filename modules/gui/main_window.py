@@ -830,6 +830,89 @@ class ConfigHandler:  #愛なんてシャボン玉！
         except Exception as e:
             print(f"設定保存エラー: {e}")
 
+# ==============================================================================
+# ボイスカードウェイジェイト
+# ==============================================================================
+
+class VoiceCardWidget(QFrame):
+    clicked = Signal()
+
+    def __init__(self, display_name: str, icon_path: str, base_color: str, is_recruiting: bool = False, parent=None):
+        super().__init__(parent)
+        self.display_name = display_name
+        self.is_recruiting = is_recruiting
+        self.base_color = base_color
+        
+        # カードの固定サイズ
+        self.setFixedSize(140, 180)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        # このカード内のレイアウト
+        self.card_layout = QVBoxLayout(self)
+        self.card_layout.setContentsMargins(10, 10, 10, 10)
+        self.card_layout.setSpacing(8)
+
+        # アイコンエリア
+        self.icon_label = QLabel()
+        self.icon_label.setFixedSize(110, 110)
+        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.icon_label.setStyleSheet("background-color: rgba(0, 0, 0, 40); border-radius: 8px;")
+        
+        pixmap = QPixmap(icon_path)
+        if pixmap.isNull():
+            pixmap = QPixmap(110, 110)
+            pixmap.fill(QColor(base_color).darker(150))
+        
+        self.icon_label.setPixmap(pixmap.scaled(
+            110, 110, 
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding, 
+            Qt.TransformationMode.SmoothTransformation
+        ))
+        
+        # 募集枠用オーバーレイ
+        if self.is_recruiting:
+            overlay_layout = QVBoxLayout(self.icon_label)
+            overlay_layout.setContentsMargins(0, 0, 0, 0)
+            self.recruit_text = QLabel("UNDER\nRECRUITMENT")
+            self.recruit_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.recruit_text.setStyleSheet("""
+                color: #00FFCC; font-weight: bold; font-size: 10px;
+                background-color: rgba(0, 20, 20, 180); border-radius: 4px;
+            """)
+            overlay_layout.addWidget(self.recruit_text)
+
+        self.card_layout.addWidget(self.icon_label, 0, Qt.AlignmentFlag.AlignCenter)
+
+        # キャラクター名ラベル
+        self.name_label = QLabel(display_name)
+        self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.name_label.setWordWrap(True)
+        self.name_label.setStyleSheet(f"""
+            color: {'#888' if is_recruiting else 'white'};
+            font-weight: {'normal' if is_recruiting else 'bold'};
+            font-size: 11px;
+        """)
+        self.card_layout.addWidget(self.name_label)
+
+        self.set_selected(False)
+
+    def set_selected(self, selected: bool):
+        """選択状態のスタイル切り替え"""
+        border_color = "#00FFCC" if selected else "#333333"
+        bg_color = self.base_color if not selected else QColor(self.base_color).lighter(120).name()
+        self.setStyleSheet(f"""
+            VoiceCardWidget {{
+                background-color: {bg_color};
+                border: 2px solid {border_color};
+                border-radius: 12px;
+            }}
+        """)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+            super().mousePressEvent(event)
+
 
 # ==============================================================================
 # ボイスカードギャラリー（実音源優先 ＋ 募集枠を最下段に配置）
@@ -843,84 +926,39 @@ class VoiceCardGallery(QWidget):
     voice_selected = Signal(str, str) # (表示名, 内部ID)
     clicked = Signal()
 
-    def __init__(self, display_name: str, icon_path: str, base_color: str, is_recruiting: bool = False, parent=None):
-        super().__init__(parent)
-        self.display_name = display_name
-        self.is_recruiting = is_recruiting
-        self.base_color = base_color
-        
-        # カードの固定サイズ設定（黄金比に近いDAW標準サイズ）
-        self.setFixedSize(140, 180)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        
-        # レイアウト構築（self.main_layout ではなく self.card_layout を使用して名前衝突を回避）
-        self.card_layout = QVBoxLayout(self)
-        self.card_layout.setContentsMargins(10, 10, 10, 10)
-        self.card_layout.setSpacing(8)
+    voice_selected = Signal(str, str)
 
-        # 1. アイコン（キャラクター画像）エリア
-        self.icon_label = QLabel()
-        self.icon_label.setFixedSize(110, 110)
-        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.icon_label.setStyleSheet("background-color: rgba(0, 0, 0, 40); border-radius: 8px;")
-        
-        # 画像の読み込みとリサイズ
-        pixmap = QPixmap(icon_path)
-        if pixmap.isNull():
-            # 画像がない場合のプレースホルダー生成
-            pixmap = QPixmap(110, 110)
-            # QColor がインポートされているので .darker() も機能します
-            pixmap.fill(QColor(base_color).darker(150))
-        
-        self.icon_label.setPixmap(pixmap.scaled(
-            110, 110, 
-            Qt.AspectRatioMode.KeepAspectRatioByExpanding, 
-            Qt.TransformationMode.SmoothTransformation
-        ))
-        
-        # 募集枠の場合の特殊文字オーバーレイ
-        if self.is_recruiting:
-            overlay_layout = QVBoxLayout(self.icon_label)
-            overlay_layout.setContentsMargins(0, 0, 0, 0)
-            
-            self.recruit_text = QLabel("UNDER\nRECRUITMENT")
-            self.recruit_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.recruit_text.setStyleSheet("""
-                color: #00FFCC; 
-                font-weight: bold; 
-                font-size: 10px;
-                background-color: rgba(0, 20, 20, 180);
-                border-radius: 4px;
-            """)
-            overlay_layout.addWidget(self.recruit_text)
+    def __init__(self, voice_manager):
+        super().__init__()
 
-        self.card_layout.addWidget(self.icon_label, 0, Qt.AlignmentFlag.AlignCenter)
-
-        # 2. キャラクター名ラベル
-        self.name_label = QLabel(display_name)
-        self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.name_label.setWordWrap(True)
-        self.name_label.setStyleSheet(f"""
-            color: {'#888' if is_recruiting else 'white'};
-            font-weight: {'normal' if is_recruiting else 'bold'};
-            font-size: 11px;
-        """)
-        self.card_layout.addWidget(self.name_label)
-
-        # 初期状態のスタイル適用
-        self.set_selected(False)
-
-        # 1. ここで「使う予定の変数」をすべて宣言する（住民登録）
+        # --- 1. 属性の定義と初期化（住民登録はここで行う） ---
         self.manager = voice_manager
-        self.cards = {}          # 初期値は空でも、存在を教えることが大事
-        self.partner_data = {}   # 同上
-        self.grid = None         # まだ作ってなくても、名前だけ登録しておく
+        self.cards = {}           # カード管理用の辞書
+        self.partner_data = {}    # 募集枠のデータ
         
-        # 2. その後、実際のオブジェクトを作成・代入する
-        self.main_layout = QVBoxLayout(self) # layout という名前は避ける
+        # --- 2. メインレイアウトの構築 ---
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+        
+        # --- 3. スクロールエリアとコンテナの設定 ---
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setStyleSheet("background-color: #1E1E1E; border: none;")
         
         self.container = QWidget()
-        self.grid = QGridLayout(self.container) # ここで None が上書きされ、確定する
+        
+        # --- 4. グリッドレイアウトの確定 ---
+        self.grid = QGridLayout(self.container) 
+        self.grid.setSpacing(20)
+        self.grid.setContentsMargins(20, 20, 20, 20)
+        
+        for i in range(4):
+            self.grid.setColumnStretch(i, 1)
+
+        self.scroll_area.setWidget(self.container)
+        self.main_layout.addWidget(self.scroll_area)
+        
 
     def set_partner_data(self, partners: dict):
         """MainWindowから10枠の募集情報を注入する"""
