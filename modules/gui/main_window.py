@@ -836,7 +836,12 @@ class VoiceCardWidget(QFrame):
     def __init__(self, display_name: str, icon_path: str, base_color: str, is_recruiting: bool = False, parent=None):
         super().__init__(parent)
         
-        # カードの固定サイズ
+        # --- 1. 属性の代入（ここが Ruff のエラーを消す鍵です） ---
+        self.display_name = display_name
+        self.is_recruiting = is_recruiting
+        self.base_color = base_color
+        
+        # --- 2. UIの基本設定 ---
         self.setFixedSize(140, 180)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         
@@ -845,7 +850,7 @@ class VoiceCardWidget(QFrame):
         self.card_layout.setContentsMargins(10, 10, 10, 10)
         self.card_layout.setSpacing(8)
 
-        # アイコンエリア
+        # --- 3. アイコンエリアの構築 ---
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(110, 110)
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -876,7 +881,7 @@ class VoiceCardWidget(QFrame):
 
         self.card_layout.addWidget(self.icon_label, 0, Qt.AlignmentFlag.AlignCenter)
 
-        # キャラクター名ラベル
+        # --- 4. ラベルエリアの構築 ---
         self.name_label = QLabel(display_name)
         self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.name_label.setWordWrap(True)
@@ -887,6 +892,7 @@ class VoiceCardWidget(QFrame):
         """)
         self.card_layout.addWidget(self.name_label)
 
+        # 初期状態を選択解除モードに
         self.set_selected(False)
 
     def set_selected(self, selected: bool):
@@ -919,16 +925,9 @@ class VoiceCardGallery(QWidget):
     voice_selected = Signal(str, str) # (表示名, 内部ID)
     clicked = Signal()
 
-    voice_selected = Signal(str, str)
-
     def __init__(self, voice_manager):
         super().__init__()
-        self.display_name = display_name
-        self.is_recruiting = is_recruiting
-        self.base_color = base_color
-
-        self.setFixedSize(140, 180)
-
+        
         # --- 1. 属性の定義と初期化（住民登録はここで行う） ---
         self.manager = voice_manager
         self.cards = {}           # カード管理用の辞書
@@ -956,10 +955,6 @@ class VoiceCardGallery(QWidget):
 
         self.scroll_area.setWidget(self.container)
         self.main_layout.addWidget(self.scroll_area)
-
-        self.display_name = display_name
-        self.is_recruiting = is_recruiting
-        self.base_color = base_color
         
 
     def set_partner_data(self, partners: dict):
