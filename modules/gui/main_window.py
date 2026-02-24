@@ -4521,7 +4521,7 @@ class MainWindow(QMainWindow):
         return notes
 
 
-# --- ファイル読み書き・インポート関連 ---
+    # --- ファイル読み書き・インポート関連 ---
     def load_ust_file(self, filepath: str) -> None:
         """
         UTAUの .ust ファイルを読み込んでタイムラインに配置。
@@ -4697,11 +4697,13 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def on_export_button_clicked(self):
-        """ WAV書き出し（多重起動防止 & 高速化）"""
+        """ WAV書き出し（多重起動防止 & 高速化 & AIピッチ統合版）"""
 
+        # 1. 各種コンポーネントの安全な取得
         tw = getattr(self, 'timeline_widget', None)
         gw = getattr(self, 'graph_editor_widget', None)
         engine = getattr(self, 'vo_se_engine', None)
+        ai_engine = getattr(self, 'ai_engine', None) # AIエンジンの取得
 
         if tw is None or gw is None or engine is None:
             QMessageBox.warning(self, "エラー", "書き出しに必要な初期化が完了していません。")
@@ -4712,45 +4714,67 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "エラー", "ノートがないため書き出しできません。")
             return
 
+        # 2. 保存先の決定
         file_path, _ = QFileDialog.getSaveFileName(
             self, "音声ファイルを保存", "output.wav", "WAV Files (*.wav)"
         )
         if not file_path:
             return
 
+        # 3. 準備：再生を止めてステータス表示
         self.stop_and_clear_playback()
-
         status_bar = self.statusBar()
         if status_bar:
-            status_bar.showMessage("レンダリング中...")
+            status_bar.showMessage("レンダリング中（AI表現力を付加中）...")
 
         try:
+            # パラメータを一括取得
             all_params = getattr(gw, 'all_parameters', {})
-
             vocal_data_list = []
-            res = 128
+            res = 128 # 1ノートあたりのサンプリング解像度
 
             for note in notes:
+                # --- [STEP 1: ベースピッチのサンプリング] ---
+                # ユーザーが描いた、またはデフォルトのピッチ曲線を取得
+                base_f0_list = self._sample_range(all_params.get("Pitch", []), note, res)
+                
+                # --- [STEP 2: Aural AI による感情補正] ---
+                # 先ほど作った高速コアを使用。id(note)をキーにして高速にベイクします。
+                if ai_engine is not None:
+                    # numpy配列に変換してAIに入力
+                    base_f0_np = np.array(base_f0_list, dtype=np.float32)
+                    # AIによる揺れの付与（ベイク方式で高速）
+                    emotional_f0_np = ai_engine.get_baked_pitch(id(note), base_f0_np)
+                    # C言語/JSON送信用にリストに戻す
+                    final_pitch_list = emotional_f0_np.tolist()
+                else:
+                    # AIエンジンが不在の場合はベースピッチをそのまま使用
+                    final_pitch_list = base_f0_list
+
+                # --- [STEP 3: ノートデータの構築] ---
+                # ここで一気に全てのパラメータを辞書にまとめます
                 note_data = {
                     "lyric": note.lyrics,
                     "phonemes": note.phonemes,
                     "note_number": note.note_number,
                     "start_time": note.start_time,
                     "duration": note.duration,
-                    "pitch_list": self._sample_range(all_params.get("Pitch", []), note, res),
+                    "pitch_list": final_pitch_list, # AI補正済みピッチを採用！
                     "gender_list": self._sample_range(all_params.get("Gender", []), note, res),
                     "tension_list": self._sample_range(all_params.get("Tension", []), note, res),
                     "breath_list": self._sample_range(all_params.get("Breath", []), note, res),
                 }
                 vocal_data_list.append(note_data)
 
+            # --- [STEP 4: 音声合成エンジン（C言語側）への送出] ---
+            # 整理された全ノートデータを一気にWAVとして書き出し
             engine.export_to_wav(
                 vocal_data=vocal_data_list,
                 tempo=tw.tempo,
                 file_path=file_path
             )
 
-            QMessageBox.information(self, "完了", "レンダリングが完了しました！")
+            QMessageBox.information(self, "完了", "レンダリングが完了しました！AIによる調声が適用されています。")
             if status_bar:
                 status_bar.showMessage("エクスポート完了")
 
