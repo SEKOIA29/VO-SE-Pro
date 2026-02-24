@@ -75,7 +75,7 @@ class AuralAIEngine:
         input_data = base_f0_array.astype(np.float32).reshape(1, -1, 1)
         delta = self.session.run(None, {"input": input_data})[0]
         delta_arr = np.asarray(delta, dtype=np.float32).reshape(-1)
-        return base_f0_array + delta_arr
+        return base_f0_array + (delta_arr * strength)
 
     def _apply_pseudo_ai(self, f0):
         """AIモデルがない時のための予備ロジック（ビブラート等）"""
