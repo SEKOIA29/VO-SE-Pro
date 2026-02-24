@@ -1054,7 +1054,7 @@ class VoiceCardGallery(QWidget):
     def set_selected(self, selected: bool):
         """選択状態に応じた枠線の変更（省略なし）"""
         border_color = "#00FFCC" if selected else "#333333"
-        bg_color = self.base_color if not selected else QColor(self.base_color).lighter(120).name()
+        bg_color = card.base_color if not selected else QColor(self.base_color).lighter(120).name()
         
         # 募集枠の場合は少し透過させるなどの演出
         opacity = "1.0" if not self.is_recruiting else "0.7"
