@@ -971,13 +971,18 @@ class VoiceCardGallery(QWidget):
         2. パートナー募集枠（10枠）
         の順でグリッドを構築する。
         """
-        # --- 1. 既存のカードを完全に消去（メモリリーク防止） ---
-        while self.grid.count():
-            item = self.grid.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.setParent(None)
-                widget.deleteLater()
+        # 1. 既存カードのクリア（Pyrightのエラーを回避する安全な書き方）
+        if self.grid is not None:
+            while self.grid.count() > 0:
+                item = self.grid.takeAt(0)
+                # item が None でないことを確認
+                if item is not None:
+                    widget = item.widget()
+                    # widget が実在する場合のみ削除処理を実行
+                    if widget is not None:
+                        widget.setParent(None)
+                        widget.deleteLater()
+        
         self.cards.clear()
 
         row, col = 0, 0
@@ -1021,6 +1026,7 @@ class VoiceCardGallery(QWidget):
             base_path = getattr(self.manager, 'base_path', os.getcwd())
             icon_path = os.path.join(base_path, "assets", "icons", "recruiting_placeholder.png")
             card_color = "#1A2222" # 募集枠は少し沈んだ色にする
+            card = VoiceCardWidget(display_name, icon_path, card_color, is_recruiting=True)
 
             card = VoiceCardWidget(display_name, icon_path, card_color, is_recruiting=True)
             self._finalize_card_setup(card, display_name, internal_id, row, col)
