@@ -82,7 +82,7 @@ class AuralAIEngine:
         if ONNX_AVAILABLE and os.path.exists(self.model_path):
             try:
                 # [最適化] スレッド数を制限してCore i3などの低スペック環境でも安定動作
-                sess_options = ort.InferenceSessionOptions()
+                sess_options = ort.SessionOptions()
                 sess_options.intra_op_num_threads = 2
 
                 self.session = ort.InferenceSession(
