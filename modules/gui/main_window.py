@@ -895,18 +895,6 @@ class VoiceCardWidget(QFrame):
         # 初期状態を選択解除モードに
         self.set_selected(False)
 
-    def set_selected(self, selected: bool):
-        """選択状態のスタイル切り替え"""
-        border_color = "#00FFCC" if selected else "#333333"
-        bg_color = self.base_color if not selected else QColor(self.base_color).lighter(120).name()
-        self.setStyleSheet(f"""
-            VoiceCardWidget {{
-                background-color: {bg_color};
-                border: 2px solid {border_color};
-                border-radius: 12px;
-            }}
-        """)
-
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
