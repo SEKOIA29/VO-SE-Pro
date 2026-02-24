@@ -76,10 +76,6 @@ except ImportError:
     from modules.audio.voice_manager import VoiceManager # type: ignore
     from .aural_engine import AuralAIEngine
 
-try:
-    from widgets import VoiceCardWidget
-except ImportError:
-    pass
 
 # ==========================================================================
 # 6. グローバル設定
@@ -958,6 +954,10 @@ class VoiceCardGallery(QWidget):
 
         self.scroll_area.setWidget(self.container)
         self.main_layout.addWidget(self.scroll_area)
+
+        self.display_name = display_name
+        self.is_recruiting = is_recruiting
+        self.base_color = base_color
         
 
     def set_partner_data(self, partners: dict):
