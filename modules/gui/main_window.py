@@ -835,9 +835,6 @@ class VoiceCardWidget(QFrame):
 
     def __init__(self, display_name: str, icon_path: str, base_color: str, is_recruiting: bool = False, parent=None):
         super().__init__(parent)
-        self.display_name = display_name
-        self.is_recruiting = is_recruiting
-        self.base_color = base_color
         
         # カードの固定サイズ
         self.setFixedSize(140, 180)
@@ -926,6 +923,11 @@ class VoiceCardGallery(QWidget):
 
     def __init__(self, voice_manager):
         super().__init__()
+        self.display_name = display_name
+        self.is_recruiting = is_recruiting
+        self.base_color = base_color
+
+        self.setFixedSize(140, 180)
 
         # --- 1. 属性の定義と初期化（住民登録はここで行う） ---
         self.manager = voice_manager
