@@ -526,7 +526,7 @@ class TimelineWidget(QWidget):
         self.drag_start_pos = None
         self.update()
 
-    def contextMenuEvent(self, event: Any) -> None:
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
         """右クリックメニューの実装"""
         menu = QMenu(self)
         
