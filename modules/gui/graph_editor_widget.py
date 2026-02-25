@@ -120,30 +120,31 @@ class GraphEditorWidget(QWidget):
         ダブルクリックによる制御点の追加。
         """
         if event.button() == Qt.MouseButton.LeftButton:
-            # pos_x, pos_y を経由して Pyright の型推論を安定させる
+            # position() から確実に座標を取得
             pos: QPointF = event.position()
             
-            # x_to_time 等の戻り値を確実に float として扱う
+            # x_to_time 等の戻り値を明示的に float キャスト（pyright対策）
             time_val: float = float(self.x_to_time(pos.x()))
             param_val: float = float(self.y_to_value(pos.y()))
             
-            # [解決] float -> float なので、ArgumentTypeエラーは消滅します
+            # [解決] 引数として time_val と param_val を渡します
             new_point = PitchEvent(time=time_val, value=param_val)
             
             current_list = self.all_parameters.get(self.current_mode)
             
             if current_list is not None:
-                # 1ms以内の既存点を上書き
+                # 1ms以内の既存点を削除（上書き動作）
                 current_list[:] = [p for p in current_list if abs(p.time - time_val) > 0.001]
                 
-                # 追加とソート
+                # リストに追加してソート
                 current_list.append(new_point)
                 current_list.sort(key=lambda x: x.time)
                 
+                # 変更通知
                 self.parameters_changed.emit(self.all_parameters)
                 self.update()
                 
-                # [F821対策] スコープを確定させた logger
+                # [解決] 定義済みの logger を使用
                 logger.debug(f"Point added at t={time_val:.3f}, v={param_val:.3f}")
                 
 
