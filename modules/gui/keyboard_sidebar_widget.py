@@ -1,7 +1,7 @@
 #keyboard_sidebar_widget.py
 
 from PySide6.QtWidgets import QWidget
-from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPaintEvent, QLinearGradient, QPixmap, QMouseEvent
+from PySide6.QtGui import QPainter, QColor, QPen, QFont, QPaintEvent, QLinearGradient, QPixmap, QMouseEvent
 from PySide6.QtCore import Qt, QRect, QSize, Slot, Signal
 from typing import Optional
 
@@ -26,7 +26,7 @@ class KeyboardSidebarWidget(QWidget):
         # キャッシュ（VRAM/RAM上への事前描画）
         self._cache_pixmap: Optional[QPixmap] = None
         
-        # 🍎 Apple基準の固定幅（少し広げて操作性を向上）
+        # の固定幅（少し広げて操作性を向上）
         self.setMinimumWidth(72)
         self.setFixedWidth(72) 
 
