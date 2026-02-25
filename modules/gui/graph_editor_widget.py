@@ -16,19 +16,17 @@ class GraphEditorWidget(QWidget):
     PITCH_MAX = 8191
     PITCH_MIN = -8192
 
-    def __init__(self, parent=None):
+def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setMinimumHeight(150)
         self.setMouseTracking(True)
-
-        self.time: float = time
-        self.value: float = value
         
         self.scroll_x_offset = 0.0
         self.pixels_per_beat = 40.0
         self.tempo = 120.0
         
-        self.all_parameters = {
+        # 代表が追加した WORLD 用のパラメータ構成を維持
+        self.all_parameters: Dict[str, List[PitchEvent]] = {
             "Pitch": [],
             "Gender": [],
             "Tension": [],
@@ -43,8 +41,10 @@ class GraphEditorWidget(QWidget):
             "Breath": QColor(241, 196, 15)      # サンフラワー
         }
 
-        self.editing_point_index = None
-        self.hover_point_index = None
+        self.editing_point_index: Optional[int] = None
+        self.hover_point_index: Optional[int] = None
+
+        logger.info("GraphEditorWidget initialized successfully.")
 
     @Slot(str)
     def set_mode(self, mode: str):
