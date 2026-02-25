@@ -3,8 +3,9 @@
 
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt, Signal, Slot, QRect, QPointF
-from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QPaintEvent, QMouseEvent
+from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QPaintEvent, QMouseEvent, QPainterPath
 from modules.data.data_models import PitchEvent
+import bisect
 
 class GraphEditorWidget(QWidget):
     parameters_changed = Signal(dict) 
@@ -17,7 +18,7 @@ class GraphEditorWidget(QWidget):
         self.setMinimumHeight(150)
         self.setMouseTracking(True)
         
-        self.scroll_x_offset = 0
+        self.scroll_x_offset = 0.0
         self.pixels_per_beat = 40.0
         self.tempo = 120.0
         
@@ -30,17 +31,17 @@ class GraphEditorWidget(QWidget):
         
         self.current_mode = "Pitch"
         self.colors = {
-            "Pitch": QColor(0, 255, 127),
-            "Gender": QColor(231, 76, 60),
-            "Tension": QColor(46, 204, 113),
-            "Breath": QColor(241, 196, 15)
+            "Pitch": QColor(0, 255, 127),      # ネオングリーン
+            "Gender": QColor(231, 76, 60),     # ソフトレッド
+            "Tension": QColor(46, 204, 113),    # エメラルド
+            "Breath": QColor(241, 196, 15)      # サンフラワー
         }
 
         self.editing_point_index = None
         self.hover_point_index = None
 
     @Slot(str)
-    def set_mode(self, mode):
+    def set_mode(self, mode: str):
         if mode in self.all_parameters:
             self.current_mode = mode
             self.editing_point_index = None
@@ -48,137 +49,174 @@ class GraphEditorWidget(QWidget):
 
     def time_to_x(self, seconds: float) -> float:
         beats = (seconds * self.tempo) / 60.0
-        return (beats * self.pixels_per_beat) - self.scroll_x_offset
+        return float((beats * self.pixels_per_beat) - self.scroll_x_offset)
 
     def x_to_time(self, x: float) -> float:
         absolute_x = x + self.scroll_x_offset
         beats = absolute_x / self.pixels_per_beat
-        return (beats * 60.0) / self.tempo
+        return float((beats * 60.0) / self.tempo)
 
     def value_to_y(self, value: float) -> float:
-        h = self.height()
+        h = float(self.height())
         if self.current_mode == "Pitch":
-            center_y = h / 2
+            center_y = h / 2.0
             range_y = center_y * 0.8
             return center_y - (value / self.PITCH_MAX) * range_y
         else:
             return h - (value * (h * 0.8) + (h * 0.1))
 
     def y_to_value(self, y: float) -> float:
-        h = self.height()
+        h = float(self.height())
         if self.current_mode == "Pitch":
-            center_y = h / 2
+            center_y = h / 2.0
             range_y = center_y * 0.8
             val = -((y - center_y) / range_y) * self.PITCH_MAX
-            return int(max(self.PITCH_MIN, min(self.PITCH_MAX, val)))
+            return float(max(self.PITCH_MIN, min(self.PITCH_MAX, val)))
         else:
             val = (h - y - (h * 0.1)) / (h * 0.8)
-            return max(0.0, min(1.0, val))
+            return float(max(0.0, min(1.0, val)))
+
+    def value_to_y_for_mode(self, value: float, mode: str) -> float:
+        h = float(self.height())
+        if mode == "Pitch":
+            center_y = h / 2.0
+            return center_y - (value / self.PITCH_MAX) * (center_y * 0.8)
+        else:
+            return h - (value * (h * 0.8) + (h * 0.1))
+
+    def _get_point_at_pos(self, pos: QPointF, events: list) -> int | None:
+        """
+        [O(log N) 高速探索アルゴリズム]
+        総当たり(O(N))を廃止し、クリックされた時間(X座標)周辺の点のみをピンポイントで検証する。
+        """
+        if not events:
+            return None
+            
+        click_time = self.x_to_time(pos.x())
+        
+        # bisectを使って、クリックされた時間が挿入されるべきインデックスを高速に特定
+        idx = bisect.bisect_left(events, click_time, key=lambda e: e.time)
+        
+        # ピクセルの当たり判定（16x16）を考慮し、前後数個の点だけを調べる
+        start_idx = max(0, idx - 2)
+        end_idx = min(len(events), idx + 2)
+        
+        for i in range(start_idx, end_idx):
+            p = events[i]
+            px = self.time_to_x(p.time)
+            py = self.value_to_y(p.value)
+            if QRect(int(px)-8, int(py)-8, 16, 16).contains(pos.toPoint()):
+                return i
+        return None
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
-        # Qt.LeftButton -> Qt.MouseButton.LeftButton
         if event.button() == Qt.MouseButton.LeftButton:
             time = self.x_to_time(event.position().x())
             val = self.y_to_value(event.position().y())
-            new_point = PitchEvent(time=time, value=int(round(val)))
+            new_point = PitchEvent(time=float(time), value=float(val))
+            
+            # PythonのTimsortは、末尾追加後のソートが極めて高速 (O(N))
             self.all_parameters[self.current_mode].append(new_point)
             self.all_parameters[self.current_mode].sort(key=lambda x: x.time)
+            
             self.parameters_changed.emit(self.all_parameters)
             self.update()
 
     def mousePressEvent(self, event: QMouseEvent):
         pos = event.position()
         events = self.all_parameters[self.current_mode]
-        # Qt.LeftButton -> Qt.MouseButton.LeftButton
+        
         if event.button() == Qt.MouseButton.LeftButton:
-            self.editing_point_index = None
-            for i, p in enumerate(events):
-                px, py = self.time_to_x(p.time), self.value_to_y(p.value)
-                if QRect(int(px)-8, int(py)-8, 16, 16).contains(pos.toPoint()):
-                    self.editing_point_index = i
-                    break
-        # Qt.RightButton -> Qt.MouseButton.RightButton
+            self.editing_point_index = self._get_point_at_pos(pos, events)
+            
         elif event.button() == Qt.MouseButton.RightButton:
-            for i, p in enumerate(events):
-                px, py = self.time_to_x(p.time), self.value_to_y(p.value)
-                if QRect(int(px)-8, int(py)-8, 16, 16).contains(pos.toPoint()):
-                    events.pop(i)
-                    self.parameters_changed.emit(self.all_parameters)
-                    break
+            target_idx = self._get_point_at_pos(pos, events)
+            if target_idx is not None:
+                events.pop(target_idx)
+                self.parameters_changed.emit(self.all_parameters)
         self.update()
 
     def mouseMoveEvent(self, event: QMouseEvent):
         pos = event.position()
         events = self.all_parameters[self.current_mode]
         
-        # event.buttons() & Qt.LeftButton -> Qt.MouseButton.LeftButton
+        # ドラッグ中（点の移動）
         if event.buttons() & Qt.MouseButton.LeftButton and self.editing_point_index is not None:
             p = events[self.editing_point_index]
-            p.time = max(0, self.x_to_time(pos.x()))
+            p.time = max(0.0, self.x_to_time(pos.x()))
             p.value = self.y_to_value(pos.y())
             self.parameters_changed.emit(self.all_parameters)
         
-        self.hover_point_index = None
-        for i, p in enumerate(events):
-            px, py = self.time_to_x(p.time), self.value_to_y(p.value)
-            if QRect(int(px)-8, int(py)-8, 16, 16).contains(pos.toPoint()):
-                self.hover_point_index = i
-                break
+        # ホバー判定（高速探索）
+        self.hover_point_index = self._get_point_at_pos(pos, events)
         self.update()
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         if self.editing_point_index is not None:
+            # ドラッグ終了時に時間軸の順序が狂う可能性があるため再ソート
             self.all_parameters[self.current_mode].sort(key=lambda x: x.time)
             self.editing_point_index = None
             self.update()
 
     def paintEvent(self, event: QPaintEvent):
         painter = QPainter(self)
-        # QPainter.Antialiasing -> QPainter.RenderHint.Antialiasing
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        painter.fillRect(self.rect(), QColor(25, 25, 25))
+        # Apple風の深みのあるグレー背景
+        painter.fillRect(self.rect(), QColor(30, 30, 30))
 
-        h = self.height()
+        h = float(self.height())
+        w = float(self.width())
+
+        # センターライン
         if self.current_mode == "Pitch":
-            # Qt.DashLine -> Qt.PenStyle.DashLine
-            painter.setPen(QPen(QColor(70, 70, 70), 1, Qt.PenStyle.DashLine))
-            # 座標を int にキャストして型エラー回避
-            painter.drawLine(0, int(h/2), self.width(), int(h/2))
+            painter.setPen(QPen(QColor(60, 60, 60), 1, Qt.PenStyle.DashLine))
+            painter.drawLine(0, int(h/2), int(w), int(h/2))
 
+        # --- [1. 背景パラメータの一括描画 (QPainterPath)] ---
         for mode, events in self.all_parameters.items():
-            if mode == self.current_mode:
+            if mode == self.current_mode or not events:
                 continue
-            if not events:
-                continue
-            color = self.colors[mode]
-            color.setAlpha(40)
+                
+            color = QColor(self.colors[mode])
+            color.setAlpha(30)
             painter.setPen(QPen(color, 1))
-            points = [QPointF(self.time_to_x(p.time), self.value_to_y_for_mode(p.value, mode)) for p in events]
-            for i in range(len(points) - 1):
-                painter.drawLine(points[i], points[i+1])
+            
+            path = QPainterPath()
+            first_p = events[0]
+            path.moveTo(self.time_to_x(first_p.time), self.value_to_y_for_mode(first_p.value, mode))
+            for p in events[1:]:
+                path.lineTo(self.time_to_x(p.time), self.value_to_y_for_mode(p.value, mode))
+            painter.drawPath(path)
 
+        # --- [2. アクティブパラメータの一括描画 (QPainterPath)] ---
         events = self.all_parameters[self.current_mode]
         color = self.colors[self.current_mode]
         
         if len(events) >= 2:
             painter.setPen(QPen(color, 2))
-            points = [QPointF(self.time_to_x(p.time), self.value_to_y(p.value)) for p in events]
-            for i in range(len(points) - 1):
-                painter.drawLine(points[i], points[i+1])
+            path = QPainterPath()
+            first_p = events[0]
+            path.moveTo(self.time_to_x(first_p.time), self.value_to_y(first_p.value))
+            for p in events[1:]:
+                path.lineTo(self.time_to_x(p.time), self.value_to_y(p.value))
+            # GPUに「このパスをまとめて描け」と一度だけ命令する（超高速）
+            painter.drawPath(path)
 
+        # --- [3. コントロールポイントの描画] ---
+        # 画面に映っている点だけを描画するようにクリッピングするとなお良いですが、
+        # 今回はQPointFの描画コストが低いためそのまま描画します。
         for i, p in enumerate(events):
-            px, py = self.time_to_x(p.time), self.value_to_y(p.value)
-            dot_color = QColor(255, 255, 255) if i == self.hover_point_index else color
-            painter.setBrush(QBrush(dot_color))
-            # Qt.NoPen -> Qt.PenStyle.NoPen
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawEllipse(QPointF(px, py), 5, 5)
-
-    def value_to_y_for_mode(self, value: float, mode: str) -> float:
-        h = self.height()
-        if mode == "Pitch":
-            center_y = h / 2
-            return center_y - (value / self.PITCH_MAX) * (center_y * 0.8)
-        else:
-            return h - (value * (h * 0.8) + (h * 0.1))
+            px = self.time_to_x(p.time)
+            py = self.value_to_y(p.value)
+            
+            if i == self.hover_point_index:
+                painter.setBrush(QBrush(QColor(255, 255, 255)))
+                painter.setPen(QPen(color, 2))
+                radius = 6
+            else:
+                painter.setBrush(QBrush(color))
+                painter.setPen(Qt.PenStyle.NoPen)
+                radius = 4
+                
+            painter.drawEllipse(QPointF(px, py), radius, radius)
