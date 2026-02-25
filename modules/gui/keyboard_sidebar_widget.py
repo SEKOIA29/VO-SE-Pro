@@ -204,14 +204,24 @@ class KeyboardSidebarWidget(QWidget):
     # ============================================================
 
     def paintEvent(self, event: QPaintEvent):
-        # キャッシュが必要なら再生成
+        """
+        高解像度キャッシュを使用したレンダリング。
+        Pyrightの型チェック（None安全性）を考慮した実装。
+        """
+        # 1. キャッシュの整合性チェックと生成
         if self._cache_pixmap is None or self.key_height_pixels != self._last_rendered_height:
             self._update_cache()
 
+        # [Pyright修正] 明示的なNoneチェックを追加し、これ以降のself._cache_pixmapがNon-Nullableであることを保証
+        if self._cache_pixmap is None:
+            return
+
         painter = QPainter(self)
         
-        # 1. キャッシュされた全鍵盤を転送
+        # 2. キャッシュされた全鍵盤を「一撃」で転送
         dpr = self.devicePixelRatioF()
+        
+        # 型安全な描画（self._cache_pixmapはここでは確実にQPixmap型）
         painter.drawPixmap(
             0, 0, 
             self._cache_pixmap, 
@@ -219,11 +229,12 @@ class KeyboardSidebarWidget(QWidget):
             int(self.width() * dpr), int(self.height() * dpr)
         )
 
-        # 2. 押下状態のハイライト
+        # 3. 押下状態のハイライト
         if self._current_pressed_note is not None:
+            # y座標の計算（floatからintへのキャストを徹底）
             y = (127 - self._current_pressed_note) * self.key_height_pixels - self.scroll_y_offset
             
-            # 代表こだわりのApple風ネオングリーン
+            # Apple風ネオングリーン
             painter.fillRect(
                 QRect(0, int(y), self.width(), int(self.key_height_pixels)), 
                 QColor(0, 255, 127, 70)
@@ -235,7 +246,7 @@ class KeyboardSidebarWidget(QWidget):
                 QColor(0, 255, 127, 200)
             )
 
-        # 3. タイムラインとの境界線
+        # 4. タイムラインとの境界線
         painter.setPen(QPen(QColor(0, 0, 0, 50), 1))
         painter.drawLine(self.width() - 1, 0, self.width() - 1, self.height())
         
