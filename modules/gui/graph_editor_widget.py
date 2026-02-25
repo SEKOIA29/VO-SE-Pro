@@ -110,17 +110,46 @@ class GraphEditorWidget(QWidget):
         return None
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
+        """
+        ダブルクリックによる制御点の追加。
+        Timsortの特性を活かし、追加後に時間軸で再ソートを行う。
+        """
         if event.button() == Qt.MouseButton.LeftButton:
-            time = self.x_to_time(event.position().x())
-            val = self.y_to_value(event.position().y())
-            new_point = PitchEvent(time=float(time), value=float(val))
+            # 座標から論理値（時間と値）へ変換
+            # Pyright対応: x_to_time 等が float を返すことを前提に明示的にキャスト
+            pos_x = event.position().x()
+            pos_y = event.position().y()
             
-            # PythonのTimsortは、末尾追加後のソートが極めて高速 (O(N))
-            self.all_parameters[self.current_mode].append(new_point)
-            self.all_parameters[self.current_mode].sort(key=lambda x: x.time)
+            time_val = float(self.x_to_time(pos_x))
+            param_val = float(self.y_to_value(pos_y))
             
-            self.parameters_changed.emit(self.all_parameters)
-            self.update()
+            # 新しいポイントの生成
+            new_point = PitchEvent(time=time_val, value=param_val)
+            
+            # 現在のモード（Pitch, Dynamics等）のリストを取得
+            current_list = self.all_parameters.get(self.current_mode)
+            
+            if current_list is not None:
+                # ここで「極めて近い時間の既存点」を削除するガードを入れると
+                # ユーザー体験がよりプロフェッショナルになります（上書き動作）
+                # 許容誤差 0.001秒
+                current_list[:] = [p for p in current_list if abs(p.time - time_val) > 0.001]
+                
+                # リスト末尾に追加
+                current_list.append(new_point)
+                
+                # Timsort (O(N log N)だが、ほぼソート済みなら実質 O(N))
+                # 時間軸で並び替えることで、描画時の線形補間を容易にする
+                current_list.sort(key=lambda x: x.time)
+                
+                # 変更を外部へ通知
+                self.parameters_changed.emit(self.all_parameters)
+                
+                # 再描画をリクエスト
+                self.update()
+                
+                logger.debug(f"Point added at t={time_val:.3f}, v={param_val:.3f}")
+                
 
     def mousePressEvent(self, event: QMouseEvent):
         pos = event.position()
