@@ -112,11 +112,9 @@ class GraphEditorWidget(QWidget):
     def mouseDoubleClickEvent(self, event: QMouseEvent):
         """
         ダブルクリックによる制御点の追加。
-        Timsortの特性を活かし、追加後に時間軸で再ソートを行う。
         """
         if event.button() == Qt.MouseButton.LeftButton:
-            # 座標から論理値（時間と値）へ変換
-            # Pyright対応: event.position() から確実に座標を取得しキャスト
+            # Pyright対応: キャストと座標取得
             pos: QPointF = event.position()
             pos_x: float = pos.x()
             pos_y: float = pos.y()
@@ -127,29 +125,21 @@ class GraphEditorWidget(QWidget):
             # 新しいポイントの生成
             new_point = PitchEvent(time=time_val, value=param_val)
             
-            # 現在のモード（Pitch, Dynamics等）のリストを取得
             current_list = self.all_parameters.get(self.current_mode)
             
             if current_list is not None:
-                # 代表、ここで「極めて近い時間の既存点」を削除するガードを入れます
-                # ユーザー体験がよりプロフェッショナルになります（上書き動作）
-                # 許容誤差 0.001秒（1ms）
+                # 1ms以内の近接ポイントを削除（上書き）
                 current_list[:] = [p for p in current_list if abs(p.time - time_val) > 0.001]
                 
-                # リスト末尾に追加
+                # 追加とソート
                 current_list.append(new_point)
-                
-                # Timsort (O(N log N)だが、ほぼソート済みなら実質 O(N))
-                # 時間軸で並び替えることで、描画時の線形補間を容易にする
                 current_list.sort(key=lambda x: x.time)
                 
-                # 変更を外部へ通知
+                # 通知と描画更新
                 self.parameters_changed.emit(self.all_parameters)
-                
-                # 再描画をリクエスト
                 self.update()
                 
-                # [解決済み] logger.debug を安全に呼び出し
+                # [修正完了] F821エラー解消：定義済みのloggerを使用
                 logger.debug(f"Point added at t={time_val:.3f}, v={param_val:.3f}")
                 
 
