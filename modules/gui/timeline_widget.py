@@ -618,29 +618,66 @@ class TimelineWidget(QWidget):
     # ============================================================
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
+        """
+        [VO-SE Pro: ショートカット・エンジン]
+        - 1~4: レイヤー切り替え (Dynamics, Pitch, Vibrato, Formant)
+        - Ctrl+S/C/V/D/A: 標準的な編集コマンド
+        - Del/Backspace: 選択要素の削除
+        """
         if event is None:
             return
-        ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
-        key = event.key()
+
+        # 修飾キーとキーコードの取得
+        # Pyright対応: event.modifiers() の結果を明示的に処理
+        modifiers = event.modifiers()
+        ctrl = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+        key_int = event.key()
+
+        # レイヤー切り替えの定義
+        # Pyright対応: キーコード(int)とQt.Key型の不一致を防ぐため、比較を安定させる
         layer_map = {
-            Qt.Key.Key_1: "Dynamics", Qt.Key.Key_2: "Pitch",
-            Qt.Key.Key_3: "Vibrato",  Qt.Key.Key_4: "Formant",
+            Qt.Key.Key_1.value: "Dynamics",
+            Qt.Key.Key_2.value: "Pitch",
+            Qt.Key.Key_3.value: "Vibrato",
+            Qt.Key.Key_4.value: "Formant",
         }
-        if key in layer_map:
-            self.change_layer(layer_map[key])
+
+        # ステータスバー通知用の準備
+        main_window = self.window()
+        status_bar = getattr(main_window, "statusBar", lambda: None)()
+
+        # 1. レイヤー切り替えの処理
+        if key_int in layer_map:
+            target_layer = layer_map[key_int]
+            self.change_layer(target_layer)
+            if status_bar:
+                status_bar.showMessage(f"Layer switched to: {target_layer}", 2000)
+
+        # 2. Ctrl系ショートカット
         elif ctrl:
-            if key == Qt.Key.Key_S:   
-              self.export_all_data()
-            elif key == Qt.Key.Key_C: 
-              self._copy_notes()
-            elif key == Qt.Key.Key_V: 
-              self._paste_notes()
-            elif key == Qt.Key.Key_D: 
-              self._duplicate_notes()
-            elif key == Qt.Key.Key_A: 
-              self.select_all()
-        elif key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            # Ruff E701対応: すべての処理を改行して記述
+            if key_int == Qt.Key.Key_S.value:
+                self.export_all_data()
+            
+            elif key_int == Qt.Key.Key_C.value:
+                self._copy_notes()
+            
+            elif key_int == Qt.Key.Key_V.value:
+                self._paste_notes()
+            
+            elif key_int == Qt.Key.Key_D.value:
+                self._duplicate_notes()
+            
+            elif key_int == Qt.Key.Key_A.value:
+                self.select_all()
+
+        # 3. 削除系
+        elif key_int in (Qt.Key.Key_Delete.value, Qt.Key.Key_Backspace.value):
             self.delete_selected()
+            if status_bar:
+                status_bar.showMessage("Selected points deleted", 2000)
+
+        # 最後にUIを更新
         self.update()
 
     # ============================================================
@@ -648,12 +685,30 @@ class TimelineWidget(QWidget):
     # ============================================================
 
     def change_layer(self, name: str) -> None:
+        """
+        [VO-SE Pro: レイヤー切り替えエンジン]
+        編集対象のパラメータ（Dynamics, Pitch等）を変更し、UIとステータスバーを同期します。
+        """
+        # 1. 内部状態の更新
         self.current_param_layer = name
-        if isinstance(self.window(), QMainWindow):
-            sb = self.window().statusBar()
+        
+        # 2. メインウィンドウのステータスバーへの通知
+        # Pyright対策: self.window() の戻り値を一度変数に受け、型を確定させる
+        main_win = self.window()
+        
+        # QMainWindow であることを確認してから statusBar() にアクセス
+        if isinstance(main_win, QMainWindow):
+            sb = main_win.statusBar()
+            
+            # Ruff E701対応: if文の中身は必ず改行
             if sb:
                 sb.showMessage(f"Active Layer: {name}", 2000)
+        
+        # 3. 描画の更新（レイヤーによって曲線や色が変わるため必須）
         self.update()
+        
+        # デバッグログの出力（開発中のトレーサビリティ確保）
+        logger.info(f"Graph Editor: Layer changed to '{name}'")
 
     def _toggle_ai_ghost(self) -> None:
         self.show_ai_phonemes = not self.show_ai_phonemes
