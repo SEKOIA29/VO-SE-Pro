@@ -20,6 +20,9 @@ class GraphEditorWidget(QWidget):
         super().__init__(parent)
         self.setMinimumHeight(150)
         self.setMouseTracking(True)
+
+        self.time: float = time
+        self.value: float = value
         
         self.scroll_x_offset = 0.0
         self.pixels_per_beat = 40.0
@@ -117,12 +120,14 @@ class GraphEditorWidget(QWidget):
         ダブルクリックによる制御点の追加。
         """
         if event.button() == Qt.MouseButton.LeftButton:
-            pos = event.position()
-            # 明示的に float キャストを行い、型の一致を保証
-            time_val = float(self.x_to_time(pos.x()))
-            param_val = float(self.y_to_value(pos.y()))
+            # pos_x, pos_y を経由して Pyright の型推論を安定させる
+            pos: QPointF = event.position()
             
-            # [解決] ここで float を渡してもエラーにならなくなります
+            # x_to_time 等の戻り値を確実に float として扱う
+            time_val: float = float(self.x_to_time(pos.x()))
+            param_val: float = float(self.y_to_value(pos.y()))
+            
+            # [解決] float -> float なので、ArgumentTypeエラーは消滅します
             new_point = PitchEvent(time=time_val, value=param_val)
             
             current_list = self.all_parameters.get(self.current_mode)
@@ -131,15 +136,14 @@ class GraphEditorWidget(QWidget):
                 # 1ms以内の既存点を上書き
                 current_list[:] = [p for p in current_list if abs(p.time - time_val) > 0.001]
                 
-                # リストに追加してソート
+                # 追加とソート
                 current_list.append(new_point)
                 current_list.sort(key=lambda x: x.time)
                 
-                # 変更通知と描画更新
                 self.parameters_changed.emit(self.all_parameters)
                 self.update()
                 
-                # [F821対策] スコープ内の定義済み logger を使用
+                # [F821対策] スコープを確定させた logger
                 logger.debug(f"Point added at t={time_val:.3f}, v={param_val:.3f}")
                 
 
