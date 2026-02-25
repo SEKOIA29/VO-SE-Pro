@@ -629,11 +629,16 @@ class TimelineWidget(QWidget):
         if key in layer_map:
             self.change_layer(layer_map[key])
         elif ctrl:
-            if key == Qt.Key.Key_S:   self.export_all_data()
-            elif key == Qt.Key.Key_C: self._copy_notes()
-            elif key == Qt.Key.Key_V: self._paste_notes()
-            elif key == Qt.Key.Key_D: self._duplicate_notes()
-            elif key == Qt.Key.Key_A: self.select_all()
+            if key == Qt.Key.Key_S:   
+              self.export_all_data()
+            elif key == Qt.Key.Key_C: 
+              self._copy_notes()
+            elif key == Qt.Key.Key_V: 
+              self._paste_notes()
+            elif key == Qt.Key.Key_D: 
+              self._duplicate_notes()
+            elif key == Qt.Key.Key_A: 
+              self.select_all()
         elif key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             self.delete_selected()
         self.update()
