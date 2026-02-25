@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional, Protocol, runtime_checkable
 from PySide6.QtWidgets import (QWidget, QApplication, QInputDialog, QLineEdit, 
                                QMainWindow, QMenu)
 from PySide6.QtCore import Qt, QRect, QRectF, Signal, Slot, QPoint, QPointF, QSize
-from PySide6.QtGui import (QPainter, QPen, QBrush, QColor, QFont, QAction,
+from PySide6.QtGui import (QPainter, QPen, QBrush, QColor, QFont, QAction, QContextMenuEvent,
                             QLinearGradient, QPaintEvent, QMouseEvent, QKeyEvent, QWheelEvent)
 
 
@@ -592,6 +592,10 @@ class TimelineWidget(QWidget):
 
     def change_layer(self, name: str) -> None:
         self.current_param_layer = name
+        if isinstance(self.window(), QMainWindow):  # ← Doc10 にあった処理
+            sb = self.window().statusBar()
+            if sb:
+                sb.showMessage(f"Active Layer: {name}", 2000)
         self.update()
 
     def _add_param_pt(self, pos: QPointF) -> None:
