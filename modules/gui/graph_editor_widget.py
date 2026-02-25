@@ -116,12 +116,13 @@ class GraphEditorWidget(QWidget):
         """
         if event.button() == Qt.MouseButton.LeftButton:
             # 座標から論理値（時間と値）へ変換
-            # Pyright対応: x_to_time 等が float を返すことを前提に明示的にキャスト
-            pos_x = event.position().x()
-            pos_y = event.position().y()
+            # Pyright対応: event.position() から確実に座標を取得しキャスト
+            pos: QPointF = event.position()
+            pos_x: float = pos.x()
+            pos_y: float = pos.y()
             
-            time_val = float(self.x_to_time(pos_x))
-            param_val = float(self.y_to_value(pos_y))
+            time_val: float = float(self.x_to_time(pos_x))
+            param_val: float = float(self.y_to_value(pos_y))
             
             # 新しいポイントの生成
             new_point = PitchEvent(time=time_val, value=param_val)
@@ -130,9 +131,9 @@ class GraphEditorWidget(QWidget):
             current_list = self.all_parameters.get(self.current_mode)
             
             if current_list is not None:
-                # ここで「極めて近い時間の既存点」を削除するガードを入れると
+                # 代表、ここで「極めて近い時間の既存点」を削除するガードを入れます
                 # ユーザー体験がよりプロフェッショナルになります（上書き動作）
-                # 許容誤差 0.001秒
+                # 許容誤差 0.001秒（1ms）
                 current_list[:] = [p for p in current_list if abs(p.time - time_val) > 0.001]
                 
                 # リスト末尾に追加
@@ -148,6 +149,7 @@ class GraphEditorWidget(QWidget):
                 # 再描画をリクエスト
                 self.update()
                 
+                # [解決済み] logger.debug を安全に呼び出し
                 logger.debug(f"Point added at t={time_val:.3f}, v={param_val:.3f}")
                 
 
