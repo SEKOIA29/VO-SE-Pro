@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import ctypes
 import wave
@@ -6,11 +7,13 @@ import numpy as np
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Protocol, runtime_checkable
 
-from PySide6.QtWidgets import (QWidget, QApplication, QInputDialog, QLineEdit, 
+from PySide6.QtWidgets import (QWidget, QApplication, QInputDialog, QLineEdit,
                                QMainWindow, QMenu)
 from PySide6.QtCore import Qt, QRect, QRectF, Signal, Slot, QPoint, QPointF, QSize
 from PySide6.QtGui import (QPainter, QPen, QBrush, QColor, QFont, QAction, QContextMenuEvent,
                             QLinearGradient, QPaintEvent, QMouseEvent, QKeyEvent, QWheelEvent)
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================
@@ -90,26 +93,33 @@ except Exception:
 class TimelineWidget(QWidget):
     """
     VO-SE Pro: メインタイムライン（ピアノロール）
-    ズーム機能 & コンテキストメニュー搭載版
+
+    統合ポイント:
+    - AIゴーストレイヤー: onset/overlap をグラデーションで可視化 (Doc13)
+    - 横線グリッド: 黒鍵行を暗い背景で強調し視認性向上 (Doc13)
+    - scroll_synced_signal: 縦スクロール位置を外部に発信 (Doc13)
+    - 縦スクロール: wheelEvent の通常スクロールを縦方向に修正 (Doc13)
+    - 描画を専用メソッドに分割し保守性を向上 (Doc13)
+    - 音声エンジン / 波形描画 / エクスポート (Doc12)
+    - コピー / ペースト / 複製 / 削除 / 右クリックメニュー (Doc12)
+    - パラメータ全レイヤー同時描画 (Doc12)
     """
 
     notes_changed_signal = Signal()
+    scroll_synced_signal = Signal(float)
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
 
-        # --- 表示パラメータ ---
         self.tempo: float = 120.0
         self.pixels_per_beat: float = 80.0
         self.key_height_pixels: float = 20.0
-        self.quantize_resolution: float = 0.25   # 16分音符
+        self.quantize_resolution: float = 0.25
 
-        # --- スクロール ---
         self.scroll_x_offset: float = 0.0
         self.scroll_y_offset: float = 0.0
         self._current_playback_time: float = 0.0
 
-        # --- データ ---
         self.notes_list: List[Any] = []
         self.parameters: Dict[str, Dict[float, float]] = {
             "Dynamics": {}, "Pitch": {}, "Vibrato": {}, "Formant": {}
@@ -117,27 +127,26 @@ class TimelineWidget(QWidget):
         self.current_param_layer: str = "Dynamics"
         self.audio_level: float = 0.0
 
-        # --- 編集状態 ---
         self.edit_mode: Optional[str] = None
         self.drag_start_pos: Optional[QPoint] = None
         self.selection_rect: QRect = QRect()
         self._resizing_note: Optional[Any] = None
 
-        # --- 音声波形キャッシュ ---
         self._wave_cache: List[float] = []
         self._wave_cache_path: str = ""
 
-        # --- Tokenizer ---
+        # AIゴーストレイヤー設定
+        self.show_ai_phonemes: bool = True
+        self.ai_ghost_alpha: int = 100
+
         try:
             self.tokenizer: Any = _TOKENIZER_CLASS()
         except Exception:
             self.tokenizer = _FallbackTokenizer()
 
-        # --- 音声エンジン ---
         self.vose_core: Any = None
         self.init_voice_engine()
 
-        # --- ウィジェット設定 ---
         self.setMinimumSize(400, 200)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMouseTracking(True)
@@ -200,7 +209,7 @@ class TimelineWidget(QWidget):
                                 len(data)
                             )
                 except Exception as e:
-                    print(f"Voice load error: {e}")
+                    logger.error(f"Voice load error: {e}")
 
     # ============================================================
     # データ入出力
@@ -224,9 +233,7 @@ class TimelineWidget(QWidget):
             },
             "notes": [
                 {
-                    "t": n.start_time,
-                    "d": n.duration,
-                    "n": n.note_number,
+                    "t": n.start_time, "d": n.duration, "n": n.note_number,
                     "p": self.analyze_lyric_to_phoneme(n.lyrics),
                     "lyric": n.lyrics,
                     "onset": float(getattr(n, 'onset', 0.0)),
@@ -249,21 +256,20 @@ class TimelineWidget(QWidget):
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
             with open(abs_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-            print(f"✅ Exported (Voice: {char_name}) → {abs_path}")
+            logger.info(f"Exported (Voice: {char_name}) -> {abs_path}")
             if isinstance(top, QMainWindow):
                 sb = top.statusBar()
                 if sb:
                     sb.showMessage(f"Export Complete: {char_name}", 5000)
         except Exception as e:
-            print(f"❌ Export failed: {e}")
+            logger.error(f"Export failed: {e}")
 
     def get_all_notes_data(self) -> list:
         return self.notes_list
 
     def add_note_from_midi(self, pitch: int, start_beat: float, duration_beat: float) -> None:
-        start_time = self.beats_to_seconds(start_beat)
-        duration = self.beats_to_seconds(duration_beat)
-        new_note = NoteEventClass(start_time, duration, pitch, "la")
+        new_note = NoteEventClass(
+            self.beats_to_seconds(start_beat), self.beats_to_seconds(duration_beat), pitch, "la")
         new_note.phoneme = "la"
         self.notes_list.append(new_note)
         self.notes_changed_signal.emit()
@@ -290,12 +296,11 @@ class TimelineWidget(QWidget):
                 max_val = float(np.max(peaks)) if peaks else 1.0
                 return [p / max_val for p in peaks] if max_val > 0 else peaks
         except Exception as e:
-            print(f"Waveform Analysis Error: {e}")
+            logger.error(f"Waveform Analysis Error: {e}")
             return []
 
     def _draw_audio_waveform(self, p: QPainter) -> None:
-        top = self.window()
-        audio_path = str(getattr(top, 'current_audio_path', ''))
+        audio_path = str(getattr(self.window(), 'current_audio_path', ''))
         if not audio_path or not os.path.exists(audio_path):
             return
         if self._wave_cache_path != audio_path:
@@ -303,13 +308,10 @@ class TimelineWidget(QWidget):
             self._wave_cache_path = audio_path
         if not self._wave_cache:
             return
-
         p.setPen(QPen(QColor(0, 255, 255, 50), 1))
         mid_y = self.height() / 2.0
         max_h = self.height() * 0.7
-        px_per_sec = (self.tempo / 60.0) * self.pixels_per_beat
-        interval_px = px_per_sec * 0.05
-
+        interval_px = (self.tempo / 60.0) * self.pixels_per_beat * 0.05
         for i, peak in enumerate(self._wave_cache):
             x = i * interval_px - self.scroll_x_offset
             if x < -interval_px:
@@ -335,128 +337,160 @@ class TimelineWidget(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.fillRect(self.rect(), QColor(18, 18, 18))
 
-        # 1. グリッド
+        self._draw_grid(p)
+        self._draw_audio_waveform(p)
+        self._draw_glow(p)
+        if self.show_ai_phonemes:
+            self._draw_ai_phoneme_ghosts(p)
+        self._draw_parameter_curves(p)
+        self._draw_notes(p)
+        self._draw_selection_rect(p)
+        self._draw_playhead(p)
+
+        p.end()
+
+    def _draw_grid(self, p: QPainter) -> None:
+        """横線（ノート行・黒鍵強調）＋縦線（小節・拍）"""
+        # 横線
+        p.setPen(QPen(QColor(35, 35, 35), 1))
+        for n in range(128):
+            y = (127 - n) * self.key_height_pixels - self.scroll_y_offset
+            if y + self.key_height_pixels < 0 or y > self.height():
+                continue
+            if (n % 12) in (1, 3, 6, 8, 10):
+                p.fillRect(QRectF(0, y, self.width(), self.key_height_pixels),
+                           QColor(22, 22, 22))
+            p.drawLine(0, int(y), self.width(), int(y))
+
+        # 縦線
         for i in range(2000):
             x = i * self.pixels_per_beat - self.scroll_x_offset
-            if x < -self.pixels_per_beat: continue
-            if x > self.width(): break
-            color = QColor(58, 58, 60) if i % 4 == 0 else QColor(36, 36, 36)
-            p.setPen(QPen(color, 1))
+            if x < -self.pixels_per_beat:
+                continue
+            if x > self.width():
+                break
+            p.setPen(QPen(QColor(58, 58, 60) if i % 4 == 0 else QColor(36, 36, 36), 1))
             p.drawLine(int(x), 0, int(x), self.height())
 
-        # 2. オーディオ波形
-        self._draw_audio_waveform(p)
+    def _draw_glow(self, p: QPainter) -> None:
+        if self.audio_level <= 0.001:
+            return
+        cx = int(self.seconds_to_beats(self._current_playback_time)
+                 * self.pixels_per_beat - self.scroll_x_offset)
+        gw = int(self.audio_level * 150)
+        grad = QLinearGradient(float(cx - gw), 0.0, float(cx + gw), 0.0)
+        grad.setColorAt(0, QColor(255, 45, 85, 0))
+        grad.setColorAt(0.5, QColor(255, 45, 85, int(self.audio_level * 150)))
+        grad.setColorAt(1, QColor(255, 45, 85, 0))
+        p.fillRect(self.rect(), QBrush(grad))
 
-        # 3. audio_level グロー
-        if self.audio_level > 0.001:
-            cx = int(self.seconds_to_beats(self._current_playback_time)
-                     * self.pixels_per_beat - self.scroll_x_offset)
-            gw = int(self.audio_level * 150)
-            grad = QLinearGradient(float(cx - gw), 0.0, float(cx + gw), 0.0)
-            grad.setColorAt(0, QColor(255, 45, 85, 0))
-            grad.setColorAt(0.5, QColor(255, 45, 85, int(self.audio_level * 150)))
-            grad.setColorAt(1, QColor(255, 45, 85, 0))
-            p.fillRect(self.rect(), QBrush(grad))
-
-        # 4. パラメータ
-        for name, data in self.parameters.items():
-            if name != self.current_param_layer:
-                self._draw_curve(p, data, self._PARAM_COLORS.get(name, QColor(200, 200, 200)), 60, 1)
-        
-        active_color = self._PARAM_COLORS.get(self.current_param_layer, QColor(255, 255, 255))
-        self._draw_curve(p, self.parameters.get(self.current_param_layer, {}), active_color, 255, 2)
-
-        # 5. ノート
+    def _draw_ai_phoneme_ghosts(self, p: QPainter) -> None:
+        """onset（子音区間）をノート左側にグラデーションで可視化"""
         for n in self.notes_list:
             rect = self.get_note_rect(n)
-            if rect.right() < 0 or rect.left() > self.width(): continue
-            
+            if rect.right() < 0 or rect.left() > self.width():
+                continue
+            onset_px = self.seconds_to_beats(float(getattr(n, 'onset', 0.1))) * self.pixels_per_beat
+            ghost_rect = QRectF(rect.left() - onset_px, rect.top(), onset_px, rect.height())
+            p.setPen(Qt.PenStyle.NoPen)
+            grad = QLinearGradient(ghost_rect.topLeft(), ghost_rect.topRight())
+            grad.setColorAt(0, QColor(0, 255, 255, 0))
+            grad.setColorAt(1, QColor(0, 255, 255, self.ai_ghost_alpha))
+            p.setBrush(QBrush(grad))
+            p.drawRect(ghost_rect)
+            # 母音開始ライン
+            p.setPen(QPen(QColor(0, 255, 255, 180), 1, Qt.PenStyle.DashLine))
+            p.drawLine(int(rect.left()), int(rect.top()),
+                       int(rect.left()), int(rect.bottom()))
+
+    def _draw_notes(self, p: QPainter) -> None:
+        for n in self.notes_list:
+            rect = self.get_note_rect(n)
+            if rect.right() < 0 or rect.left() > self.width():
+                continue
             is_selected = bool(getattr(n, 'is_selected', False))
             base_color = QColor(255, 159, 10) if is_selected else QColor(10, 132, 255)
-            
             p.setBrush(QBrush(base_color))
             p.setPen(QPen(base_color.lighter(130), 1))
             p.drawRoundedRect(rect, 4, 4)
-
             if rect.width() > 15:
                 p.setPen(Qt.GlobalColor.white)
                 p.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
                 p.drawText(rect.adjusted(5, 0, -2, 0),
                            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                            n.lyrics)
-                
                 p.setPen(QColor(255, 255, 255, 180))
                 p.setFont(QFont("Consolas", 7))
                 phoneme_text = n.phoneme or self.analyze_lyric_to_phoneme(n.lyrics)
                 p.drawText(rect.adjusted(5, self.key_height_pixels * 0.6, 0, 0),
                            Qt.AlignmentFlag.AlignLeft, phoneme_text)
 
-        # 6. 選択枠
+    def _draw_parameter_curves(self, p: QPainter) -> None:
+        """非アクティブ層は薄く、アクティブ層は強調して全レイヤー描画"""
+        for name, data in self.parameters.items():
+            if name != self.current_param_layer:
+                self._draw_curve(p, data,
+                                 self._PARAM_COLORS.get(name, QColor(200, 200, 200)), 60, 1)
+        self._draw_curve(p,
+                         self.parameters.get(self.current_param_layer, {}),
+                         self._PARAM_COLORS.get(self.current_param_layer, QColor(255, 255, 255)),
+                         255, 2)
+
+    def _draw_curve(self, p: QPainter, data: Dict[float, float],
+                    color: QColor, alpha: int, width: int) -> None:
+        if not data:
+            return
+        c = QColor(color)
+        c.setAlpha(alpha)
+        p.setPen(QPen(c, width, Qt.PenStyle.SolidLine,
+                      Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        prev: Optional[QPointF] = None
+        for t in sorted(data):
+            x = self.seconds_to_beats(t) * self.pixels_per_beat - self.scroll_x_offset
+            y = self.height() - (data[t] * self.height() * 0.4) - 20
+            curr = QPointF(x, y)
+            if prev and abs(curr.x() - prev.x()) < 500:
+                p.drawLine(prev, curr)
+            prev = curr
+
+    def _draw_selection_rect(self, p: QPainter) -> None:
         if self.edit_mode == "select_box":
             p.setPen(QPen(Qt.GlobalColor.white, 1, Qt.PenStyle.DashLine))
             p.setBrush(QBrush(QColor(255, 255, 255, 40)))
             p.drawRect(self.selection_rect)
 
-        # 7. 再生カーソル
+    def _draw_playhead(self, p: QPainter) -> None:
         cx = int(self.seconds_to_beats(self._current_playback_time)
                  * self.pixels_per_beat - self.scroll_x_offset)
         p.setPen(QPen(QColor(255, 45, 85), 2))
         p.drawLine(cx, 0, cx, self.height())
-
-        p.end()
-
-    def _draw_curve(self, p: QPainter, data: Dict[float, float],
-                    color: QColor, alpha: int, width: int) -> None:
-        if not data: return
-        c = QColor(color)
-        c.setAlpha(alpha)
-        p.setPen(QPen(c, width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-        
-        prev: Optional[QPoint] = None
-        for t in sorted(data):
-            x = int(self.seconds_to_beats(t) * self.pixels_per_beat - self.scroll_x_offset)
-            y = int(self.height() - (data[t] * self.height() * 0.4) - 20)
-            curr = QPoint(x, y)
-            if prev:
-                if abs(curr.x() - prev.x()) < 500:
-                    p.drawLine(prev, curr)
-            prev = curr
 
     # ============================================================
     # マウス・ホイールイベント
     # ============================================================
 
     def wheelEvent(self, event: QWheelEvent) -> None:
-        """ズーム（Ctrl + ホイール）とスクロール"""
+        """Ctrl+ホイール: 横ズーム / 通常: 縦スクロール + scroll_synced_signal"""
+        delta = event.angleDelta().y()
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-            # ズームロジック
-            delta = event.angleDelta().y()
-            zoom_factor = 1.1 if delta > 0 else 0.9
-            
-            # マウス位置のビート数を保持（ここを中心にズームする）
+            factor = 1.1 if delta > 0 else 0.9
             mouse_x = event.position().x()
             beat_at_mouse = (mouse_x + self.scroll_x_offset) / self.pixels_per_beat
-            
-            # ズーム実行
-            new_pixels_per_beat = self.pixels_per_beat * zoom_factor
-            self.pixels_per_beat = max(10.0, min(1000.0, new_pixels_per_beat))
-            
-            # オフセット再計算
+            self.pixels_per_beat = max(10.0, min(1000.0, self.pixels_per_beat * factor))
             self.scroll_x_offset = (beat_at_mouse * self.pixels_per_beat) - mouse_x
-            self.update()
         else:
-            # 通常のスクロール（横）
-            delta = event.angleDelta().y()
-            self.scroll_x_offset = max(0.0, self.scroll_x_offset - delta)
-            self.update()
+            self.scroll_y_offset = max(0.0, self.scroll_y_offset - delta)
+            self.scroll_synced_signal.emit(self.scroll_y_offset)
+        self.update()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if event is None: return
+        if event is None:
+            return
         pos_f = event.position()
         self.drag_start_pos = QPoint(int(pos_f.x()), int(pos_f.y()))
 
         if event.button() == Qt.MouseButton.RightButton:
-            return # コンテキストメニューは contextMenuEvent で処理
+            return  # contextMenuEvent に委譲
 
         if event.modifiers() & Qt.KeyboardModifier.AltModifier:
             self.edit_mode = "draw_parameter"
@@ -473,7 +507,8 @@ class TimelineWidget(QWidget):
                 return
             if r.contains(pos_f):
                 if not (event.modifiers() & Qt.KeyboardModifier.ControlModifier):
-                    if not n.is_selected: self.deselect_all()
+                    if not n.is_selected:
+                        self.deselect_all()
                 n.is_selected = True
                 self.edit_mode = "move"
                 self.update()
@@ -486,7 +521,8 @@ class TimelineWidget(QWidget):
         self.update()
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        if event is None or self.drag_start_pos is None: return
+        if event is None or self.drag_start_pos is None:
+            return
         pos_f = event.position()
         curr_pos = QPoint(int(pos_f.x()), int(pos_f.y()))
 
@@ -503,9 +539,11 @@ class TimelineWidget(QWidget):
                         n.note_number = max(0, min(127, n.note_number + dy_notes))
                 self.drag_start_pos = curr_pos
         elif self.edit_mode == "resize" and self._resizing_note is not None:
-            note_start_px = (self.seconds_to_beats(self._resizing_note.start_time) * self.pixels_per_beat)
+            note_start_px = (self.seconds_to_beats(self._resizing_note.start_time)
+                             * self.pixels_per_beat)
             new_w_beats = (curr_pos.x() + self.scroll_x_offset - note_start_px) / self.pixels_per_beat
-            self._resizing_note.duration = self.beats_to_seconds(max(self.quantize_resolution, new_w_beats))
+            self._resizing_note.duration = self.beats_to_seconds(
+                max(self.quantize_resolution, new_w_beats))
         elif self.edit_mode == "select_box":
             self.selection_rect = QRect(self.drag_start_pos, curr_pos).normalized()
             for n in self.notes_list:
@@ -518,8 +556,11 @@ class TimelineWidget(QWidget):
         elif self.edit_mode in ("move", "resize"):
             for n in self.notes_list:
                 if getattr(n, 'is_selected', False) or n == self._resizing_note:
-                    n.start_time = self.beats_to_seconds(self.quantize(self.seconds_to_beats(n.start_time)))
-                    n.duration = self.beats_to_seconds(max(self.quantize_resolution, self.quantize(self.seconds_to_beats(n.duration))))
+                    n.start_time = self.beats_to_seconds(
+                        self.quantize(self.seconds_to_beats(n.start_time)))
+                    n.duration = self.beats_to_seconds(
+                        max(self.quantize_resolution,
+                            self.quantize(self.seconds_to_beats(n.duration))))
             self.notes_changed_signal.emit()
         self.edit_mode = None
         self._resizing_note = None
@@ -527,75 +568,90 @@ class TimelineWidget(QWidget):
         self.update()
 
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:
-        """右クリックメニューの実装"""
         menu = QMenu(self)
-        
-        # 選択されたノートがあるかチェック
-        selected_notes = [n for n in self.notes_list if n.is_selected]
-        
+        selected_notes = [n for n in self.notes_list if getattr(n, 'is_selected', False)]
+
         if selected_notes:
-            act_clear_param = QAction(f"選択したノートの {self.current_param_layer} をリセット", self)
-            act_clear_param.triggered.connect(self._clear_selected_params)
-            menu.addAction(act_clear_param)
-            
-            act_reset_lyrics = QAction("歌詞を 'la' にリセット", self)
-            act_reset_lyrics.triggered.connect(self._reset_selected_lyrics)
-            menu.addAction(act_reset_lyrics)
-            
+            act_clear = QAction(f"選択したノートの {self.current_param_layer} をリセット", self)
+            act_clear.triggered.connect(self._clear_selected_params)
+            menu.addAction(act_clear)
+
+            act_reset = QAction("歌詞を 'la' にリセット", self)
+            act_reset.triggered.connect(self._reset_selected_lyrics)
+            menu.addAction(act_reset)
+
+            act_ghost = QAction(
+                "AIゴーストを非表示" if self.show_ai_phonemes else "AIゴーストを表示", self)
+            act_ghost.triggered.connect(self._toggle_ai_ghost)
+            menu.addAction(act_ghost)
+
             menu.addSeparator()
-            
+
         act_export = QAction("JSONエクスポート (Ctrl+S)", self)
         act_export.triggered.connect(self.export_all_data)
         menu.addAction(act_export)
-        
+
         menu.exec(event.globalPos())
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
-        if event is None: return
+        if event is None:
+            return
         pos_f = event.position()
         for n in self.notes_list:
             if self.get_note_rect(n).contains(pos_f):
-                text, ok = QInputDialog.getText(self, "歌詞入力", "ノートの歌詞:", QLineEdit.EchoMode.Normal, n.lyrics)
+                text, ok = QInputDialog.getText(
+                    self, "歌詞入力", "ノートの歌詞:",
+                    QLineEdit.EchoMode.Normal, n.lyrics)
                 if ok and text:
                     n.lyrics = text
                     n.phoneme = self.analyze_lyric_to_phoneme(text)
-                    tokens = self.tokenizer.tokenize(text)
-                    chars = [str(getattr(t, 'surface', '')) for t in tokens]
-                    if len(chars) > 1: self._split_note(n, chars)
+                    chars = [str(getattr(t, 'surface', ''))
+                             for t in self.tokenizer.tokenize(text)]
+                    if len(chars) > 1:
+                        self._split_note(n, chars)
                     self.notes_changed_signal.emit()
                     self.update()
                 return
 
     # ============================================================
+    # キーボード操作
+    # ============================================================
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event is None:
+            return
+        ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+        key = event.key()
+        layer_map = {
+            Qt.Key.Key_1: "Dynamics", Qt.Key.Key_2: "Pitch",
+            Qt.Key.Key_3: "Vibrato",  Qt.Key.Key_4: "Formant",
+        }
+        if key in layer_map:
+            self.change_layer(layer_map[key])
+        elif ctrl:
+            if key == Qt.Key.Key_S:   self.export_all_data()
+            elif key == Qt.Key.Key_C: self._copy_notes()
+            elif key == Qt.Key.Key_V: self._paste_notes()
+            elif key == Qt.Key.Key_D: self._duplicate_notes()
+            elif key == Qt.Key.Key_A: self.select_all()
+        elif key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            self.delete_selected()
+        self.update()
+
+    # ============================================================
     # 編集ロジック
     # ============================================================
 
-    def _clear_selected_params(self) -> None:
-        """選択中のノートの範囲にあるパラメータを削除"""
-        selected_notes = [n for n in self.notes_list if n.is_selected]
-        if not selected_notes: return
-        
-        layer = self.current_param_layer
-        for n in selected_notes:
-            start, end = n.start_time, n.start_time + n.duration
-            # 範囲内のキーを特定して削除
-            keys_to_del = [t for t in self.parameters[layer] if start <= t <= end]
-            for k in keys_to_del: del self.parameters[layer][k]
-        self.update()
-
-    def _reset_selected_lyrics(self) -> None:
-        for n in self.notes_list:
-            if n.is_selected:
-                n.lyrics = "la"
-                n.phoneme = "la"
-        self.update()
-
     def change_layer(self, name: str) -> None:
         self.current_param_layer = name
-        if isinstance(self.window(), QMainWindow):  # ← Doc10 にあった処理
+        if isinstance(self.window(), QMainWindow):
             sb = self.window().statusBar()
             if sb:
                 sb.showMessage(f"Active Layer: {name}", 2000)
+        self.update()
+
+    def _toggle_ai_ghost(self) -> None:
+        self.show_ai_phonemes = not self.show_ai_phonemes
         self.update()
 
     def _add_param_pt(self, pos: QPointF) -> None:
@@ -607,32 +663,52 @@ class TimelineWidget(QWidget):
     def _smooth_param(self) -> None:
         layer = self.current_param_layer
         data = self.parameters[layer]
-        if len(data) < 3: return
+        if len(data) < 3:
+            return
         keys = sorted(data.keys())
         smoothed = {}
         for i, t in enumerate(keys):
-            window = [data[keys[j]] for j in range(max(0, i-1), min(len(keys), i+2))]
+            window = [data[keys[j]] for j in range(max(0, i - 1), min(len(keys), i + 2))]
             smoothed[t] = sum(window) / len(window)
         self.parameters[layer] = smoothed
         self.notes_changed_signal.emit()
 
+    def _clear_selected_params(self) -> None:
+        layer = self.current_param_layer
+        for n in self.notes_list:
+            if not getattr(n, 'is_selected', False):
+                continue
+            keys_to_del = [t for t in self.parameters[layer]
+                           if n.start_time <= t <= n.start_time + n.duration]
+            for k in keys_to_del:
+                del self.parameters[layer][k]
+        self.update()
+
+    def _reset_selected_lyrics(self) -> None:
+        for n in self.notes_list:
+            if getattr(n, 'is_selected', False):
+                n.lyrics = "la"
+                n.phoneme = "la"
+        self.update()
+
     def _split_note(self, n: Any, chars: List[str]) -> None:
-        if n not in self.notes_list: return
-        total_duration = n.duration
-        single_dur = total_duration / len(chars)
-        start_t = n.start_time
-        pitch = n.note_number
+        if n not in self.notes_list:
+            return
+        single_dur = n.duration / len(chars)
+        start_t, pitch = n.start_time, n.note_number
         self.notes_list.remove(n)
         for i, char in enumerate(chars):
-            new_n = NoteEventClass(start_t + (i * single_dur), single_dur, pitch, char)
+            new_n = NoteEventClass(start_t + i * single_dur, single_dur, pitch, char)
             new_n.phoneme = self.analyze_lyric_to_phoneme(char)
             self.notes_list.append(new_n)
 
     def _copy_notes(self) -> None:
         sel = [n for n in self.notes_list if getattr(n, 'is_selected', False)]
-        if not sel: return
+        if not sel:
+            return
         base_t = min(n.start_time for n in sel)
-        payload = [{"l": n.lyrics, "n": n.note_number, "o": n.start_time - base_t, "d": n.duration} for n in sel]
+        payload = [{"l": n.lyrics, "n": n.note_number,
+                    "o": n.start_time - base_t, "d": n.duration} for n in sel]
         QApplication.clipboard().setText(json.dumps(payload))
 
     def _paste_notes(self) -> None:
@@ -640,21 +716,26 @@ class TimelineWidget(QWidget):
             data = json.loads(QApplication.clipboard().text())
             self.deselect_all()
             for d in data:
-                nn = NoteEventClass(self._current_playback_time + d["o"], d["d"], d["n"], d["l"])
+                nn = NoteEventClass(
+                    self._current_playback_time + d["o"], d["d"], d["n"], d["l"])
                 nn.is_selected = True
                 nn.phoneme = self.analyze_lyric_to_phoneme(d["l"])
                 self.notes_list.append(nn)
             self.notes_changed_signal.emit()
             self.update()
-        except Exception: pass
+        except Exception:
+            pass
 
     def _duplicate_notes(self) -> None:
         sel = [n for n in self.notes_list if getattr(n, 'is_selected', False)]
-        if not sel: return
-        offset = max(n.start_time + n.duration for n in sel) - min(n.start_time for n in sel)
+        if not sel:
+            return
+        offset = (max(n.start_time + n.duration for n in sel)
+                  - min(n.start_time for n in sel))
         self.deselect_all()
         for n in sel:
-            clone = NoteEventClass(n.start_time + offset, n.duration, n.note_number, n.lyrics)
+            clone = NoteEventClass(n.start_time + offset, n.duration,
+                                   n.note_number, n.lyrics)
             clone.is_selected = True
             clone.phoneme = n.phoneme
             self.notes_list.append(clone)
@@ -662,39 +743,23 @@ class TimelineWidget(QWidget):
         self.update()
 
     def select_all(self) -> None:
-        for n in self.notes_list: n.is_selected = True
+        for n in self.notes_list:
+            n.is_selected = True
         self.update()
 
     def deselect_all(self) -> None:
-        for n in self.notes_list: n.is_selected = False
+        for n in self.notes_list:
+            n.is_selected = False
         self.update()
 
     def delete_selected(self) -> None:
-        self.notes_list = [n for n in self.notes_list if not getattr(n, 'is_selected', False)]
+        self.notes_list = [n for n in self.notes_list
+                           if not getattr(n, 'is_selected', False)]
         self.notes_changed_signal.emit()
         self.update()
 
     # ============================================================
-    # キーボード操作
-    # ============================================================
-
-    def keyPressEvent(self, event: QKeyEvent) -> None:
-        if event is None: return
-        ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
-        key = event.key()
-        layer_map = {Qt.Key.Key_1: "Dynamics", Qt.Key.Key_2: "Pitch", Qt.Key.Key_3: "Vibrato", Qt.Key.Key_4: "Formant"}
-        if key in layer_map: self.change_layer(layer_map[key])
-        elif ctrl:
-            if key == Qt.Key.Key_S: self.export_all_data()
-            elif key == Qt.Key.Key_C: self._copy_notes()
-            elif key == Qt.Key.Key_V: self._paste_notes()
-            elif key == Qt.Key.Key_D: self._duplicate_notes()
-            elif key == Qt.Key.Key_A: self.select_all()
-        elif key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace): self.delete_selected()
-        self.update()
-
-    # ============================================================
-    # スロット
+    # 外部スロット
     # ============================================================
 
     @Slot(float)
