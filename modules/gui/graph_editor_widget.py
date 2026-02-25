@@ -7,6 +7,9 @@ from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QPaintEvent, QMouseEve
 from modules.data.data_models import PitchEvent
 import bisect
 
+import logging
+logger = logging.getLogger(__name__)
+
 class GraphEditorWidget(QWidget):
     parameters_changed = Signal(dict) 
 
@@ -110,24 +113,31 @@ class GraphEditorWidget(QWidget):
         return None
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
+        """
+        ダブルクリックによる制御点の追加。
+        [修正] logger を確実に参照できるよう、スコープを確定させています。
+        """
         if event.button() == Qt.MouseButton.LeftButton:
-            pos: QPointF = event.position()
-            time_val: float = float(self.x_to_time(pos.x()))
-            param_val: float = float(self.y_to_value(pos.y()))
+            pos = event.position()
+            time_val = float(self.x_to_time(pos.x()))
+            param_val = float(self.y_to_value(pos.y()))
             
             new_point = PitchEvent(time=time_val, value=param_val)
             current_list = self.all_parameters.get(self.current_mode)
             
             if current_list is not None:
-                # 重複ガード
+                # 1ms以内の既存点を上書き
                 current_list[:] = [p for p in current_list if abs(p.time - time_val) > 0.001]
+                
+                # 追加とTimsortによる高速ソート
                 current_list.append(new_point)
                 current_list.sort(key=lambda x: x.time)
                 
+                # シグナル発行と再描画
                 self.parameters_changed.emit(self.all_parameters)
                 self.update()
                 
-                # ここで logger を使用
+                # [F821 確定修正] 
                 logger.debug(f"Point added at t={time_val:.3f}, v={param_val:.3f}")
                 
 
