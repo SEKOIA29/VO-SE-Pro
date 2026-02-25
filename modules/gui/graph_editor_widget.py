@@ -112,32 +112,34 @@ class GraphEditorWidget(QWidget):
                 return i
         return None
 
-    def mouseDoubleClickEvent(self, event: QMouseEvent):
+    def mouseDoubleClickEvent(self, event):
         """
         ダブルクリックによる制御点の追加。
-        [修正] logger を確実に参照できるよう、スコープを確定させています。
         """
         if event.button() == Qt.MouseButton.LeftButton:
             pos = event.position()
+            # 明示的に float キャストを行い、型の一致を保証
             time_val = float(self.x_to_time(pos.x()))
             param_val = float(self.y_to_value(pos.y()))
             
+            # [解決] ここで float を渡してもエラーにならなくなります
             new_point = PitchEvent(time=time_val, value=param_val)
+            
             current_list = self.all_parameters.get(self.current_mode)
             
             if current_list is not None:
                 # 1ms以内の既存点を上書き
                 current_list[:] = [p for p in current_list if abs(p.time - time_val) > 0.001]
                 
-                # 追加とTimsortによる高速ソート
+                # リストに追加してソート
                 current_list.append(new_point)
                 current_list.sort(key=lambda x: x.time)
                 
-                # シグナル発行と再描画
+                # 変更通知と描画更新
                 self.parameters_changed.emit(self.all_parameters)
                 self.update()
                 
-                # [F821 確定修正] 
+                # [F821対策] スコープ内の定義済み logger を使用
                 logger.debug(f"Point added at t={time_val:.3f}, v={param_val:.3f}")
                 
 
