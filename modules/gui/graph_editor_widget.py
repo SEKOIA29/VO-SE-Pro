@@ -110,33 +110,24 @@ class GraphEditorWidget(QWidget):
         return None
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
-        """
-        ダブルクリックによる制御点の追加。
-        """
         if event.button() == Qt.MouseButton.LeftButton:
-            # Pyright/Ruff対応: 確実に float 型を抽出
             pos: QPointF = event.position()
             time_val: float = float(self.x_to_time(pos.x()))
             param_val: float = float(self.y_to_value(pos.y()))
             
             new_point = PitchEvent(time=time_val, value=param_val)
-            
-            # get()を使用して None 安全性を確保
             current_list = self.all_parameters.get(self.current_mode)
             
             if current_list is not None:
-                # 1ms以内の近接ポイントを削除（上書き動作）
+                # 重複ガード
                 current_list[:] = [p for p in current_list if abs(p.time - time_val) > 0.001]
-                
-                # リストに追加して Timsort で高速ソート
                 current_list.append(new_point)
                 current_list.sort(key=lambda x: x.time)
                 
-                # 外部へ変更を通知
                 self.parameters_changed.emit(self.all_parameters)
                 self.update()
                 
-                # [確定修正] モジュールレベルの logger を直接参照
+                # ここで logger を使用
                 logger.debug(f"Point added at t={time_val:.3f}, v={param_val:.3f}")
                 
 
