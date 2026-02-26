@@ -16,7 +16,7 @@ class GraphEditorWidget(QWidget):
     PITCH_MAX = 8191
     PITCH_MIN = -8192
 
-def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setMinimumHeight(150)
         self.setMouseTracking(True)
