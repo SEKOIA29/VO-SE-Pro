@@ -8,7 +8,9 @@ import json
 class PitchEvent:
     """ピッチベンド（オートメーション）の1点を示すデータ構造"""
     time: float   # 秒単位
-    value: int    # -8192 ～ 8191 (MIDI Pitch Bend規格)
+    # [解決] Pyrightエラー回避のため float に変更。
+    # 内部計算や描画は float で行い、MIDI書き出し等の最終工程でのみ int() 変換します。
+    value: float  
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
