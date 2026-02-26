@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt, Signal, Slot, QRect, QPointF
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QPaintEvent, QMouseEvent, QPainterPath
 from modules.data.data_models import PitchEvent
 import bisect
+from typing import Optional, List, Dict
 
 import logging
 logger = logging.getLogger(__name__)
