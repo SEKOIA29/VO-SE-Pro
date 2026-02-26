@@ -73,11 +73,12 @@ jobs:
         with:
           tag_name: latest
           name: "VO-SE PRO (Official Edition)"
-          # 'overwrite' を 'overwrite_files' に修正
-          overwrite_files: true  
-          make_latest: true
+          # ↓ 旧称 overwrite_files ではなく、最新の指定方法
           files: |
             dist_out/VO-SE_PRO_Win.exe
             dist_out/VO-SE_PRO_Mac.zip
+          fail_on_unmatched_files: false
+          generate_release_notes: true
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
