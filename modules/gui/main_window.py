@@ -134,7 +134,7 @@ except ImportError:
         def __init__(self, parent: Optional[QWidget] = None): 
             super().__init__(parent)
             self.tempo: float = 120.0
-            # ログ3438行目対策: all_parameters 属性を確実に保持
+            # all_parameters 属性を確実に保持
             self.all_parameters: Dict[str, Any] = {}
             # スクロールバー・表示関連のエラー対策
             self.scroll_x_offset: int = 0
