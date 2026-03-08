@@ -1264,6 +1264,8 @@ class MainWindow(QMainWindow):
         
         # --- 2. Optional宣言またはAny型のもの ---
         self.player = None
+        self.talk_manager = None   # ← 追加
+        self.midi_manager = None  
         self.audio_output = None
         self.audio_player = None
         self.vose_core = None
@@ -1293,6 +1295,7 @@ class MainWindow(QMainWindow):
         self.current_oto_data = [] # ここが List[Any] 宣言なら [] でOK
         
         self.current_track_idx = 0
+        self.selected_index = -1 
         self.current_voice = "標準ボイス"
         self.volume = 0.8
         self.current_playback_time = 0.0
@@ -1362,13 +1365,15 @@ class MainWindow(QMainWindow):
 
     def _init_engines(self, engine, ai):
         """エンジン類の実体化ロジック（省略なし完全版）"""
+
+        # --- 1. VoSeEngine の初期化 ---
         if not self.vo_se_engine:
             try:
                 import importlib
                 VoSeEngine = importlib.import_module("modules.backend.vo_se_engine").VoSeEngine  # type: ignore[attr-defined]
                 self.vo_se_engine = VoSeEngine()
             except Exception:
-                class MockEngine: 
+                class MockEngine:
                     def __init__(self):
                         self.lib = None
                         self.current_time_playback = 0.0
@@ -1397,6 +1402,37 @@ class MainWindow(QMainWindow):
                     def stop_realtime_note(self, *args, **kwargs): pass
                 self.vo_se_engine = MockEngine()
 
+        # --- 2. その他エンジン・マネージャー類の初期化 ---
+        # フォールバッククラスを先に定義（importが失敗してもNameErrorにならない）
+        class _MockDynamicsAI:
+            def generate_emotional_pitch(self, f0): return f0
+
+        class _MockVoiceManager:
+            def __init__(self, ai):
+                self.voices = {}
+            def get_current_voice_path(self): return ""
+            def scan_utau_voices(self): pass
+            def get_character_color(self, path): return "#4A90E2"
+
+        class _MockIntonationAnalyzer:
+            def analyze(self, text): return []
+            def parse_trace_to_notes(self, trace): return []
+            def analyze_to_pro_events(self, text): return []
+
+        class _MockAudioPlayer:
+            def __init__(self, volume=0.8): pass
+            def play_file(self, path): pass
+
+        class _MockAudioOutput:
+            def setVolume(self, v): pass
+
+        DynamicsAIEngine = _MockDynamicsAI
+        VoiceManager = _MockVoiceManager
+        IntonationAnalyzer = _MockIntonationAnalyzer
+        AudioPlayer = _MockAudioPlayer
+        AudioOutput = _MockAudioOutput
+
+        # 実物が読み込めれば上書きする
         try:
             import importlib
             DynamicsAIEngine = importlib.import_module("modules.utils.dynamics_ai").DynamicsAIEngine  # type: ignore[attr-defined]
@@ -1404,15 +1440,18 @@ class MainWindow(QMainWindow):
             IntonationAnalyzer = importlib.import_module("modules.talk.talk_manager").IntonationAnalyzer  # type: ignore[attr-defined]
             AudioPlayer = importlib.import_module("modules.audio.player").AudioPlayer  # type: ignore[attr-defined]
             AudioOutput = importlib.import_module("modules.audio.output").AudioOutput  # type: ignore[attr-defined]
-            
-            self.dynamics_ai = ai if ai else DynamicsAIEngine()
-            self.voice_manager = VoiceManager(self.dynamics_ai)
-            self.analyzer = IntonationAnalyzer()
-            self.text_analyzer = self.analyzer
-            self.audio_player = AudioPlayer(volume=self.volume)
-            self.audio_output = AudioOutput()
         except Exception as e:
-            print(f"Engine Load Error: {e}")
+            print(f"Engine Load Warning (using mock): {e}")
+
+        # ここでは必ずクラスが存在することが保証されている
+        self.dynamics_ai = ai if ai else DynamicsAIEngine()
+        self.voice_manager = VoiceManager(self.dynamics_ai)
+        self.analyzer = IntonationAnalyzer()
+        self.text_analyzer = self.analyzer
+        self.audio_player = AudioPlayer(volume=self.volume)
+        self.audio_output = AudioOutput()
+
+        # --- 3. パートナー枠の初期化 ---
         
         # ==============================================================================
         # --- ここで辞書を定義 ---
@@ -1426,16 +1465,6 @@ class MainWindow(QMainWindow):
         self.confirmed_partners = {} # これだけで10枠すべてが「UNDER RECRUITMENT」になります
        
         # ==============================================================================
-
-
-        # --- 2. エンジン・マネージャー類の初期化 ---
-
-
-        self.dynamics_ai = ai if ai else DynamicsAIEngine()
-        self.voice_manager = VoiceManager(self.dynamics_ai)
-        self.analyzer = IntonationAnalyzer()
-        self.audio_player = AudioPlayer(volume=self.volume)
-        self.audio_output = AudioOutput()
         
 
     def execute_render(self):
@@ -1529,6 +1558,7 @@ class MainWindow(QMainWindow):
 
         # 3. 各セクションの順次セットアップ
         # 依存関係（下のパネルが上のエディタを参照するなど）を考慮した順序で呼び出し
+        self.setup_actions()   
         self.setup_menus()          # メニュー（QActionの親）
         self.setup_toolbar()        # ツールバー
         self.setup_main_editor_area() # メインエディタ（KeyboardSidebar, TimelineWidgetを含む）
@@ -1642,24 +1672,22 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QSplitter, QFrame
         from PySide6.QtCore import Qt
 
-        # 左右に分割できるスプリッター
+        # --- スプリッターの生成（一度だけ） ---
         self.editor_splitter = QSplitter(Qt.Orientation.Horizontal)
-        
+
         # --- 左側：トラック管理パネル ---
         self.track_panel = QFrame()
         self.track_panel.setFrameShape(QFrame.Shape.StyledPanel)
         self.track_panel.setMinimumWidth(200)
         self.track_panel.setMaximumWidth(400)
-        
+
         track_layout = QVBoxLayout(self.track_panel)
         track_layout.setContentsMargins(5, 5, 5, 5)
 
-        # トラックリスト表示
         self.track_list_widget = QListWidget()
         self.track_list_widget.setObjectName("TrackList")
         self.track_list_widget.currentRowChanged.connect(self.switch_track)
-        
-        # トラック操作ボタン
+
         btn_layout = QHBoxLayout()
         self.btn_add_vocal = QPushButton("+ Vocal")
         self.btn_add_wave = QPushButton("+ Audio")
@@ -1672,30 +1700,19 @@ class MainWindow(QMainWindow):
         track_layout.addWidget(self.track_list_widget)
         track_layout.addLayout(btn_layout)
 
-        # --- 右側：タイムライン（既存） ---
-        # self.timeline_widget は事前に生成されている前提
-        
-        # スプリッターに配置
-        self.editor_splitter.addWidget(self.track_panel)
-        if self.main_layout is not None:
-            if self.timeline_widget is not None:
-                if self.timeline_widget is not None:
-                    assert self.timeline_widget is not None
-                    self.main_layout.addWidget(self.timeline_widget)
-            if self.graph_editor_widget is not None:
-                self.main_layout.addWidget(self.graph_editor_widget)
-        
-        # メインレイアウト（QVBoxLayout）に追加
-        self.main_layout.addWidget(self.editor_splitter)
-        
-        # 初期リスト更新
-        self.refresh_track_list_ui()
+        # --- 右側：タイムライン（ここで一度だけ生成） ---
+        self.timeline_widget = TimelineWidget()
 
-        self.timeline_widget = TimelineWidget() 
-
+        # --- スプリッターに追加（それぞれ一度だけ） ---
         self.editor_splitter.addWidget(self.track_panel)
         self.editor_splitter.addWidget(self.timeline_widget)
-        self.main_layout.addWidget(self.editor_splitter)
+
+        # --- メインレイアウトに追加（一度だけ） ---
+        if self.main_layout is not None:
+            self.main_layout.addWidget(self.editor_splitter)
+
+        # --- 初期リスト更新 ---
+        self.refresh_track_list_ui()
 
     def setup_bottom_panel(self):
         """下部：歌詞入力などのツール"""
