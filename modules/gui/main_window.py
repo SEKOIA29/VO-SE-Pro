@@ -1231,9 +1231,6 @@ class MainWindow(QMainWindow):
 
         self.status_label = QLabel("")
         self.voice_grid = QGridLayout()
-
-        widget = cast(QScrollBar, self.v_scrollbar)
-        widget.setValue(10)
         
         # --- 2. 属性の初期化（AttributeError 対策） ---
         self._init_attributes(engine, ai, config)
@@ -1246,8 +1243,6 @@ class MainWindow(QMainWindow):
         self.setup_connections()
         self.setup_vose_shortcuts()
         self.perform_startup_sequence()
-        
-        # ウィンドウの最終設定
         self.setWindowTitle("VO-SE Pro")
         self.resize(1200, 800)
 
@@ -1442,18 +1437,6 @@ class MainWindow(QMainWindow):
         self.audio_player = AudioPlayer(volume=self.volume)
         self.audio_output = AudioOutput()
         
-        # --- 3. UIの構築 (一度だけ呼ぶ) ---
-        self.init_ui()
-        self.setup_connections() # その後にボタンに機能を付ける（利用）
-        
-        # --- 4. ポスト初期化 (UI構築後に必要な処理) ---
-        self.setup_connections()
-        self.setup_vose_shortcuts()
-        self.perform_startup_sequence()
-        
-        # ウィンドウ設定
-        self.setWindowTitle("VO-SE Pro")
-        self.resize(1200, 800)
 
     def execute_render(self):
         """オーディオ書き出しの実行（省略なし）"""
@@ -1852,6 +1835,8 @@ class MainWindow(QMainWindow):
         
         # 垂直スクロールバー
         self.v_scrollbar = QSlider(Qt.Orientation.Vertical, self)
+        self.v_scrollbar.setRange(0, 1000)
+        self.v_scrollbar.setValue(10) 
         self.v_scrollbar.valueChanged.connect(self.timeline_widget.set_vertical_offset)
         timeline_layout.addWidget(self.v_scrollbar)
         
