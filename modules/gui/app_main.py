@@ -1,7 +1,5 @@
 #app_main.py
 
-#app_main.py
-
 import sys
 import os
 import ctypes
