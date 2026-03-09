@@ -1462,7 +1462,7 @@ class MainWindow(QMainWindow):
             # 未決定のIDは書かなくてOK（自動的に UNDER RECRUITMENT にならけど一応書いとく）
         }
 
-        self.confirmed_partners = {} # これだけで10枠すべてが「UNDER RECRUITMENT」になります
+        #self.confirmed_partners = {} # これだけで10枠すべてが「UNDER RECRUITMENT」になります
        
         # ==============================================================================
         
