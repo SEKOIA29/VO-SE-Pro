@@ -324,7 +324,7 @@ class VoseRendererBridge:
             b_arr = (ctypes.c_double * len(data["breath"]))(*data["breath"])
             keep_alive.extend([p_arr, g_arr, t_arr, b_arr])
 
-            c_notes[i].wav_path         = data["phoneme"].encode("utf-8")
+            c_notes[i].wav_path         = voice_library.get_wav_path(phoneme).encode("utf-8")-8")
             c_notes[i].pitch_length     = len(data["pitch"])
             c_notes[i].pitch_curve      = p_arr
             c_notes[i].gender_curve     = g_arr
