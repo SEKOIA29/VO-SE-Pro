@@ -1624,6 +1624,10 @@ class MainWindow(QMainWindow):
         self.toolbar.addWidget(self.play_btn)
 
         self.toolbar.addSeparator()
+
+         # 読み上げ
+        self.talk_button = QPushButton("読み上げ")
+        self.talk_button.clicked.connect(self.on_talk)
         
         # 2. テンポ設定
         self.toolbar.addWidget(QLabel(" Tempo: "))
@@ -2040,8 +2044,12 @@ class MainWindow(QMainWindow):
             status_bar = self.statusBar()
             if status_bar:
                 status_bar.showMessage(f"Talkモード: '{text}' を展開しました")
-            self.text_input.clear()
+            self.text_input.clear)
 
+    def on_talk(self):
+        text = self.talk_input.text()
+        self.talk_manager.speak(text)
+    
     @Slot(object)
     def on_param_mode_changed(self, button):
         """パラメーター切り替えボタン処理（省略なし完全版）"""
