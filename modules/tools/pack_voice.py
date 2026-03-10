@@ -51,8 +51,21 @@ def pack_all_voices():
             
             try:
                 with wave.open(wav_path, 'rb') as f:
+                    fs = f.getframerate()
+                    nch = f.getnchannels()
                     frames = f.readframes(f.getnframes())
                     data = np.frombuffer(frames, dtype=np.int16)
+    
+                    # ステレオならモノラルに変換
+                    if nch == 2:
+                        data = data[::2]
+    
+                    # サンプリングレートが違う場合はリサンプリング
+                    if fs != 44100:
+                        from scipy.signal import resample_poly
+                        from math import gcd
+                        g = gcd(fs, 44100)
+                        data = resample_poly(data, 44100 // g, fs // g).astype(np.int16)
                     
                     h.write(f"// Source: {wav_path} (ID: {entry_name})\n")
                     h.write(f"const int16_t {var_name}[] = {{\n    ")
