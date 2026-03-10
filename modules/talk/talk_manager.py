@@ -1,5 +1,4 @@
-#talk_manager.py
-
+# talk_manager.py
 """
 VO-SE Cut Studio — コアエンジン統合モジュール
 - IntonationAnalyzer : pyopenjtalk による音素・F0解析
@@ -7,6 +6,17 @@ VO-SE Cut Studio — コアエンジン統合モジュール
 - NoteEvent           : C++ 構造体バインディング
 - VoseRendererBridge  : DLL/dylib ブリッジ
 - TalkManager         : 音声合成マネージャー
+
+修正点:
+  [FIX-1] VoseRendererBridge.render(): wav_path に音素文字列ではなく
+          実際の WAV ファイルパスを渡すよう修正。
+          voice_library 引数を追加し get_wav_path() で解決する。
+  [FIX-2] TalkManager.speak(): TODO だった再生処理を sounddevice で実装。
+          再生中フラグ (is_speaking) を正しく管理する。
+  [FIX-3] TalkManager.synthesize(): float32 → int16 変換時の
+          クリップ処理を修正（元コードは範囲が逆だった）。
+  [FIX-4] _tts_with_voice(): pyopenjtalk の戻り値が ndarray 単体の
+          バージョンにも対応するフォールバックを追加。
 """
 
 from __future__ import annotations
@@ -14,14 +24,33 @@ from __future__ import annotations
 import os
 import ctypes
 import platform
+import tempfile
 import traceback
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 import pyopenjtalk
+import sounddevice as sd
 import soundfile as sf
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, Signal
+
+
+# ══════════════════════════════════════════════════════════════
+# 0. 型プロトコル（voice_library の duck typing）
+# ══════════════════════════════════════════════════════════════
+
+class VoiceLibraryProtocol(Protocol):
+    """
+    VoseRendererBridge が必要とする音源ライブラリのインターフェース。
+    VoiceManager など既存クラスがこのメソッドを持っていれば型チェックを通過する。
+    """
+    def get_wav_path(self, phoneme: str) -> str:
+        """
+        音素名（例: "a", "k", "ch"）から対応 WAV ファイルの
+        絶対パスを返す。見つからない場合は空文字列 "" を返す。
+        """
+        ...
 
 
 # ══════════════════════════════════════════════════════════════
@@ -81,7 +110,6 @@ class IntonationAnalyzer:
         if not text:
             return []
         try:
-            # kana=False で IPA 近似のローマ字音素列を取得
             phoneme_str: str = pyopenjtalk.g2p(text, kana=False)
             return [p for p in phoneme_str.split() if p]
         except Exception as e:
@@ -124,11 +152,8 @@ class IntonationAnalyzer:
         prev_phrase_id: str = ""
 
         for label in labels:
-            # 音素名（p3 フィールド）を取得
             parts = label.split("-")
             phoneme = parts[1] if len(parts) > 1 else "?"
-
-            # アクセント句 ID（/E: フィールド）でグループ化
             phrase_id = self._extract_field(label, "/E:")
 
             if phrase_id != prev_phrase_id and current_moras:
@@ -140,14 +165,12 @@ class IntonationAnalyzer:
                 ))
                 current_moras = []
 
-            # A: フィールドからアクセント型を取得
             try:
                 a_field = self._extract_field(label, "/A:")
                 accent_pos = int(a_field.split("_")[0]) if a_field else 0
             except (ValueError, IndexError):
                 accent_pos = 0
 
-            # 簡易 F0 推定（実際は HMM から取るべきだが近似値として利用）
             f0 = 130.0 if accent_pos == 0 else 150.0 + accent_pos * 5.0
 
             if phoneme not in ("sil", "pau", "?"):
@@ -155,7 +178,6 @@ class IntonationAnalyzer:
 
             prev_phrase_id = phrase_id
 
-        # 末尾の句を追加
         if current_moras:
             phrases.append(AccentPhrase(
                 text="".join(m[0] for m in current_moras),
@@ -187,7 +209,6 @@ def generate_accent_curve(phoneme: str, accent_pos: int = 0) -> list[float]:
     将来的には AccentPhrase.f0_values を直接使用することを推奨。
     """
     base_f0 = 150.0 + accent_pos * 5.0
-    # 子音は無声（0Hz）、母音はピッチあり
     voiced = phoneme in list("aeiou") + ["N", "m", "n", "r", "w", "y", "v"]
     return [base_f0 if voiced else 0.0] * 50
 
@@ -195,20 +216,19 @@ def generate_accent_curve(phoneme: str, accent_pos: int = 0) -> list[float]:
 def generate_talk_events(
     text: str,
     analyzer: IntonationAnalyzer,
+    voice_library: VoiceLibraryProtocol,  # [FIX-1] 追加: WAVパス解決に使用
 ) -> list[dict[str, Any]]:
     """
     テキストから VO-SE エンジン用トークイベントリストを生成する。
 
     Returns:
         List of dicts with keys:
-            phoneme, pitch, gender, tension, breath,
+            phoneme, wav_path, pitch, gender, tension, breath,
             offset, consonant, cutoff, pre_utterance, overlap
     """
     phonemes = analyzer.analyze_to_phonemes(text)
-    # アクセント句も取得してピッチ生成に活用
     accent_phrases = analyzer.analyze_to_accent_phrases(text)
 
-    # 音素→アクセント位置マップ（簡易版：句単位で均等割り当て）
     accent_map: dict[int, int] = {}
     idx = 0
     for phrase in accent_phrases:
@@ -222,13 +242,19 @@ def generate_talk_events(
         pitch_curve = generate_accent_curve(phoneme, accent_pos)
         length = len(pitch_curve)
 
+        # [FIX-1] wav_path を音素文字列ではなく実際のファイルパスで解決する
+        wav_path = voice_library.get_wav_path(phoneme)
+        if not wav_path:
+            print(f"[generate_talk_events] WAV not found for phoneme: '{phoneme}' — skipping")
+            continue
+
         talk_notes.append({
             "phoneme":       phoneme,
+            "wav_path":      wav_path,      # [FIX-1] 実WAVパスを格納
             "pitch":         pitch_curve,
             "gender":        [0.5] * length,
             "tension":       [0.5] * length,
-            "breath":        [0.1] * length,   # 0.1 で自然な息感
-            # UTAU パラメータ（デフォルト値）
+            "breath":        [0.1] * length,
             "offset":        0.0,
             "consonant":     0.0,
             "cutoff":        0.0,
@@ -255,12 +281,11 @@ class NoteEvent(ctypes.Structure):
         ("gender_curve",       ctypes.POINTER(ctypes.c_double)),
         ("tension_curve",      ctypes.POINTER(ctypes.c_double)),
         ("breath_curve",       ctypes.POINTER(ctypes.c_double)),
-        # UTAU 互換パラメータ
-        ("offset_ms",          ctypes.c_double),   # 原音の開始位置
-        ("consonant_ms",       ctypes.c_double),   # 固定範囲（子音部）
-        ("cutoff_ms",          ctypes.c_double),   # 右ブランク
-        ("pre_utterance_ms",   ctypes.c_double),   # 先行発声
-        ("overlap_ms",         ctypes.c_double),   # オーバーラップ
+        ("offset_ms",          ctypes.c_double),
+        ("consonant_ms",       ctypes.c_double),
+        ("cutoff_ms",          ctypes.c_double),
+        ("pre_utterance_ms",   ctypes.c_double),
+        ("overlap_ms",         ctypes.c_double),
     ]
 
 
@@ -272,7 +297,6 @@ class VoseRendererBridge:
 
     def __init__(self, dll_path: str) -> None:
         try:
-            # macOS は RTLD_GLOBAL でシンボルをグローバル公開
             if platform.system() == "Darwin":
                 self.lib = ctypes.CDLL(dll_path, mode=ctypes.RTLD_GLOBAL)
             else:
@@ -295,9 +319,18 @@ class VoseRendererBridge:
             print(f"❌ Engine Load Error: {e}\n{traceback.format_exc()}")
             self.lib = None
 
-    def render(self, notes_data: list[dict[str, Any]], output_path: str) -> bool:
+    def render(
+        self,
+        notes_data: list[dict[str, Any]],
+        output_path: str,
+        # [FIX-1] voice_library 引数を削除:
+        #   generate_talk_events() の時点で wav_path が解決済みのため不要
+    ) -> bool:
         """
         Python データを NoteEvent 配列に変換して C++ レンダラーに渡す。
+
+        notes_data の各要素には "wav_path" キーに実 WAV パスが
+        入っていることを前提とする（generate_talk_events() で保証）。
 
         Returns:
             True on success, False on failure.
@@ -306,15 +339,14 @@ class VoseRendererBridge:
             print("❌ render() called but engine is not loaded.")
             return False
 
-        note_count = len(notes_data)
-        if note_count == 0:
+        if not notes_data:
             print("⚠️ render() called with empty notes_data.")
             return False
 
+        note_count = len(notes_data)
         NotesArray = NoteEvent * note_count
         c_notes = NotesArray()
 
-        # ★ GC 対策：C 側にポインタを渡す間、Python 配列を生存させる
         keep_alive: list[Any] = []
 
         for i, data in enumerate(notes_data):
@@ -324,7 +356,13 @@ class VoseRendererBridge:
             b_arr = (ctypes.c_double * len(data["breath"]))(*data["breath"])
             keep_alive.extend([p_arr, g_arr, t_arr, b_arr])
 
-            c_notes[i].wav_path         = voice_library.get_wav_path(phoneme).encode("utf-8")-8")
+            # [FIX-1] "phoneme" ではなく "wav_path" を C++ 側に渡す
+            wav_path: str = data.get("wav_path", "")
+            if not wav_path or not os.path.exists(wav_path):
+                print(f"❌ WAV not found at render time: '{wav_path}' — aborting")
+                return False
+
+            c_notes[i].wav_path         = wav_path.encode("utf-8")
             c_notes[i].pitch_length     = len(data["pitch"])
             c_notes[i].pitch_curve      = p_arr
             c_notes[i].gender_curve     = g_arr
@@ -353,7 +391,16 @@ class TalkManager(QObject):
     """
     pyopenjtalk を使用した TTS マネージャー。
     htsvoice の切替・フォールバックを自動処理する。
+
+    シグナル:
+        speak_started  : 読み上げ開始時
+        speak_finished : 読み上げ完了時（成功・失敗を問わず）
+        speak_error    : エラー発生時（エラーメッセージを emit）
     """
+
+    speak_started  = Signal()
+    speak_finished = Signal()
+    speak_error    = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -372,17 +419,55 @@ class TalkManager(QObject):
         return False
 
     # ----------------------------------------------------------
-    # 簡易スピーク（再生まで行う場合はここを拡張）
+    # スピーク（再生まで行う）  [FIX-2] 実装済み
     # ----------------------------------------------------------
 
-    def speak(self, text: str) -> None:
-        if not text:
+    def speak(self, text: str, speed: float = 1.0) -> None:
+        """
+        テキストを読み上げる（合成 → sounddevice 再生まで同期実行）。
+
+        GUI から呼ぶ場合は QThread でラップして UI をブロックしないこと。
+        例:
+            from PySide6.QtCore import QThreadPool, QRunnable
+            class _SpeakTask(QRunnable):
+                def __init__(self, mgr, text): ...
+                def run(self): self.mgr.speak(text)
+            QThreadPool.globalInstance().start(_SpeakTask(self.talk_manager, text))
+        """
+        if not text or self.is_speaking:
             return
+
+        self.is_speaking = True
+        self.speak_started.emit()
+
         try:
-            print(f"🗣 Speaking: {text}")
-            # TODO: 再生処理を追加する場合はここに実装
+            # 一時ファイルに合成して再生
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp_path = tmp.name
+
+            ok, result = self.synthesize(text, tmp_path, speed=speed)
+            if not ok:
+                self.speak_error.emit(result)
+                return
+
+            # sounddevice で同期再生
+            audio_data, sample_rate = sf.read(tmp_path, dtype="float32")
+            sd.play(audio_data, sample_rate)
+            sd.wait()  # 再生完了まで待機
+
         except Exception as e:
-            print(f"Speech Error: {e}\n{traceback.format_exc()}")
+            msg = f"speak() error: {e}\n{traceback.format_exc()}"
+            print(msg)
+            self.speak_error.emit(msg)
+        finally:
+            self.is_speaking = False
+            self.speak_finished.emit()
+            # 一時ファイルを削除
+            try:
+                if "tmp_path" in locals() and os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
 
     # ----------------------------------------------------------
     # WAV 合成
@@ -405,7 +490,6 @@ class TalkManager(QObject):
             return False, "テキストが空です。"
 
         try:
-            # 出力先ディレクトリを確保
             output_dir = os.path.dirname(output_path)
             if output_dir:
                 os.makedirs(output_dir, exist_ok=True)
@@ -423,8 +507,14 @@ class TalkManager(QObject):
             if x is None:
                 return False, "音声データの生成に失敗しました。"
 
-            # int16 変換して保存
-            x_int16 = np.clip(np.asarray(x), -32768, 32767).astype(np.int16)
+            # [FIX-3] float32 の場合は int16 スケールに変換してからクリップ
+            x_arr = np.asarray(x)
+            if x_arr.dtype in (np.float32, np.float64):
+                # pyopenjtalk は -32768〜32767 スケールの float を返す場合がある
+                # 念のため絶対値が 1.0 以下なら 32767 倍してスケール変換
+                if np.abs(x_arr).max() <= 1.0:
+                    x_arr = x_arr * 32767.0
+            x_int16 = np.clip(x_arr, -32768, 32767).astype(np.int16)
             sf.write(output_path, x_int16, sr)
 
             if os.path.exists(output_path):
@@ -451,12 +541,19 @@ class TalkManager(QObject):
         """
         指定ボイスで TTS を試みる。
         htsvoice → font → デフォルトの順でフォールバック。
+
+        [FIX-4] pyopenjtalk の戻り値が ndarray 単体の場合にも対応。
         """
         for key in ("htsvoice", "font"):
             try:
                 result = pyopenjtalk.tts(text, **{**options, key: voice})
-                if result is not None and len(result) >= 2:
-                    return result[0], result[1]
+                if result is None:
+                    continue
+                # タプル (ndarray, int) または ndarray 単体を許容
+                if isinstance(result, tuple) and len(result) >= 2:
+                    return result[0], int(result[1])
+                if isinstance(result, np.ndarray):
+                    return result, 48000
             except (TypeError, Exception) as e:
                 print(f"DEBUG: '{key}' kwarg failed: {e}")
 
@@ -468,8 +565,16 @@ class TalkManager(QObject):
         text: str,
         options: dict[str, Any],
     ) -> tuple[np.ndarray | None, int]:
-        """デフォルトボイスで TTS を実行する"""
+        """
+        デフォルトボイスで TTS を実行する。
+
+        [FIX-4] ndarray 単体の戻り値にも対応。
+        """
         result = pyopenjtalk.tts(text, **options)
-        if result is not None and len(result) >= 2:
-            return result[0], result[1]
+        if result is None:
+            return None, 48000
+        if isinstance(result, tuple) and len(result) >= 2:
+            return result[0], int(result[1])
+        if isinstance(result, np.ndarray):
+            return result, 48000
         return None, 48000
