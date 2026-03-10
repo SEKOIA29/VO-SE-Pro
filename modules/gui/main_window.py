@@ -2044,7 +2044,7 @@ class MainWindow(QMainWindow):
             status_bar = self.statusBar()
             if status_bar:
                 status_bar.showMessage(f"Talkモード: '{text}' を展開しました")
-            self.text_input.clear)
+            self.text_input.clear()
 
     def on_talk(self):
         text = self.talk_input.text()
