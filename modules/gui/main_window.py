@@ -2047,7 +2047,9 @@ class MainWindow(QMainWindow):
             self.text_input.clear()
 
     def on_talk(self):
-        text = self.talk_input.text()
+        text = self.text_input.text()
+        if not text:
+            return
         self.talk_manager.speak(text)
     
     @Slot(object)
