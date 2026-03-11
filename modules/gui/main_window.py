@@ -3320,7 +3320,7 @@ class MainWindow(QMainWindow):
                 webbrowser.open(page_url)
 
     def _start_auto_download(self, url):
-        from modules.updater.auto_updater import DownloadThread, apply_update_and_restart, UpdateChecker
+        from modules.updater.auto_updater import DownloadThread, apply_update_and_restart
         self._dl_thread = DownloadThread(url)
         self._dl_thread.progress.connect(self.progress_bar.setValue)
         self._dl_thread.finished.connect(apply_update_and_restart)
