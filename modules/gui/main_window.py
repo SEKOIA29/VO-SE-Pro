@@ -2229,6 +2229,9 @@ class MainWindow(QMainWindow):
         # 3. 診断結果をUIに反映
         self.device_status_label.setText(f" [ {self.active_device} ] ")
         self.statusBar().showMessage(f"Engine Ready: {self.active_device}", 5000)
+        
+        #アップデート確認
+        QTimer.singleShot(3000, self._check_for_updates)
 
     def log_startup(self, message):
         """標準出力へのログ記録）""" 
