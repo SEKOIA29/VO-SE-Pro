@@ -3289,7 +3289,7 @@ class MainWindow(QMainWindow):
     # ==========================================================================
 
     def _check_for_updates(self):
-        from modules.updater.update_checker import UpdateChecker
+        from ..updater.auto_updater import UpdateChecker
         checker = UpdateChecker()
         checker.check_async(self._on_update_result)
 
@@ -3298,8 +3298,9 @@ class MainWindow(QMainWindow):
             return
         from PySide6.QtCore import QMetaObject, Qt
         QMetaObject.invokeMethod(
-            self, "_show_update_dialog",
-            Qt.ConnectionType.QueuedConnection,
+            self, 
+            b"_show_update_dialog", 
+        Qt.ConnectionType.QueuedConnection
         )
         self._pending_update = (latest_ver, page_url, exe_url)
 
@@ -3319,7 +3320,7 @@ class MainWindow(QMainWindow):
                 webbrowser.open(page_url)
 
     def _start_auto_download(self, url):
-        from modules.updater.auto_updater import DownloadThread, apply_update_and_restart
+        from modules.updater.auto_updater import DownloadThread, apply_update_and_restart, UpdateChecker
         self._dl_thread = DownloadThread(url)
         self._dl_thread.progress.connect(self.progress_bar.setValue)
         self._dl_thread.finished.connect(apply_update_and_restart)
