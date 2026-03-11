@@ -30,13 +30,12 @@ jobs:
           python-version: '3.10'
           cache: 'pip'
 
-      # 1. 先にライブラリをインストール
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip wheel
           python -m pip uninstall -y pkg_resources || true
           python -m pip install "setuptools>=70,<81" "pyinstaller==6.13.0"
-          pip install PySide6 numpy sounddevice soundfile mido janome Pillow ruff pyright scipy onnxruntime chardet pykakasi backports.tarfile
+          pip install PySide6 numpy sounddevice soundfile mido janome Pillow ruff pyright scipy onnxruntime chardet pykakasi backports.tarfile packaging
           pip install pyopenjtalk --only-binary :all: || pip install pyopenjtalk
 
       - name: Verify pkg_resources for PyInstaller hook
@@ -48,9 +47,8 @@ jobs:
           if not hasattr(pkg_resources, "NullProvider"):
               raise SystemExit("pkg_resources.NullProvider is missing")
 
-      # --- ここをクロスプラットフォーム対応に修正（一切の省略なし） ---
       - name: Create User Dictionary (if needed)
-        shell: python # シェルにpythonを直接指定することでエラーを回避
+        shell: python
         run: |
           import os
           try:
@@ -63,50 +61,96 @@ jobs:
           except Exception as e:
               print(f'Skip dict creation: {e}')
 
-      # 2. その後に Ruff でチェック
+      # ── ① バージョンをソースに埋め込む ──────────────────────────
+      - name: Inject version into update_checker.py
+        shell: bash
+        run: |
+          # タグ (v1.2.0) があればそれを使い、なければ 0.0.0-dev にする
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"   # "v1.2.0" → "1.2.0"
+          else
+            VERSION="0.0.0-dev"
+          fi
+          echo "Injecting version: $VERSION"
+
+          # update_checker.py の CURRENT_VERSION を書き換える
+          # ファイルがまだなければ作成する
+          CHECKER="modules/updater/update_checker.py"
+          mkdir -p modules/updater
+          if [ -f "$CHECKER" ]; then
+            sed -i.bak "s/^CURRENT_VERSION = .*/CURRENT_VERSION = \"$VERSION\"/" "$CHECKER"
+          else
+            # ファイルがない場合は最小構成で生成
+            cat > "$CHECKER" << EOF
+          import json, threading, urllib.request
+          from packaging.version import Version
+
+          CURRENT_VERSION = "$VERSION"
+          GITHUB_API_URL = "https://api.github.com/repos/YOUR_ORG/VO-SE-Pro/releases/latest"
+
+          class UpdateChecker:
+              def check_async(self, callback):
+                  threading.Thread(target=self._check, args=(callback,), daemon=True).start()
+
+              def _check(self, callback):
+                  try:
+                      req = urllib.request.Request(GITHUB_API_URL, headers={"User-Agent": "VO-SE-Pro"})
+                      with urllib.request.urlopen(req, timeout=5) as res:
+                          data = json.loads(res.read())
+                      latest = data["tag_name"].lstrip("v")
+                      page_url = data["html_url"]
+                      assets = data.get("assets", [])
+                      # Windows は .exe、Mac はアップデート用 _update.zip を拾う
+                      exe_url = next(
+                          (a["browser_download_url"] for a in assets
+                           if a["name"].endswith("_update.zip") or a["name"].endswith(".exe")),
+                          None
+                      )
+                      if Version(latest) > Version(CURRENT_VERSION):
+                          callback(True, latest, page_url, exe_url)
+                      else:
+                          callback(False, latest, None, None)
+                  except Exception:
+                      callback(None, None, None, None)
+          EOF
+          fi
+          echo "Done. CURRENT_VERSION is now $VERSION"
+
       - name: Lint with Ruff
         run: |
           ruff check . --select E,F --ignore E501
 
-      # 3. 最後に Pyright でチェック
       - name: Type Check with Pyright
         run: |
           pyright .
 
-      # 1. 音源をパッキングして voice_data.h を生成
       - name: Pack Official Voice Data
         shell: bash
         run: |
-          # 1. 代表が書いたスクリプトファイルをプロジェクト全体から探す
-          # (pack_voice.py という名前で保存されていることを想定)
           TARGET_SCRIPT=$(find . -name "pack_voice.py" -o -name "pack_all_voices.py" | head -n 1)
-          
           if [ -n "$TARGET_SCRIPT" ]; then
             echo "Found script: $TARGET_SCRIPT"
-            # 2. そのファイルがあるディレクトリに移動して実行（パスの食い違いを防ぐ）
             SCRIPT_DIR=$(dirname "$TARGET_SCRIPT")
             cd "$SCRIPT_DIR"
             python $(basename "$TARGET_SCRIPT")
-            cd - # 元のディレクトリに戻る
+            cd -
           else
-            echo "Error: Packing script not found. Please check the filename in your repository."
+            echo "Error: Packing script not found."
             exit 1
           fi
 
-      # 2. C++ エンジンをビルド（生成された voice_data.h を含める）
       - name: Build C++ Engine
         shell: bash
         run: |
           mkdir -p bin
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # vose_core.cpp が voice_data.h を読み込んで register する想定
             g++ -std=c++17 -shared -fPIC -o bin/libvo_se.dll src/vose_core.cpp src/world/*.cpp \
               -I. -Isrc -Iinclude -Iinclude/world -O2 -static-libgcc -static-libstdc++
           else
             clang++ -std=c++17 -shared -fPIC -o bin/libvo_se.dylib src/vose_core.cpp src/world/*.cpp \
               -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O3 -w
           fi
-          
+
       - name: Package App
         shell: bash
         run: |
@@ -127,6 +171,7 @@ jobs:
               --name "VO-SE_PRO_Win" main.py
 
             cp dist/VO-SE_PRO_Win.exe dist_out/
+
           else
             pyinstaller --noconsole --windowed --clean \
               --paths . \
@@ -142,7 +187,15 @@ jobs:
               --name "VO-SE_PRO_Mac" main.py
 
             chmod +x dist/VO-SE_PRO_Mac.app/Contents/MacOS/VO-SE_PRO_Mac
-            cd dist && zip -ry ../dist_out/VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
+
+            # ── ② 配布用DMG（初回DL向け）──
+            hdiutil create -volname "VO-SE Pro" \
+              -srcfolder dist/VO-SE_PRO_Mac.app \
+              -ov -format UDZO \
+              dist_out/VO-SE_PRO_Mac.dmg
+
+            # ── ② 自動アップデート用ZIP（_update サフィックスで区別）──
+            cd dist && zip -ry ../dist_out/VO-SE_PRO_Mac_update.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
       - name: 🍎 Verify and Fix macOS Library Linkage (Complete & Final)
@@ -150,99 +203,48 @@ jobs:
         shell: bash
         run: |
           set +e
-          echo "Macのバイナリ権限付与とリンク修正を完全実行します..."
-          
-          # 1. アプリ本体の実行ファイルを特定
           APP_BIN=$(find dist -name "VO-SE_PRO_Mac" -type f | grep "\.app/Contents/MacOS/VO-SE_PRO_Mac" | head -n 1)
-          echo "Main Binary found at: $APP_BIN"
-
-          # 2. 本体に実行権限を付与
           chmod +x "$APP_BIN"
-
-          # 3. すべての dylib に対して一括処理
-          # findの結果を確実に1つずつ処理するためにwhile readを使用
           find dist -name "libvo_se.dylib" -type f | while read -r DYLIB_BIN; do
-            echo "--- Processing: $DYLIB_BIN ---"
-            
-            # 権限を最強の755（読み・書き・実行）に設定
             chmod 755 "$DYLIB_BIN"
-            
-            # dylib自身の内部名を「ファイル名だけ」に書き換えてどこからでも呼べるようにする
             LIB_NAME=$(basename "$DYLIB_BIN")
             install_name_tool -id "$LIB_NAME" "$DYLIB_BIN" 2>&1 || true
-            
-            # アプリ本体が持っている古いリンク情報を取得
             OLD_REF=$(otool -L "$APP_BIN" | grep "libvo_se" | awk '{print $1}')
-            
             if [ -n "$OLD_REF" ]; then
-              echo "Fixing reference: $OLD_REF -> @executable_path/../Frameworks/bin/$LIB_NAME"
-              # Macの標準的なパスであるFrameworks内を第一候補としてリンク
               install_name_tool -change "$OLD_REF" "@executable_path/../Frameworks/bin/$LIB_NAME" "$APP_BIN" 2>&1 || true
-              # 予備として、同じ階層のbinフォルダも試みる
               install_name_tool -change "$OLD_REF" "@loader_path/bin/$LIB_NAME" "$APP_BIN" 2>&1 || true
-            else
-              echo "Static reference not found. The app will load the library dynamically from its internal search path."
             fi
-            
-            # 署名の修復（これをしないとゲートキーパーで即死します）
             codesign --force --deep --sign - "$DYLIB_BIN" 2>&1 || true
           done
-
-          # 4. アプリ構造全体を再署名
-          echo "Final re-signing for the whole App Bundle..."
           codesign --force --deep --sign - "dist/VO-SE_PRO_Mac.app" 2>&1 || true
-
-          # 5. 最終レポート
-          echo "--- FINAL STATUS REPORT ---"
-          ls -l "$APP_BIN"
-          echo "Dependencies for $APP_BIN:"
-          otool -L "$APP_BIN" | grep "lib"
-          
-          echo "Process finished. Ready for distribution."
           set -e
-          
-          
+
       - name: 🔍 Startup Smoke Test (GUI Headless)
         shell: bash
         run: |
-          echo "Starting startup test..."
           export QT_QPA_PLATFORM=offscreen
           export PYTHONIOENCODING=utf-8
-
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            echo "Building Windows Script using printf..."
-            # インデントを維持したまま、winmode=0 を追加して依存関係を強制ロードさせます
             printf "%s\n" \
               "import os, ctypes, sys" \
               "root_dir = os.path.abspath(os.getcwd())" \
               "bin_dir = os.path.join(root_dir, 'bin')" \
               "src_dir = os.path.join(root_dir, 'src')" \
               "dll_path = os.path.join(bin_dir, 'libvo_se.dll')" \
-              "print(f'Target DLL: {dll_path}')" \
               "os.environ['PATH'] = bin_dir + os.pathsep + os.environ.get('PATH', '')" \
               "if hasattr(os, 'add_dll_directory'): os.add_dll_directory(bin_dir)" \
               "try:" \
-              "    os.chdir(bin_dir)" \
-              "    # winmode=0 を指定し、Windowsの従来のDLL検索ルール（PATH等を含む）を強制適用します" \
               "    lib = ctypes.CDLL(dll_path, winmode=0)" \
-              "    print('SUCCESS: DLL and dependencies Loaded')" \
+              "    print('SUCCESS: DLL Loaded')" \
               "except Exception as e:" \
-              "    print(f'DLL Error: {e}')" \
-              "    print('--- DEBUG: Contents of bin directory ---')" \
-              "    print(os.listdir(bin_dir) if os.path.exists(bin_dir) else 'bin folder not found')" \
-              "    print('----------------------------------------')" \
-              "    sys.exit(1)" \
-              "os.chdir(root_dir)" \
+              "    print(f'DLL Error: {e}'); sys.exit(1)" \
               "sys.path.extend([root_dir, src_dir])" \
               "try:" \
               "    import main" \
               "    print('SUCCESS: App Import Passed')" \
               "except Exception as e:" \
               "    print(f'Import Error: {e}'); sys.exit(1)" > smoke_test.py
-            
-            python smoke_test.py
           else
-            echo "Building macOS Script using printf..."
             printf "%s\n" \
               "import os, ctypes, sys" \
               "root_dir = os.path.abspath(os.getcwd())" \
@@ -259,19 +261,15 @@ jobs:
               "    print('SUCCESS: macOS Import Passed')" \
               "except Exception as e:" \
               "    print(f'Import Error: {e}'); sys.exit(1)" > smoke_test.py
-            
-            python smoke_test.py
           fi
+          python smoke_test.py
 
-          
-
-          
       - name: 📦 Save Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: VO-SE-PRO-Package-${{ matrix.os }}
           path: dist_out/
-          
+
   publish:
     name: Publish Release
     runs-on: ubuntu-latest
@@ -287,15 +285,18 @@ jobs:
       - name: Show release files
         run: ls -la dist_out
 
+      # ── ③ タグが v* の時だけ正式リリース、それ以外は pre-release ──
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: "VO-SE PRO (Official Edition)"
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest-dev' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && format('VO-SE Pro {0}', github.ref_name) || 'VO-SE Pro (Dev Build)' }}
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
           fail_on_unmatched_files: false
-          make_latest: true
+          make_latest: ${{ startsWith(github.ref, 'refs/tags/') }}
           files: |
             dist_out/VO-SE_PRO_Win.exe
-            dist_out/VO-SE_PRO_Mac.zip
+            dist_out/VO-SE_PRO_Mac.dmg
+            dist_out/VO-SE_PRO_Mac_update.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
