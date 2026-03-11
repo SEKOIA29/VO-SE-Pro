@@ -118,7 +118,7 @@ jobs:
 
       - name: Lint with Ruff
         run: |
-        ruff check . --select E,F --ignore E501,E401
+         ruff check . --select E,F --ignore E501,E401
 
 
       - name: Type Check with Pyright
