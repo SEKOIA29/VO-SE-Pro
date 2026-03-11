@@ -3283,6 +3283,49 @@ class MainWindow(QMainWindow):
         except Exception as e:
             # ここも上の try と垂直に揃える必要があります
             print(f"再生エラー: {e}")
+            
+    # ==========================================================================
+    #  アップデートデート自動確認　　　　　　　　　　　　　　　　　　　　　　　　　
+    # ==========================================================================
+
+    def _check_for_updates(self):
+        from modules.updater.update_checker import UpdateChecker
+        checker = UpdateChecker()
+        checker.check_async(self._on_update_result)
+
+    def _on_update_result(self, has_update, latest_ver, page_url, exe_url):
+        if not has_update:
+            return
+        from PySide6.QtCore import QMetaObject, Qt
+        QMetaObject.invokeMethod(
+            self, "_show_update_dialog",
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._pending_update = (latest_ver, page_url, exe_url)
+
+    @Slot()
+    def _show_update_dialog(self):
+        ver, page_url, exe_url = self._pending_update
+        reply = QMessageBox.question(
+            self, "アップデートあり",
+            f"VO-SE Pro {ver} が公開されています。\n今すぐ更新しますか？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            if exe_url:
+                self._start_auto_download(exe_url)
+            else:
+                import webbrowser
+                webbrowser.open(page_url)
+
+    def _start_auto_download(self, url):
+        from modules.updater.auto_updater import DownloadThread, apply_update_and_restart
+        self._dl_thread = DownloadThread(url)
+        self._dl_thread.progress.connect(self.progress_bar.setValue)
+        self._dl_thread.finished.connect(apply_update_and_restart)
+        self._dl_thread.error.connect(lambda e: QMessageBox.critical(self, "エラー", e))
+        self.progress_bar.show()
+        self._dl_thread.start()
 
     # ==========================================================================
     #  Pro audio modeling の起動、呼び出し　　　　　　　　　　　
