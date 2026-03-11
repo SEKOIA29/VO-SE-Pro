@@ -2373,7 +2373,30 @@ class MainWindow(QMainWindow):
         print(f"Pro Monitoring: {value}")
 
 
-     #=======================================================
+  #=======================================================
+    #ai処理接続
+
+     def on_ai_auto_setup(self):
+        """おまかせ調声ボタン"""
+        if not self.ai_manager.is_model_loaded():
+            QMessageBox.warning(self, "AI未準備", 
+                "AIモデルが見つかりません。\n"
+                "train_aural_model.py を実行してください。")
+            return
+    
+        notes = self.timeline_widget.get_all_notes()
+        if not notes:
+            return
+    
+        self.status_bar.showMessage("AI調声中...")
+        for note in notes:
+            result = self.ai_manager.predict(note)
+            note.pre_utterance = result["pre_utterance"]
+            note.overlap        = result["overlap"]
+            note.consonant      = result["consonant"]
+    
+        self.timeline_widget.update()
+        self.status_bar.showMessage("AI調声完了")
 
         
     #=======================================================
