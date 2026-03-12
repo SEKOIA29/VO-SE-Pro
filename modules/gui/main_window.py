@@ -2376,7 +2376,7 @@ class MainWindow(QMainWindow):
   #=======================================================
     #ai処理接続
 
-     def on_ai_auto_setup(self):
+    def on_ai_auto_setup(self):
         """おまかせ調声ボタン"""
         if not self.ai_manager.is_model_loaded():
             QMessageBox.warning(self, "AI未準備", 
