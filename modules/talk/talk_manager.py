@@ -462,6 +462,7 @@ class TalkManager(QObject):
         finally:
             self.is_speaking = False
             self.speak_finished.emit()
+            tmp_path: str | None = None 
             # 一時ファイルを削除
             try:
                 if "tmp_path" in locals() and os.path.exists(tmp_path):
