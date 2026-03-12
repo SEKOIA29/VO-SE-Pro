@@ -730,7 +730,7 @@ except ImportError:
         def get_audio_peaks(self, file_path, num_peaks=2000): return []
         def set_pitch_data(self, data): pass
         def add_note_from_midi(self, note_num, velocity): pass
-        def update(self): super().update()
+        def update(self, *args, **kwargs): super().update()
     TimelineWidget = cast(Any, _TimelineWidgetFallback)
 
 try:
@@ -3314,7 +3314,10 @@ class MainWindow(QMainWindow):
     # ==========================================================================
 
     def _check_for_updates(self):
-        from ..updater.auto_updater import UpdateChecker
+        try:
+            from modules.updater.auto_updater import UpdateChecker
+        except ImportError:
+           return  # updaterがまだなければ何もしない
         checker = UpdateChecker()
         checker.check_async(self._on_update_result)
 
@@ -3345,7 +3348,12 @@ class MainWindow(QMainWindow):
                 webbrowser.open(page_url)
 
     def _start_auto_download(self, url):
-        from modules.updater.auto_updater import DownloadThread, apply_update_and_restart
+        try:
+            from modules.updater.auto_updater import DownloadThread, apply_update_and_restart
+        except ImportError:
+            import webbrowser
+            webbrowser.open(url)  # DLできないならブラウザで開く
+            return
         self._dl_thread = DownloadThread(url)
         self._dl_thread.progress.connect(self.progress_bar.setValue)
         self._dl_thread.finished.connect(apply_update_and_restart)
