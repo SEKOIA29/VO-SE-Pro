@@ -3315,12 +3315,14 @@ class MainWindow(QMainWindow):
 
     def _check_for_updates(self):
         try:
-            from modules.updater.auto_updater import UpdateChecker
-        except ImportError:
-           return  # updaterがまだなければ何もしない
+            import importlib
+            updater_mod = importlib.import_module("modules.updater.auto_updater")  # type: ignore
+            UpdateChecker = updater_mod.UpdateChecker
+        except (ImportError, ModuleNotFoundError):
+            return
         checker = UpdateChecker()
         checker.check_async(self._on_update_result)
-
+        
     def _on_update_result(self, has_update, latest_ver, page_url, exe_url):
         if not has_update:
             return
@@ -3349,10 +3351,13 @@ class MainWindow(QMainWindow):
 
     def _start_auto_download(self, url):
         try:
-            from modules.updater.auto_updater import DownloadThread, apply_update_and_restart
-        except ImportError:
+            import importlib
+            updater_mod = importlib.import_module("modules.updater.auto_updater")  # type: ignore
+            DownloadThread = updater_mod.DownloadThread
+            apply_update_and_restart = updater_mod.apply_update_and_restart
+        except (ImportError, ModuleNotFoundError):
             import webbrowser
-            webbrowser.open(url)  # DLできないならブラウザで開く
+            webbrowser.open(url)
             return
         self._dl_thread = DownloadThread(url)
         self._dl_thread.progress.connect(self.progress_bar.setValue)
