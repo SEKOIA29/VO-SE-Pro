@@ -1,16 +1,12 @@
 {
+  "include": ["."],
   "reportMissingImports": "warning",
   "reportMissingModuleSource": "none",
   "pythonVersion": "3.11",
-  "typeCheckingMode": "basic"
-}
-
-{
-  "include": ["."],
+  "typeCheckingMode": "basic",
   "executionEnvironments": [
     {
       "root": "."
     }
   ]
 }
-
