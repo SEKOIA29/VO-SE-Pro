@@ -103,7 +103,7 @@ class AuralAIEngine:
                     self.model_path,
                     sess_options=sess_options,  
                     providers=['CPUExecutionProvider']
-　　　　　　　　　　　)
+                )
                 print(f"[AI Core] Inference Engine Online: {self.model_path}")
             except Exception as e:
                 print(f"[AI Core] Init Error: {e}")
