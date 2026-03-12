@@ -41,6 +41,12 @@ class VO_SE_Engine:
         self.oto_map = {}
         self.refresh_voice_library()
 
+        try:
+            from modules.gui.aural_engine import AuralAIEngine
+            self.aural_ai = AuralAIEngine()
+        except Exception:
+            self.aural_ai = None
+
     def get_audio_devices(self):
         """接続されているオーディオ入出力デバイスのリストを返す"""
         devices = sd.query_devices()
