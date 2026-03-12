@@ -1232,6 +1232,8 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel("")
         self.voice_grid = QGridLayout()
         
+        self.status_bar = self.statusBar()
+        
         # --- 2. 属性の初期化（AttributeError 対策） ---
         self._init_attributes(engine, ai, config)
         
