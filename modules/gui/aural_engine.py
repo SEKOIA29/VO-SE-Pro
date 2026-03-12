@@ -1,15 +1,28 @@
 #aural_engine.py
+
+from __future__ import annotations
+from typing import TYPE_CHECKING
 import numpy as np
 import os
 import ctypes
 import _ctypes
 import platform
 
+if TYPE_CHECKING:
+    import onnxruntime as ort  # 型チェック時だけimport（実行時は無視）
+
+try:
+    import onnxruntime as _ort  # 実行時はこちら
+    ONNX_AVAILABLE = True
+except ImportError:
+    _ort = None  # type: ignore
+    ONNX_AVAILABLE = False
+
 try:
     import onnxruntime as ort
     ONNX_AVAILABLE = True
 except ImportError:
-    ort = None  
+    ort = None
     ONNX_AVAILABLE = False
 
 
@@ -84,14 +97,13 @@ class AuralAIEngine:
         if ONNX_AVAILABLE and os.path.exists(self.model_path):
             try:
                 # [最適化] スレッド数を制限してCore i3などの低スペック環境でも安定動作
-                sess_options = ort.SessionOptions()
+                sess_options = _ort.SessionOptions()    # type: ignore[union-attr]
                 sess_options.intra_op_num_threads = 2
-
-                self.session = ort.InferenceSession(
+                self.session = _ort.InferenceSession(         # type: ignore[union-attr]
                     self.model_path,
-                    sess_options=sess_options,
+                    sess_options=sess_options,  
                     providers=['CPUExecutionProvider']
-                )
+　　　　　　　　　　　)
                 print(f"[AI Core] Inference Engine Online: {self.model_path}")
             except Exception as e:
                 print(f"[AI Core] Init Error: {e}")
