@@ -174,6 +174,9 @@ class VO_SE_Engine:
         if is_pitch:
             curve += float(note.note_number)
             curve = 440.0 * (2.0 ** ((curve - 69.0) / 12.0))
+            if self.aural_ai is not None:
+                note_id = id(note)
+                curve = self.aural_ai.get_baked_pitch(note_id, curve)
             
         return curve
 
