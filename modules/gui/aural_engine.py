@@ -75,7 +75,7 @@ class DynamicsMemoryManager:
 
 
 class AuralAIEngine:
-    def __init__(self, model_path="models/pitch_dynamics.onnx"):
+    def __init__(self, model_path="models/aural_dynamics.onnx"):
         self.model_path = model_path
         self.session = None
         self.cache = {}  # [高速化] 一度計算したAIピッチは保存して再利用
