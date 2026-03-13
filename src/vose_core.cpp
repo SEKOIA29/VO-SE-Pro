@@ -7,7 +7,11 @@
 #include <cstdint>
 #include <mutex>
 #include <shared_mutex>
-#include <memory>        // [FIX-SPTR] shared_ptr
+#include <memory>
+#define _USE_MATH_DEFINES  // [FIX-MPI] Windows/GCC で M_PI を有効化
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 #include "vose_core.h"
 #include "voice_data.h"
 
@@ -27,42 +31,11 @@ struct EmbeddedVoice {
     int fs;
 };
 
-// [FIX-SPTR] 値型 map → shared_ptr map に変更。
-//
-// v10 の問題:
-//   execute_render 全体を shared_lock で囲んでいたため、
-//   長い曲のレンダリング中は load_embedded_resource が
-//   unique_lock を取れずブロックされ続けた。
-//   ボイス追加・切り替えがレンダリング完了まで待たされる。
-//
-// v11 の修正:
-//   DB の値を shared_ptr<const EmbeddedVoice> で持つ。
-//   find_voice_ref() で shared_ptr をコピー（参照カウント増加）するだけで
-//   lock の保持が不要になる。
-//   load_embedded_resource が新しい shared_ptr を差し替えても、
-//   既存の shared_ptr を持つレンダリングスレッドは安全に旧データを参照し続ける。
-//   ロック保持時間 = find() + shared_ptr コピー の数マイクロ秒のみ。
-
 static std::map<std::string, std::shared_ptr<const EmbeddedVoice>> g_voice_db;
 static std::shared_mutex g_voice_db_mutex;
 
 // ============================================================
-// NotePrepass
-//
-// [FIX-STATE] v10 の valid / has_voice の役割が曖昧だった。
-//
-// v10:
-//   valid    = pitch_length が範囲内
-//   has_voice = 音源が存在する
-//   → valid=false かつ has_voice=true は起こり得ないが
-//     コードを読むだけでは分からず、パス2の分岐が複雑だった。
-//
-// v11:
-//   enum class State で3状態を明示する。
-//     INVALID   : pitch_length が範囲外 → offset を動かさずスキップ
-//     NO_VOICE  : pitch_length は有効だが音源なし → offset だけ進める
-//     RENDERABLE: pitch_length 有効かつ音源あり → 合成する
-//   状態遷移が一方向で、パス2の分岐が enum の switch で完結する。
+// NoteState / NotePrepass
 // ============================================================
 
 enum class NoteState : uint8_t {
@@ -71,10 +44,16 @@ enum class NoteState : uint8_t {
     RENDERABLE,  // pitch_length 有効・音源あり → 合成する
 };
 
+// [FIX-BRACE] shared_ptr メンバがあると集成体初期化できないコンパイラ対策。
+//             コンストラクタを明示して { } 初期化を保証する。
 struct NotePrepass {
-    NoteState                            state;
-    int64_t                              note_samples; // INVALID のとき 0
-    std::shared_ptr<const EmbeddedVoice> ev;           // RENDERABLE のときのみ非 null
+    NoteState                            state        = NoteState::INVALID;
+    int64_t                              note_samples = 0;
+    std::shared_ptr<const EmbeddedVoice> ev;
+
+    NotePrepass() = default;
+    NotePrepass(NoteState s, int64_t ns, std::shared_ptr<const EmbeddedVoice> e)
+        : state(s), note_samples(ns), ev(std::move(e)) {}
 };
 
 struct SynthesisScratchPad {
@@ -135,12 +114,6 @@ static int64_t note_samples_safe(int pitch_length)
 
 // ============================================================
 // find_voice_ref
-//
-// [FIX-SPTR] shared_ptr のコピーを返す（ロック保持時間は最小）。
-//   ロック → find() → shared_ptr コピー → アンロック の順で
-//   数マイクロ秒だけ lock を保持する。
-//   呼び出し元は shared_ptr を持っている間、音源データが
-//   解放されないことを保証される（参照カウントで管理）。
 // ============================================================
 
 static std::shared_ptr<const EmbeddedVoice> find_voice_ref(const char* key)
@@ -148,7 +121,7 @@ static std::shared_ptr<const EmbeddedVoice> find_voice_ref(const char* key)
     std::shared_lock<std::shared_mutex> lock(g_voice_db_mutex);
     auto it = g_voice_db.find(key ? key : "");
     if (it == g_voice_db.end()) return nullptr;
-    return it->second;  // shared_ptr コピー（参照カウント +1）、即 unlock
+    return it->second;
 }
 
 // ============================================================
@@ -202,8 +175,8 @@ static void apply_crossfade(std::vector<double>& dst, int64_t dst_size,
                              const std::vector<double>& src, int64_t src_size,
                              int64_t offset, int xfade_len)
 {
+    if (offset >= dst_size) return;  // [FIX-XF] 負になるケースを防ぐ
 
-    if (offset >= dst_size) return; 
     const int safe_xfade = static_cast<int>(
         std::min<int64_t>(xfade_len,
             std::min(src_size, dst_size - offset)));
@@ -234,7 +207,6 @@ DLLEXPORT void load_embedded_resource(const char* phoneme,
 {
     if (!phoneme || !raw_data || sample_count <= 0) return;
 
-    // ロック外でデータを構築してからスワップ（ロック時間を最小化）
     auto ev = std::make_shared<EmbeddedVoice>();
     ev->fs = kFs;
     ev->waveform.resize(sample_count);
@@ -242,33 +214,9 @@ DLLEXPORT void load_embedded_resource(const char* phoneme,
         ev->waveform[i] = static_cast<double>(raw_data[i]) * kInv32768;
 
     std::unique_lock<std::shared_mutex> lock(g_voice_db_mutex);
-    g_voice_db[phoneme] = std::move(ev);  // shared_ptr の差し替えのみ
+    g_voice_db[phoneme] = std::move(ev);
 }
 
-/**
- * execute_render  (v11)
- *
- * v10 からの修正点:
- *
- *   [FIX-SPTR] EmbeddedVoice を shared_ptr で管理。
- *              find_voice_ref() が shared_ptr をコピーするだけで
- *              ロック保持が不要になる。ロック時間を数マイクロ秒に短縮。
- *              load_embedded_resource が新 shared_ptr を差し替えても、
- *              レンダリング側は参照カウントで旧データを安全に保持し続ける。
- *
- *              修正しなかった場合（v10）:
- *                execute_render 全体を shared_lock で囲んでいたため、
- *                長い曲のレンダリング中はボイス追加・切り替えが
- *                レンダリング完了まで待たされた。
- *
- *   [FIX-STATE] NotePrepass の valid/has_voice を enum NoteState に変更。
- *              INVALID / NO_VOICE / RENDERABLE の3状態で意図が明確になった。
- *              パス2の分岐が switch で完結し、状態の取り違えがなくなった。
- *
- *              修正しなかった場合（v10）:
- *                valid=false かつ has_voice=true が起こり得ないにもかかわらず
- *                コードから読み取れず、将来の変更で誤った分岐を踏むリスクがあった。
- */
 DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* output_path)
 {
     if (!notes || note_count <= 0 || !output_path) return;
@@ -278,7 +226,6 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
 
     // ----------------------------------------------------------------
     // パス1: NotePrepass 構築
-    // find_voice_ref() のロックは各呼び出しで即解放される。
     // ----------------------------------------------------------------
 
     std::vector<NotePrepass> prepass(note_count);
@@ -292,23 +239,27 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         const int pitch_len = notes[i].pitch_length;
 
         if (pitch_len <= 0 || pitch_len > kMaxPitchLength) {
-            prepass[i] = { NoteState::INVALID, 0, nullptr };
+            std::fprintf(stderr,
+                "[vose_core] note[%d] pitch_length=%d out of range (1..%d), skipping.\n",
+                i, pitch_len, kMaxPitchLength);
+            prepass[i] = NotePrepass(NoteState::INVALID, 0, nullptr);
             prev_renderable = false;
-            continue;  // ← ここで continue するので ev は宣言しない
+            continue;
         }
-　　　　　
+
+        // [FIX-ZENKAKU] 全角スペースを除去し ns をここで宣言
         const int64_t ns = note_samples_safe(pitch_len);
         auto ev = find_voice_ref(notes[i].wav_path);
 
         if (ev) {
-            prepass[i] = { NoteState::RENDERABLE, ns, ev };
+            prepass[i] = NotePrepass(NoteState::RENDERABLE, ns, ev);
             if (prev_renderable) ++xfade_count;
             prev_renderable = true;
             const int wav_len     = static_cast<int>(ev->waveform.size());
             const int harvest_len = GetSamplesForHarvest(ev->fs, wav_len, kFramePeriod);
             if (harvest_len > max_harvest_len) max_harvest_len = harvest_len;
         } else {
-            prepass[i] = { NoteState::NO_VOICE, ns, nullptr };
+            prepass[i] = NotePrepass(NoteState::NO_VOICE, ns, nullptr);
             prev_renderable = false;
         }
 
@@ -332,7 +283,6 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
 
     // ----------------------------------------------------------------
     // パス2: ノートごとの合成
-    // [FIX-STATE] switch で3状態を明確に分岐。pitch_length 再チェックなし。
     // ----------------------------------------------------------------
 
     for (int i = 0; i < note_count; ++i) {
@@ -340,24 +290,22 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
 
         switch (pp.state) {
         case NoteState::INVALID:
-            // pitch_length 範囲外: offset を動かさない
             last_note_rendered = false;
             continue;
 
         case NoteState::NO_VOICE:
-            // 音源なし: offset だけ進める（無音区間）
             last_note_rendered = false;
             current_offset    += pp.note_samples;
             continue;
 
         case NoteState::RENDERABLE:
-            break;  // 以下で合成
+            break;
         }
 
         NoteEvent& n               = notes[i];
         const int64_t note_samples = pp.note_samples;
         const int     f0_len       = n.pitch_length;
-        const EmbeddedVoice& ev    = *pp.ev;  // shared_ptr 保持中 → 安全
+        const EmbeddedVoice& ev    = *pp.ev;
 
         const int harvest_len = analyze_source_f0(ev, kFramePeriod);
         tl_scratch.ensure_spec(harvest_len, spec_bins);
