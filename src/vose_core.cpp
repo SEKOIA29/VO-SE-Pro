@@ -425,15 +425,10 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         last_note_rendered = true;
     }
 
-    const int write_result = wavwrite(
+    wavwrite(
         full_song_buffer.data(),
         static_cast<int>(full_song_buffer.size()),
         kFs, 16, output_path);
-
-    if (write_result != 0)
-        std::fprintf(stderr,
-            "[vose_core] wavwrite failed (code=%d): %s\n",
-            write_result, output_path);
 }
 
 } // extern "C"
