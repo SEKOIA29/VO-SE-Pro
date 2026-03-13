@@ -202,6 +202,8 @@ static void apply_crossfade(std::vector<double>& dst, int64_t dst_size,
                              const std::vector<double>& src, int64_t src_size,
                              int64_t offset, int xfade_len)
 {
+
+    if (offset >= dst_size) return; 
     const int safe_xfade = static_cast<int>(
         std::min<int64_t>(xfade_len,
             std::min(src_size, dst_size - offset)));
