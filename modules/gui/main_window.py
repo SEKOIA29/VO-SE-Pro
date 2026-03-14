@@ -1730,7 +1730,7 @@ class MainWindow(QMainWindow):
 
         # --- スプリッターに追加（それぞれ一度だけ） ---
         self.editor_splitter.addWidget(self.track_panel)
-        self.editor_splitter.addWidget(self.timeline_widget)
+        self.editor_splitter.addWidget(right_container)
 
         # --- メインレイアウトに追加（一度だけ） ---
         if self.main_layout is not None:
