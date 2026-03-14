@@ -1333,7 +1333,7 @@ class MainWindow(QMainWindow):
         self._playback_lock = threading.Lock()
         
         # 外部マネージャー
-        self.history = cast(Any, None)
+        self.history = HistoryManager()
         self.config_manager = cast(Any, None)
         self.config = config if config else {}
         self.all_parameters = {}
