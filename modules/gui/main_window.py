@@ -1560,11 +1560,13 @@ class MainWindow(QMainWindow):
 
         # 3. 各セクションの順次セットアップ
         # 依存関係（下のパネルが上のエディタを参照するなど）を考慮した順序で呼び出し    self.setup_menus()             # アクション登録前にメニューだけ先に
-        self.setup_main_editor_area()  # timeline_widgetをここで生成
-        self.setup_actions()           # ← 移動（timeline_widgetが存在する状態で実行）
+        self.setup_main_editor_area()  # 1. timeline_widget生成
+        self.setup_actions()           # 2. QAction定義
+        self.setup_menus()             #
         self.setup_toolbar()
         self.setup_bottom_panel()
-        self.setup_status_bar()  # ステータスバー
+        self.setup_status_bar()
+    
 
         # 4. スタイルと初期状態の適用
         # hasattrによるチェックに加え、初期化済みフラグ等で安全に呼び出し
