@@ -1559,13 +1559,12 @@ class MainWindow(QMainWindow):
         self.main_layout.setSpacing(2)
 
         # 3. 各セクションの順次セットアップ
-        # 依存関係（下のパネルが上のエディタを参照するなど）を考慮した順序で呼び出し
-        self.setup_actions()   
-        self.setup_menus()          # メニュー（QActionの親）
-        self.setup_toolbar()        # ツールバー
-        self.setup_main_editor_area() # メインエディタ（KeyboardSidebar, TimelineWidgetを含む）
-        self.setup_bottom_panel()   # 下部パネル（パラメータエディタ等）
-        self.setup_status_bar()     # ステータスバー
+        # 依存関係（下のパネルが上のエディタを参照するなど）を考慮した順序で呼び出し    self.setup_menus()             # アクション登録前にメニューだけ先に
+        self.setup_main_editor_area()  # timeline_widgetをここで生成
+        self.setup_actions()           # ← 移動（timeline_widgetが存在する状態で実行）
+        self.setup_toolbar()
+        self.setup_bottom_panel()
+        self.setup_status_bar()  # ステータスバー
 
         # 4. スタイルと初期状態の適用
         # hasattrによるチェックに加え、初期化済みフラグ等で安全に呼び出し
