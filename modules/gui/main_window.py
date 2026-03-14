@@ -1986,9 +1986,10 @@ class MainWindow(QMainWindow):
             # ノートが動いたときにメインウィンドウ側で受け取る
             self.timeline_widget.notes_changed_signal.connect(self.on_timeline_updated)
             # タイムラインからグラフエディタへ通知（ピッチ描画の基準更新）
-            if self.graph_editor_widget:
-                self.timeline_widget.notes_changed_signal.connect(self.graph_editor_widget.sync_with_notes)
-
+            if self.graph_editor_widget is not None:
+                self.timeline_widget.notes_changed_signal.connect(
+                    self.graph_editor_widget.sync_with_notes
+                )
         # --- 4. テンポ入力の確定（Returnキー押下で反映） ---
         if self.tempo_input:
             self.tempo_input.returnPressed.connect(self.update_tempo_from_input)
