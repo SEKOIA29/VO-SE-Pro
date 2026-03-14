@@ -1706,7 +1706,27 @@ class MainWindow(QMainWindow):
         track_layout.addLayout(btn_layout)
 
         # --- 右側：タイムライン（ここで一度だけ生成） ---
+        right_container = QWidget()
+        right_layout = QVBoxLayout(right_container)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+
+        timeline_row = QHBoxLayout()
         self.timeline_widget = TimelineWidget()
+    
+        # ↓ ここで初期化（setup_timeline_area から移植）
+        self.v_scrollbar = QSlider(Qt.Orientation.Vertical, self)
+        self.v_scrollbar.setRange(0, 1000)
+        self.v_scrollbar.setValue(10)
+        self.v_scrollbar.valueChanged.connect(self.timeline_widget.set_vertical_offset)
+    
+        timeline_row.addWidget(self.timeline_widget)
+        timeline_row.addWidget(self.v_scrollbar)
+    
+        self.h_scrollbar = QScrollBar(Qt.Orientation.Horizontal)
+        self.h_scrollbar.valueChanged.connect(self.timeline_widget.set_horizontal_offset)
+    
+        right_layout.addLayout(timeline_row)
+        right_layout.addWidget(self.h_scrollbar)
 
         # --- スプリッターに追加（それぞれ一度だけ） ---
         self.editor_splitter.addWidget(self.track_panel)
