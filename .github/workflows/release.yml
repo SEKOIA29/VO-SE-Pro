@@ -38,6 +38,25 @@ jobs:
           pip install PySide6 numpy sounddevice soundfile mido janome Pillow ruff pyright scipy onnxruntime chardet pykakasi backports.tarfile packaging
           pip install pyopenjtalk --only-binary :all: || pip install pyopenjtalk
 
+
+       
+      - name: Ruff Check and Fix (Windows only)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: ruff check . --select e,f --ignore e501,e401 --fix --exit-zero
+
+      - name: Auto Commit Fixes
+        if: matrix.os == 'windows-latest'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "style: ruff auto-fix unused imports"
+          # 修正対象のファイルのみをコミット対象にする
+          file_pattern: 'modules/gui/main_window.py'
+          commit_user_name: github-actions[bot]
+          commit_user_email: github-actions[bot]@users.noreply.github.com
+      #
+
+
       - name: Verify pkg_resources for PyInstaller hook
         shell: python
         run: |
