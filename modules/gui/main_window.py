@@ -479,19 +479,35 @@ class Track:
 # ==========================================================
 class ProMonitoringUI:
     def __init__(self, canvas, engine):
-        self.canvas = canvas
-        self.engine = engine
-        self.is_playing = False
-        self.playhead_line = None  # タイムライン上の赤い線
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.current_time = 0.0
-        
-        # --- メーター用の図形を保持する変数 ---
-        self.meter_l = None
-        self.meter_r = None
-        
-        # 初期セットアップを実行
-        self.setup_playhead()
-        self.setup_meters()
+        self.rms = 0.0
+
+        # 60fps タイマー
+        self._timer = QTimer(self)
+        self._timer.setInterval(16)
+        self._timer.timeout.connect(self.update)  # repaint トリガー
+
+    def start(self):
+        self._timer.start()
+
+    def stop(self):
+        self._timer.stop()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # 再生ヘッド（赤い縦線）
+        x = int(self.current_time * 100)
+        painter.setPen(QPen(QColor("#FF2D55"), 2))
+        painter.drawLine(x, 0, x, self.height())
+
+        # レベルメーター
+        h = int(self.rms * 100)
+        painter.fillRect(10, 110 - h, 10, h, QColor("#34C759"))
+        painter.fillRect(25, 110 - h, 10, h, QColor("#34C759"))
+
 
     # --- 1. 視覚の配属：再生ヘッドの描画 ---
     def setup_playhead(self):
