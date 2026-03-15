@@ -1960,8 +1960,14 @@ class MainWindow(QMainWindow):
             self.text_input.clear()
 
     def on_talk(self):
-        text = self.text_input.text()
+        text_input = getattr(self, 'text_input', None)
+        if text_input is None:
+            return
+        text = text_input.text()
         if not text:
+            return
+        if self.talk_manager is None:
+            print("WARNING: talk_manager が初期化されていません")
             return
         self.talk_manager.speak(text)
     
