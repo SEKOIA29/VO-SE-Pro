@@ -23,7 +23,6 @@ from typing import Any, List, Dict, Optional, TYPE_CHECKING, cast
 import numpy as np
 import mido
 import onnxruntime as ort # type: ignore
-from scipy.io.wavfile import write as wav_write
 
 # ==========================================================================
 # 3. GUIライブラリ (PySide6 / Qt)
@@ -54,7 +53,6 @@ if TYPE_CHECKING:
     from modules.gui.keyboard_sidebar_widget import KeyboardSidebarWidget # type: ignore
     from modules.backend.audio_player import AudioPlayer # type: ignore
     from modules.backend.intonation import IntonationAnalyzer # type: ignore
-    from modules.audio.vo_se_engine import VoSeEngine # type: ignore
     from modules.audio.voice_manager import VoiceManager # type: ignore
     #from modules.backend.ai_manager import AIManager # type: ignore
     from modules.gui.aural_engine import AuralAIEngine # type: ignore
@@ -1478,7 +1476,7 @@ class MainWindow(QMainWindow):
 
     def setup_toolbar(self):
         """上部ツールバー：再生・録音・テンポ・ファイル操作（省略なし統合版）"""
-        from PySide6.QtWidgets import QToolBar, QPushButton, QLabel, QLineEdit, QWidget, QSizePolicy
+        from PySide6.QtWidgets import QToolBar, QPushButton, QLabel, QLineEdit, QWidget
         
         self.toolbar = QToolBar("Main Toolbar")
         self.addToolBar(self.toolbar)
@@ -1539,7 +1537,7 @@ class MainWindow(QMainWindow):
 
     def setup_main_editor_area(self):
         """メインエディタエリア（トラックリスト + タイムライン）"""
-        from PySide6.QtWidgets import QSplitter, QFrame
+        from PySide6.QtWidgets import QFrame
         from PySide6.QtCore import Qt
 
         # --- スプリッターの生成（一度だけ） ---
