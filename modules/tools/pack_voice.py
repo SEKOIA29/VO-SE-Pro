@@ -24,7 +24,14 @@ def pack_all_voices():
     print(f"Searching in: {search_path}")
     
     if not wav_files:
-        print("Warning: No wav files found. Check your assets path!")
+        print("Warning: No wav files found.")
+        # 空でもビルドが通るよう、空の実装を明示的に書く
+        with open(output_path, 'w', encoding='utf-8') as h:
+            h.write("#pragma once\n#include <stdint.h>\n\n")
+            h.write('extern "C" void load_embedded_resource'
+                    '(const char* phoneme, const int16_t* raw_data, int sample_count);\n\n')
+            h.write("inline void register_all_embedded_voices() {}\n")
+        return
     
     with open(output_path, 'w', encoding='utf-8') as h:
         h.write("#pragma once\n#include <stdint.h>\n\n")
@@ -66,6 +73,8 @@ def pack_all_voices():
                         from math import gcd
                         g = gcd(fs, 44100)
                         data = resample_poly(data, 44100 // g, fs // g).astype(np.int16)
+                        resampled = np.clip(resampled, -32768, 32767) 
+                        data = resampled.astype(np.int16)
                     
                     h.write(f"// Source: {wav_path} (ID: {entry_name})\n")
                     h.write(f"const int16_t {var_name}[] = {{\n    ")
