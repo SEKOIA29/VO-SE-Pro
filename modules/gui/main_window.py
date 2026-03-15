@@ -477,16 +477,15 @@ class Track:
 # ==========================================================
 #  Pro audio modeling レンダリングボタンを押さなくても、スペースキーで「今あるデータ」を合成して即座に鳴らす機能。
 # ==========================================================
-class ProMonitoringUI:
-    def __init__(self, canvas, engine):
+class ProMonitoringUI(QWidget):  
+    def __init__(self, parent=None):
+        super().__init__(parent)   # ← super().__init__ が必要
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.current_time = 0.0
         self.rms = 0.0
-
-        # 60fps タイマー
         self._timer = QTimer(self)
         self._timer.setInterval(16)
-        self._timer.timeout.connect(self.update)  # repaint トリガー
+        self._timer.timeout.connect(self.update)
 
     def start(self):
         self._timer.start()
@@ -509,104 +508,7 @@ class ProMonitoringUI:
         painter.fillRect(25, 110 - h, 10, h, QColor("#34C759"))
 
 
-    # --- 1. 視覚の配属：再生ヘッドの描画 ---
-    def setup_playhead(self):
-        """タイムライン上に赤い縦線を作成"""
-        # Apple風の鮮やかな赤 (#FF2D55) を採用
-        self.playhead_line = self.canvas.create_line(0, 0, 0, 1000, fill="#FF2D55", width=2)
 
-    def setup_meters(self):
-        """GUI右上にレベルメーターの枠と中身を作成"""
-        # 枠
-        self.canvas.create_rectangle(10, 10, 20, 110, outline="white")
-        self.canvas.create_rectangle(25, 10, 35, 110, outline="white")
-        # 中身（動くバー）
-        self.meter_l = self.canvas.create_rectangle(11, 110, 19, 110, fill="#34C759", outline="")
-        self.meter_r = self.canvas.create_rectangle(26, 110, 34, 110, fill="#34C759", outline="")
-
-    # --- 2. 聴覚の配属：レベルメーター（音量バー） ---
-    def draw_level_meter(self, rms):
-        """再生中の音量をリアルタイムで取得してメーターを動かす"""
-        # rmsは 0.0 〜 1.0 の想定
-        max_h = 100
-        h = rms * max_h
-        
-        # メーターの高さを更新
-        self.canvas.coords(self.meter_l, 11, 110 - h, 19, 110)
-        self.canvas.coords(self.meter_r, 26, 110 - h, 34, 110)
-        
-        # 音量に応じた色変更（Apple風：緑→黄→赤）
-        color = "#34C759"
-        if rms > 0.7:
-            color = "#FFCC00"
-        if rms > 0.9:
-            color = "#FF3B30"
-        self.canvas.itemconfig(self.meter_l, fill=color)
-        self.canvas.itemconfig(self.meter_r, fill=color)
-
-
-    def draw_waveform_realtime(self, x_pos, rms):
-        """再生ヘッドの位置に波形の縦線を描画して、軌跡を残す"""
-        # 音量(rms)に応じて上下に線を伸ばす
-        height = rms * 50  # 振幅の大きさ
-        self.canvas.create_line(
-            x_pos, 400 - height, x_pos, 400 + height, 
-            fill="#007AFF", width=1, tags="waveform"
-        ) # Apple純正のブルー (#007AFF) を採用
-
-    # --- 3. GUIループ機構 ---def update_frame(self):
-    def update_frame(self):
-        """1秒間に60回呼ばれるUI更新ループ（波形描画・デバイス連携対応）"""
-        if not self.is_playing:
-            return
-
-        # 1. 再生ヘッド（赤い棒）を右に動かす
-        self.current_time += 1/60 
-        x_pos = self.time_to_x(self.current_time)
-        self.canvas.coords(self.playhead_line, x_pos, 0, x_pos, 1000)
-
-        # 2. 画面外に出そうになったら自動スクロール
-        if x_pos > self.canvas.winfo_width() * 0.8:
-            self.canvas.xview_scroll(1, 'units')
-
-        # 3. レベルメーターの更新 & 波形描画（どっちも！）
-        rms = self.engine.get_current_rms() 
-        self.draw_level_meter(rms)
-        
-        # --- ここに波形の軌跡（描画）を配属 ---
-        self.draw_waveform_line(x_pos, rms)
-
-        # 次のフレームを予約
-        self.canvas.after(16, self.update_frame)
-
-    def draw_waveform_line(self, x, rms):
-        """漆黒に映える発光ブルー波形を描画（Apple Pro仕様）"""
-        # 1. 振幅の計算（少し感度を上げてダイナミックに）
-        h = rms * 80 
-        center_y = 400 
-
-        # 2. 波形の線を描画
-        # 色を #0A84FF (System Blue) に変更し、質感をアップ
-        line_id = self.canvas.create_line(
-            x, center_y - h, x, center_y + h, 
-            fill="#0A84FF", width=2, tags="wf_trace"
-        )
-
-        # 3. 【プロの演出】古い波形を少しずつ暗くして、最後に消す処理
-        # これをやらないと、メモリが波形データでパンパンになって重くなります
-        self.canvas.after(2000, lambda: self.fade_out_waveform(line_id))
-
-    def fade_out_waveform(self, line_id):
-        """波形を徐々に暗くして、最終的に削除する（メモリ節約）"""
-        if self.canvas.find_withtag(line_id):
-            # 色を少し暗い青 (#004080) に変えてから消す
-            self.canvas.itemconfig(line_id, fill="#003366")
-            self.canvas.after(1000, lambda: self.canvas.delete(line_id))
-
-   
-    def time_to_x(self, t):
-        """秒数をX座標に変換（1秒=100pxなど、MainWindowの設定に合わせる）"""
-        return t * 100
 
 
 
