@@ -4,10 +4,10 @@ import glob
 import os
 
 def pack_all_voices():
-    output_path = "src/voice_data.h"
+    #output_path = "src/voice_data.h"
     # サブフォルダまで全スキャンする設定 (**/*.wav)
-    search_path = "assets/official_voices/**/*.wav"
-    wav_files = glob.glob(search_path, recursive=True)
+    #search_path = "assets/official_voices/**/*.wav"
+    #wav_files = glob.glob(search_path, recursive=True)
 
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
     output_path = os.path.join(base_dir, "src/voice_data.h")
