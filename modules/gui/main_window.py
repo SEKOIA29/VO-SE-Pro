@@ -4249,10 +4249,14 @@ class MainWindow(QMainWindow):
 
     def on_analysis_error(self, message: str):
         """解析失敗時の例外ハンドリング"""
-        self.ai_analyze_button.setEnabled(True)
-        self.progress_bar.hide()
+        ai_btn = getattr(self, 'ai_analyze_button', None)
+        if ai_btn:
+            ai_btn.setEnabled(True)
+        prog = getattr(self, 'progress_bar', None)
+        if prog:
+            prog.hide()
         QMessageBox.critical(self, "Engine Fault", f"解析中にエラーが発生しました:\n{message}")
-
+    
     def safe_to_f(self, val):
         """[爆弾2対策] あらゆる入力値を安全に数値化する変換機"""
         try:
