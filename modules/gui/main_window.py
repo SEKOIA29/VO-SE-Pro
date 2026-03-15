@@ -2748,34 +2748,7 @@ class MainWindow(QMainWindow):
             
 
     # --- [2] 連続音（VCV）解決メソッド ---
-    def resolve_vcv_alias(self, lyric, prev_lyric):
-        """
-        lyric: 今回の歌詞, prev_lyric: 前回の歌詞
-        戻り値: (確定したエイリアス, そのパラメータ)
-        """
-        # 1. 前の文字から母音を判定
-        prev_v = None
-        if prev_lyric:
-            last_char = prev_lyric[-1]
-            for v, chars in self.vowel_groups.items():
-                if last_char in chars:
-                    prev_v = v
-                    break
 
-        # 2. 検索候補の作成（優先順位: 連続音 -> 単独音1 -> 単独音2）
-        candidates = []
-        if prev_v:
-            candidates.append(f"{prev_v} {lyric}") # 例: 'a い'
-        candidates.append(f"- {lyric}")           # 例: '- い'
-        candidates.append(lyric)                   # 例: 'い'
-
-        # 3. self.oto_dict を検索して最初に見つかったものを返す
-        for alias in candidates:
-            if hasattr(self, 'oto_dict') and alias in self.oto_dict:
-                return alias, self.oto_dict[alias]
-        
-        # 4. 見つからない場合は入力文字をそのまま（パラメータなし）
-        return lyric, None
 
     # --- [3] 音声生成のメインループ ---
     def on_synthesize(self, notes):
