@@ -244,6 +244,9 @@ class EngineInitializer:
 # ==========================================================================
 
 
+# ==========================================================================
+# マルチトラック・データ構造
+# ==========================================================================
 
 
 class VoseTrack:
@@ -439,39 +442,6 @@ class HistoryManager:
         command = self.redo_stack.pop()
         command.redo()
         self.undo_stack.append(command)
-
-# ==========================================================================
-# マルチトラック・データ構造
-# ==========================================================================
-
-class Track:
-    """単一のトラック（ボーカルまたはオーディオ）"""
-    def __init__(self, name="Track 1", track_type="vocal"):
-        self.name = name
-        self.track_type = track_type  # "vocal" or "audio"
-        self.notes = []               # Vocal用
-        self.audio_file = ""          # Audio用(伴奏など)
-        self.volume = 1.0
-        self.pan = 0.0
-        self.is_muted = False
-        self.is_solo = False
-        self.parameters = {
-            "Pitch": [], "Gender": [], "Tension": [], "Breath": []
-        }
-
-    def to_dict(self):
-        return {
-            "name": self.name,
-            "type": self.track_type,
-            "notes": [n.to_dict() for n in self.notes] if self.track_type == "vocal" else [],
-            "audio_file": self.audio_file,
-            "volume": self.volume,
-            "parameters": {
-                mode: [{"t": p.time, "v": p.value} for p in events]
-                for mode, events in self.parameters.items()
-            }
-        }
-
 
 
 # ==========================================================
