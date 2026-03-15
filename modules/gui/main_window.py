@@ -553,32 +553,6 @@ except ImportError:
     engine_exists = False
 
 
-class VoSeEngine:
-    def generate_audio_signal(self, notes, pitch_data):
-        return np.zeros(44100, dtype=np.float32)
-
-    def export_to_wav(self, notes, pitch_data, file_path):
-        """
-        notes: TimelineWidget.notes_list (NoteEventのリスト)
-        pitch_data: GraphEditorWidget.pitch_events (Pitchデータのリスト)
-        file_path: 保存先のフルパス (example.wav)
-        """
-        # 1. 再生時と同じ合成ロジックで音声波形を生成
-        # (ここには既存の合成エンジンを呼び出すコードが入ります)
-        audio_frames = self.generate_audio_signal(notes, pitch_data)
-        
-        # 2. サンプリングレートの設定 (44.1kHzが一般的)
-        sample_rate = 44100
-        
-        # 3. numpy配列を16bit PCM形式に変換 (音割れ防止と標準フォーマット化)
-        # -1.0〜1.0 の範囲を -32768〜32767 に変換
-        audio_data = (audio_frames * 32767).astype(np.int16)
-        
-        # 4. 指定されたパスにWAVとして書き出し
-        # ここで指定した file_path に実際に保存されます
-        wav_write(file_path, sample_rate, audio_data)
-        
-        return file_path
 
 
 
