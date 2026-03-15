@@ -2754,13 +2754,8 @@ class MainWindow(QMainWindow):
     def on_synthesize(self, notes):
         prev_lyric = None
         for note in notes:
-            # ここで解決ロジックを実行！
-            alias, params = self.resolve_vcv_alias(note.lyric, prev_lyric)
-            
-            # C++エンジンへの橋渡し（paramsには先行発声などが入っている）
-            self.run_engine(alias, params)
-            
-            # 今回の歌詞を保存
+            wav_path = self.resolve_target_wav(note.lyric, prev_lyric)
+            self.run_engine(wav_path, None)
             prev_lyric = note.lyric
 
     def init_vcv_logic(self):
