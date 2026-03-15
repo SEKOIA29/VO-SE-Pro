@@ -1590,7 +1590,25 @@ class MainWindow(QMainWindow):
         self.h_scrollbar = QScrollBar(Qt.Orientation.Horizontal)
         self.h_scrollbar.valueChanged.connect(self.timeline_widget.set_horizontal_offset)
     
-        right_layout.addLayout(timeline_row)
+        # タイムライン上下分割スプリッター
+        timeline_splitter = QSplitter(Qt.Orientation.Vertical)
+
+        # 上段：タイムライン本体
+        timeline_container = QWidget()
+        timeline_container_layout = QHBoxLayout(timeline_container)
+        timeline_container_layout.setContentsMargins(0, 0, 0, 0)
+        timeline_container_layout.addLayout(timeline_row)
+        timeline_splitter.addWidget(timeline_container)
+
+        # 下段：グラフエディタ
+        self.graph_editor_widget = GraphEditorWidget()
+        self.graph_editor_widget.pitch_data_updated.connect(self.on_pitch_data_updated)
+        timeline_splitter.addWidget(self.graph_editor_widget)
+
+        # 初期比率（タイムライン7：グラフ3）
+        timeline_splitter.setSizes([700, 300])
+
+        right_layout.addWidget(timeline_splitter)
         right_layout.addWidget(self.h_scrollbar)
 
         # --- スプリッターに追加（それぞれ一度だけ） ---
@@ -1722,47 +1740,6 @@ class MainWindow(QMainWindow):
         panel_layout.addStretch()
         self.main_layout.addLayout(panel_layout)
 
-    def setup_timeline_area(self):
-        """タイムラインとエディタエリアの構築"""
-        # スプリッター（上下分割）
-        splitter = QSplitter(Qt.Orientation.Vertical)
-        
-        # タイムライン部分（横スクロール付き）
-        timeline_container = QWidget()
-        timeline_layout = QHBoxLayout(timeline_container)
-        timeline_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # キーボードサイドバー
-        self.keyboard_sidebar = KeyboardSidebarWidget(20, self)
-        timeline_layout.addWidget(self.keyboard_sidebar)
-        
-        # タイムライン本体
-        self.timeline_widget = TimelineWidget()
-        timeline_layout.addWidget(self.timeline_widget)
-        
-        # 垂直スクロールバー
-        self.v_scrollbar = QSlider(Qt.Orientation.Vertical, self)
-        self.v_scrollbar.setRange(0, 1000)
-        self.v_scrollbar.setValue(10) 
-        self.v_scrollbar.valueChanged.connect(self.timeline_widget.set_vertical_offset)
-        timeline_layout.addWidget(self.v_scrollbar)
-        
-        splitter.addWidget(timeline_container)
-        self.v_scrollbar.setRange(0, 1000)
-        
-        # 水平スクロールバー
-        self.h_scrollbar = QScrollBar(Qt.Orientation.Horizontal)
-        self.h_scrollbar.valueChanged.connect(self.timeline_widget.set_horizontal_offset)
-        self.main_layout.addWidget(self.h_scrollbar)
-        
-        # グラフエディタ（ピッチ編集）
-        self.graph_editor_widget = GraphEditorWidget()
-        self.graph_editor_widget.pitch_data_updated.connect(self.on_pitch_data_updated)
-        splitter.addWidget(self.graph_editor_widget)
-        
-        self.main_layout.addWidget(splitter)
-
-        self.timeline_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def setup_voice_grid(self):
         """音源選択グリッドの構築"""
