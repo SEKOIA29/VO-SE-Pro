@@ -4229,8 +4229,13 @@ class MainWindow(QMainWindow):
         self.analysis_thread.finished.connect(self.analysis_thread.deleteLater)
         
         # 5. UIの戦闘態勢への切り替え
-        self.ai_analyze_button.setEnabled(False) 
-        self.progress_bar.show()
+        ai_btn = getattr(self, 'ai_analyze_button', None)
+        if ai_btn:
+            ai_btn.setEnabled(False)
+        prog = getattr(self, 'progress_bar', None)
+        if prog:
+            prog.show()
+            prog.setValue(0)
         self.progress_bar.setValue(0)
         self.statusBar().showMessage("Pro Audio Dynamics Engine: Initializing high-speed analysis...")
         
