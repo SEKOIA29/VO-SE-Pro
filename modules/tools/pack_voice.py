@@ -72,9 +72,9 @@ def pack_all_voices():
                         from scipy.signal import resample_poly
                         from math import gcd
                         g = gcd(fs, 44100)
-                        data = resample_poly(data, 44100 // g, fs // g).astype(np.int16)
-                        resampled = np.clip(resampled, -32768, 32767) 
-                        data = resampled.astype(np.int16)
+                        resampled = resample_poly(data, 44100 // g, fs // g)  # ← resampled に受ける
+                        resampled = np.clip(resampled, -32768, 32767)          # ← clip
+                        data = resampled.astype(np.int16)                      # ← data に代入
                     
                     h.write(f"// Source: {wav_path} (ID: {entry_name})\n")
                     h.write(f"const int16_t {var_name}[] = {{\n    ")
