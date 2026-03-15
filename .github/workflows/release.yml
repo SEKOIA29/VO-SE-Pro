@@ -43,8 +43,8 @@ jobs:
       - name: Ruff Check and Fix (Windows only)
         if: matrix.os == 'windows-latest'
         shell: bash
-        run: |
-          ruff check . --select e,f --ignore e501,e401 --fix --exit-zero
+        # 大文字の E と F に変更
+        run: ruff check . --select E,F --ignore E501,E401 --fix --exit-zero
 
       - name: Auto Commit Fixes
         if: matrix.os == 'windows-latest'
@@ -53,6 +53,7 @@ jobs:
           commit_message: "style: ruff auto-fix unused imports"
           commit_user_name: github-actions[bot]
           commit_user_email: github-actions[bot]@users.noreply.github.com
+
 
 
       - name: Verify pkg_resources for PyInstaller hook
