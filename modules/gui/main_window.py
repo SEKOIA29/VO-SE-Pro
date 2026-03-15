@@ -4125,7 +4125,7 @@ class MainWindow(QMainWindow):
         if prog:
             prog.show()
             prog.setValue(0)
-        self.progress_bar.setValue(0)
+        
         self.statusBar().showMessage("Pro Audio Dynamics Engine: Initializing high-speed analysis...")
         
         # 6. 解析実行
