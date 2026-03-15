@@ -39,7 +39,8 @@ from PySide6.QtWidgets import (
     QListWidget, QApplication
 )
 from PySide6.QtGui import (
-    QAction, QKeySequence, QFont, QColor, QShortcut, QPixmap
+    QAction, QKeySequence, QFont, QColor, QShortcut, QPixmap, 
+    QPainter, QPen
 )
 from PySide6.QtMultimedia import QMediaPlayer
 
