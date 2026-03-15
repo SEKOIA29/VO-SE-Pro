@@ -35,6 +35,14 @@ static std::map<std::string, std::shared_ptr<const EmbeddedVoice>> g_voice_db;
 static std::shared_mutex g_voice_db_mutex;
 
 // ============================================================
+// oto.init受け渡し
+// ============================================================
+
+// oto.ini のエントリを受け取ってエンジン内部に登録
+extern "C" void set_voice_library(const char* voice_path);
+extern "C" void set_oto_data(const OtoEntry* entries, int count);
+
+// ============================================================
 // NoteState / NotePrepass
 // ============================================================
 
