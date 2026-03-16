@@ -11,6 +11,15 @@
 
 // --- GUI（Python）とやり取りするための構造体 ---
 // 64bit/32bit環境でサイズが変わらないよう、アライメントを厳密に制御します
+struct OtoEntry {
+    const char* filename;
+    double offset;
+    double consonant;
+    double cutoff;
+    double preutterance;
+    double overlap;
+};
+
 #pragma pack(push, 8) 
 struct NoteEvent {
     const char* wav_path;      // 音源キー（音素名）
@@ -23,6 +32,9 @@ struct NoteEvent {
     double* breath_curve;      
 };
 #pragma pack(pop)
+
+struct OtoEntry; // 前方宣言
+
 
 extern "C" {
     // 1. 音源をメモリにパッキングする（内蔵音源化の必須関数）
