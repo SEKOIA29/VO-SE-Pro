@@ -136,33 +136,36 @@ static std::shared_ptr<const EmbeddedVoice> find_voice_ref(const char* key)
 // analyze_source_f0
 // ============================================================
 
+case NoteState::RENDERABLE:
+    break;
+}
+
+NoteEvent& n               = notes[i];
+const int64_t note_samples = pp.note_samples;
+const int     f0_len       = n.pitch_length;
+const EmbeddedVoice& ev    = *pp.ev;
+
 // oto.ini からエントリを取得
 double preutterance_ms = 0.0;
 double overlap_ms      = 0.0;
 double offset_ms       = 0.0;
-
 {
     std::shared_lock<std::shared_mutex> lock(g_voice_db_mutex);
-    auto it = g_oto_map.find(n.wav_path ? n.wav_path : "");
-    if (it != g_oto_map.end()) {
-        preutterance_ms = it->second.preutterance;
-        overlap_ms      = it->second.overlap;
-        offset_ms       = it->second.offset;
+    auto oto_it = g_oto_map.find(n.wav_path ? n.wav_path : "");
+    if (oto_it != g_oto_map.end()) {
+        preutterance_ms = oto_it->second.preutterance;
+        overlap_ms      = oto_it->second.overlap;
+        offset_ms       = oto_it->second.offset;
     }
 }
 
-// 先行発声分だけ波形の開始位置をずらす
-const int preutterance_samples = static_cast<int>(preutterance_ms / 1000.0 * kFs);
-const int offset_samples       = static_cast<int>(offset_ms / 1000.0 * kFs);
-const int wav_start            = std::min(offset_samples, 
-                                     static_cast<int>(ev.waveform.size()) - 1);
-
-// オーバーラップ分を前のノートに被せる
+const int     offset_samples = static_cast<int>(offset_ms / 1000.0 * kFs);
+const int     wav_start      = std::min(offset_samples,
+                                   static_cast<int>(ev.waveform.size()) - 1);
 const int64_t overlap_samples = static_cast<int64_t>(overlap_ms / 1000.0 * kFs);
-const int64_t write_offset_with_overlap = do_xfade
-    ? current_offset - kCrossfadeSamples - overlap_samples
-    : current_offset - overlap_samples;
-const int64_t safe_write_offset = std::max<int64_t>(0, write_offset_with_overlap);
+
+const int harvest_len = analyze_source_f0(ev, kFramePeriod);
+tl_scratch.ensure_spec(harvest_len, spec_bins);
 
 
 static int analyze_source_f0(const EmbeddedVoice& ev, double frame_period)
@@ -391,15 +394,18 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
                 ? resample_curve(n.tension_curve, f0_len, j, harvest_len) : kDefaultTension;
             const double breath  = n.breath_curve
                 ? resample_curve(n.breath_curve,  f0_len, j, harvest_len) : kDefaultBreath;
-            const double shift   = (gender - 0.5) * 0.4;
-
+            const double semitone_shift = (gender - 0.5) * 4.0;
+            const double freq_ratio     = std::pow(2.0, semitone_shift / 12.0);
             memcpy(spec_tmp, sr, sizeof(double) * spec_bins);
             for (int k = 0; k < spec_bins; ++k) {
-                const double tk = static_cast<double>(k) * (1.0 + shift);
-                const int    k0 = static_cast<int>(tk);
-                sr[k] = (k0 >= spec_bins - 1)
-                    ? spec_tmp[spec_bins - 1]
-                    : (1.0-(tk-k0))*spec_tmp[k0] + (tk-k0)*spec_tmp[k0+1];
+                const double src_k = static_cast<double>(k) / freq_ratio;
+                const int    k0    = static_cast<int>(src_k);
+                if (k0 >= spec_bins - 1) {
+                    sr[k] = spec_tmp[spec_bins - 1]; 
+                } else {
+                    const double frac = src_k - k0;
+                    sr[k] = (1.0 - frac) * spec_tmp[k0] + frac * spec_tmp[k0 + 1]; 
+                }
             }
 
             const double inv = 1.0 / (spec_bins - 1);
@@ -416,17 +422,20 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
                   fft_size, kFramePeriod, kFs,
                   static_cast<int>(note_samples), note_buf.data());
 
-        const bool    do_xfade     = last_note_rendered;
-        const int64_t write_offset = do_xfade
+        const bool    do_xfade = last_note_rendered;
+        const int     xfade    = do_xfade ? kCrossfadeSamples : 0;
+
+        int64_t write_offset = do_xfade
             ? current_offset - kCrossfadeSamples : current_offset;
-        const int xfade = do_xfade ? kCrossfadeSamples : 0;
+        write_offset -= overlap_samples;
+        write_offset  = std::max<int64_t>(0, write_offset);
 
         apply_crossfade(full_song_buffer, total_samples,
                         note_buf, note_samples, write_offset, xfade);
 
         current_offset += do_xfade
             ? note_samples - kCrossfadeSamples : note_samples;
-
+        
         last_note_rendered = true;
     }
 
