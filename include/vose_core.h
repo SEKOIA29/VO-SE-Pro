@@ -11,13 +11,17 @@
 
 // --- GUI（Python）とやり取りするための構造体 ---
 // 64bit/32bit環境でサイズが変わらないよう、アライメントを厳密に制御します
+
 struct OtoEntry {
     const char* filename;
-    double offset;
-    double consonant;
     double cutoff;
-    double preutterance;
-    double overlap;
+    char   alias[64];
+    char   wav_path[512];
+    double offset;       // ms: 左ブランク
+    double consonant;    // ms: 子音固定
+    double blank;        // ms: 右ブランク（負なら末尾からの距離）
+    double preutterance; // ms: 先行発声
+    double overlap;      // ms: オーバーラップ
 };
 
 #pragma pack(push, 8) 
