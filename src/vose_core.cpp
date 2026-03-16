@@ -202,6 +202,22 @@ static void apply_crossfade(std::vector<double>& dst, int64_t dst_size,
         dst[s] = src[s - offset];
 }
 
+
+//先行発音
+static std::map<std::string, OtoEntry> g_oto_map;
+static std::string g_voice_path;
+
+extern "C" void set_voice_library(const char* voice_path) {
+    if (voice_path) g_voice_path = voice_path;
+}
+
+extern "C" void set_oto_data(const OtoEntry* entries, int count) {
+    std::unique_lock<std::shared_mutex> lock(g_voice_db_mutex);
+    g_oto_map.clear();
+    for (int i = 0; i < count; ++i)
+        g_oto_map[entries[i].alias] = entries[i];
+}
+
 // ============================================================
 // extern "C" API
 // ============================================================
@@ -327,9 +343,13 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
             harvest_len, fft_size, nullptr, tl_scratch.ap_ptrs.data());
 
         for (int j = 0; j < harvest_len; ++j)
-            tl_scratch.f0_harvest[j] = n.pitch_curve
-                ? resample_curve(n.pitch_curve, f0_len, j, harvest_len)
-                : kDefaultPitch;
+            if (n.pitch_curve) {
+                // pitch_curve は MIDI ノート番号（float）で渡す設計に変更
+                const double midi = resample_curve(n.pitch_curve, f0_len, j, harvest_len);
+                tl_scratch.f0_harvest[j] = 440.0 * std::pow(2.0, (midi - 69.0) / 12.0);
+　　　　　　　　} else {             
+                tl_scratch.f0_harvest[j] = kDefaultPitch;
+            }
 
         double* const spec_tmp = tl_scratch.spec_tmp.data();
         for (int j = 0; j < harvest_len; ++j) {
