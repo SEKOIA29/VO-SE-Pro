@@ -136,6 +136,35 @@ static std::shared_ptr<const EmbeddedVoice> find_voice_ref(const char* key)
 // analyze_source_f0
 // ============================================================
 
+// oto.ini からエントリを取得
+double preutterance_ms = 0.0;
+double overlap_ms      = 0.0;
+double offset_ms       = 0.0;
+
+{
+    std::shared_lock<std::shared_mutex> lock(g_voice_db_mutex);
+    auto it = g_oto_map.find(n.wav_path ? n.wav_path : "");
+    if (it != g_oto_map.end()) {
+        preutterance_ms = it->second.preutterance;
+        overlap_ms      = it->second.overlap;
+        offset_ms       = it->second.offset;
+    }
+}
+
+// 先行発声分だけ波形の開始位置をずらす
+const int preutterance_samples = static_cast<int>(preutterance_ms / 1000.0 * kFs);
+const int offset_samples       = static_cast<int>(offset_ms / 1000.0 * kFs);
+const int wav_start            = std::min(offset_samples, 
+                                     static_cast<int>(ev.waveform.size()) - 1);
+
+// オーバーラップ分を前のノートに被せる
+const int64_t overlap_samples = static_cast<int64_t>(overlap_ms / 1000.0 * kFs);
+const int64_t write_offset_with_overlap = do_xfade
+    ? current_offset - kCrossfadeSamples - overlap_samples
+    : current_offset - overlap_samples;
+const int64_t safe_write_offset = std::max<int64_t>(0, write_offset_with_overlap);
+
+
 static int analyze_source_f0(const EmbeddedVoice& ev, double frame_period)
 {
     HarvestOption opt;
