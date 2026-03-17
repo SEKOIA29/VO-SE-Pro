@@ -496,22 +496,25 @@ DLLEXPORT void load_embedded_resource(const char* phoneme,
 {
     if (!phoneme || !raw_data || sample_count <= 0) return;
 
+    // ロック外でデータ構築（重い処理をロック前に済ませる）
     auto ev = std::make_shared<EmbeddedVoice>();
     ev->fs = kFs;
     ev->waveform.resize(sample_count);
     for (int i = 0; i < sample_count; ++i)
         ev->waveform[i] = static_cast<double>(raw_data[i]) * kInv32768;
 
-    {
-        std::unique_lock<std::shared_mutex> wlock(g_voice_db_mutex);
-        // 音源を差し替える場合は対応するキャッシュエントリを無効化する
-        auto old_it = g_voice_db.find(phoneme);
-        if (old_it != g_voice_db.end()) {
-            std::unique_lock<std::shared_mutex> clock(g_analysis_cache_mutex);
-            g_analysis_cache.erase(old_it->second.get());
-        }
-        g_voice_db[phoneme] = ev;
-    }
+    // [FIX-ATOMIC] キャッシュ削除と音源更新を両ロック保持中にアトミックに実行。
+    // ロック順序: analysis_cache → voice_db（get_or_analyze と同じ順序）。
+    // 2つのロックを同時に保持する唯一の箇所なので順序を崩さないこと。
+    std::unique_lock<std::shared_mutex> clock(g_analysis_cache_mutex); // 先
+    std::unique_lock<std::shared_mutex> wlock(g_voice_db_mutex);       // 後
+
+    auto old_it = g_voice_db.find(phoneme);
+    if (old_it != g_voice_db.end())
+        g_analysis_cache.erase(old_it->second.get());  // 古いキャッシュを削除
+
+    g_voice_db[phoneme] = std::move(ev);               // 音源を差し替え
+    // 両ロックがここでスコープアウト → アトミックに解放
 }
 
 DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* output_path)
