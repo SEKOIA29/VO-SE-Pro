@@ -476,7 +476,8 @@ static void blend_transition_spectra(
     int spec_bins, int transition_frames)
 
 {
-    if (!sr || !ar || spec_bins <= 1) return;
+    if (!spec_cur || !spec_prev || !ap_cur || !ap_prev) return;
+    if (spec_bins <= 0 || cur_len <= 0 || prev_len <= 0) return;
     const int blend_frames = std::min(transition_frames,
                                        std::min(cur_len, prev_len));
     for (int j = 0; j < blend_frames; ++j) {
@@ -518,13 +519,28 @@ DLLEXPORT void load_embedded_resource(const char* phoneme,
     // ロック外でデータ構築（重い処理をロック前に済ませる）
     auto ev = std::make_shared<EmbeddedVoice>();
     ev->fs = sample_rate;
-    ev->waveform.resize(sample_count);
+
+    // 一旦入力サンプルレートで格納（double）
+    std::vector<double> tmp;
+    tmp.resize(sample_count);
     for (int i = 0; i < sample_count; ++i)
-        ev->waveform[i] = static_cast<double>(raw_data[i]) * kInv32768;
-       // Optionally resample to kFs here if you want a single internal fs:
+        tmp[i] = static_cast<double>(raw_data[i]) * kInv32768;
+
+    // 内部標準 fs にリサンプルして保存（簡易線形リサンプラ）
     if (ev->fs != kFs) {
-        // perform resampling from ev->fs -> kFs and set ev->fs = kFs
-        // (implement or call a resampler here)
+        const double ratio = static_cast<double>(kFs) / ev->fs;
+        const size_t out_len = static_cast<size_t>(std::max<int64_t>(1, static_cast<int64_t>(std::floor(sample_count * ratio))));
+        ev->waveform.resize(out_len);
+　       for (size_t i = 0; i < out_len; ++i) {
+            const double src_pos = static_cast<double>(i) / ratio;
+            const size_t i0 = static_cast<size_t>(std::floor(src_pos));
+            const size_t i1 = std::min(i0 + 1, tmp.size() - 1);
+            const double frac = src_pos - i0;
+            ev->waveform[i] = (1.0 - frac) * tmp[i0] + frac * tmp[i1];
+        }
+        ev->fs = kFs;
+    } else {
+        ev->waveform.swap(tmp);
     }
 
     // [FIX-ATOMIC] キャッシュ削除と音源更新を両ロック保持中にアトミックに実行。
