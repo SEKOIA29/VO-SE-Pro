@@ -579,7 +579,7 @@ extern "C" DLLEXPORT void load_embedded_resource(const char* phoneme,
 
 // ============================================================
 // VOSE_Synthesis
-// VO-SE独自の励起信号注入およびポストエフェクト付き合成エンジン
+// VO-SE独自の励起信号注入 + ポストエフェクト付き合成エンジン
 // ============================================================
 static void VOSE_Synthesis(
     const double* f0, int f0_length,
@@ -587,66 +587,60 @@ static void VOSE_Synthesis(
     int fft_size, double frame_period, int fs,
     int y_length, double* y)
 {
-    // --- 1. 励起パラメータの動的変調（ジッター・ブレスの付加） ---
-    // WORLDの仕様に合わせてバッファを構築
-    std::vector<std::vector<double>> mod_ap_buffer(f0_length, std::vector<double>(fft_size / 2 + 1));
-    
+    const int spec_bins = fft_size / 2 + 1;
 
-    // 高品質な位相揺らぎ（ジッター）を生成するための乱数エンジン
-    // スレッドセーフ化のために thread_local で保持
-    static thread_local std::mt19937 rng(42);
-    std::uniform_real_distribution<double> dist(-0.02, 0.02); // 2%の微細な揺らぎ
+    // --- 1. Aperiodicity の変調（ジッター・ブレス） ---
+    // tl_scratch の mod_ap_ptrs を使用
+    tl_scratch.ensure_spec(f0_length, spec_bins);
     double** mod_ap = tl_scratch.mod_ap_ptrs.data();
 
+    static thread_local std::mt19937 rng(42);
+    std::uniform_real_distribution<double> dist(-0.02, 0.02);
+
     for (int i = 0; i < f0_length; ++i) {
-        mod_ap[i] = mod_ap_buffer[i].data();
+        double* ap_dst = mod_ap[i];
+        double* ap_src = aperiodicity[i];
 
-        // F0の変動（ビブラートやしゃくり）を微分で検知
         double delta_f0 = 0.0;
-        if (i > 0 && i < f0_length - 1) {
-            delta_f0 = std::abs(f0[i+1] - f0[i-1]) / 2.0;
-        }
+        if (i > 0 && i < f0_length - 1)
+            delta_f0 = std::abs(f0[i+1] - f0[i-1]) * 0.5;
 
-        // ビブラート時やピッチが激しく動く瞬間に声が掠れる（非周期成分が増える）現象をシミュレート
         double vibrato_breath = std::min(0.15, delta_f0 * 0.003);
 
-        for (int k = 0; k < fft_size / 2 + 1; ++k) {
+        for (int k = 0; k < spec_bins; ++k) {
             double freq = static_cast<double>(k) * fs / fft_size;
-            double current_ap = aperiodicity[i][k];
+            double current_ap = ap_src[k];
 
-            // 約2000Hz以上の高音域に対して、非線形なノイズとジッターを強制付加
-            // これにより「キーン」という機械音が「サー」という自然な息遣いに変わる
             if (freq > 2000.0) {
                 double jitter = dist(rng);
-                current_ap = current_ap + vibrato_breath + jitter;
+                current_ap += vibrato_breath + jitter;
             }
 
-            // Aperiodicityパラメータを 0.0(完全周期) ～ 1.0(完全非周期) に安全にクランプ
-            mod_ap[i][k] = std::clamp(current_ap, 0.0, 1.0);
-        
-    
+            ap_dst[k] = std::clamp(current_ap, 0.0, 1.0);
+        }
+    }
 
-    // --- 2. 波形合成（変調済みパラメータを使用してWORLDコアを駆動） ---
-    // --- 合成 ---
-    Synthesis(f0, f0_length, spectrogram, mod_ap,  
-              fft_size, kFramePeriod, fs,
-              note_samples, note_buf.data());
+    // --- 2. WORLD Synthesis（変調済み AP を使用） ---
+    Synthesis(f0, f0_length,
+              spectrogram, mod_ap,
+              fft_size, frame_period, fs,
+              y_length, y);
 
-    // --- 3. 高域シェルフ（ポストエフェクト） ---
+    // --- 3. 高域エキサイター（ポストエフェクト） ---
     double alpha = 0.85;
     double prev_x = 0.0;
     double prev_y_hp = 0.0;
 
-    for (int i = 0; i < note_samples; ++i) {
-        double x = note_buf[i];
+    for (int i = 0; i < y_length; ++i) {
+        double x = y[i];
         double hp = x - prev_x + alpha * prev_y_hp;
         prev_x = x;
         prev_y_hp = hp;
 
-        note_buf[i] = x + hp * 0.05;  // 高域を5%加算
-
+        y[i] = x + hp * 0.05;   // 高域を 5% 加算
     }
 }
+
 
 
 // ============================================================
