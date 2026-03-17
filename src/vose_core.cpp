@@ -22,6 +22,12 @@
 #include "world/audioio.h"
 #include "world/constantnumbers.h"
 
+// LOCK ORDER POLICY:
+//  1) Acquire g_analysis_cache_mutex (shared or unique) first.
+//  2) Then acquire g_voice_db_mutex (shared or unique).
+//  Never acquire locks in the reverse order.
+
+
 // ============================================================
 // データ構造
 // ============================================================
@@ -359,6 +365,9 @@ static void copy_cache_to_scratch_prev(const AnalysisCache& c)
 static inline double resample_curve(const double* curve, int src_len,
                                      int dst_idx, int dst_len)
 {
+    if (!curve || src_len <= 0 || dst_len <= 0) return 0.0;
+    if (dst_idx < 0) return curve[0];
+
     if (src_len == 1) return curve[0];
     const double t     = static_cast<double>(dst_idx) / std::max(dst_len - 1, 1);
     const double src_f = t * (src_len - 1);
@@ -402,6 +411,7 @@ static void apply_crossfade(std::vector<double>& dst, int64_t dst_size,
 static void apply_gender_shift(double* sr, int spec_bins, double gender,
                                 double* tmp)
 {
+    if (!sr || !tmp || spec_bins <= 0) return;
     if (std::abs(gender - 0.5) < 1e-4) return;
 
     const double shift_ratio = std::exp((gender - 0.5) * 0.4 * std::log(2.0));
@@ -429,6 +439,7 @@ static void apply_gender_shift(double* sr, int spec_bins, double gender,
 static void apply_tension_breath(double* sr, double* ar, int spec_bins,
                                   double tension, double breath)
 {
+    if (!sr || !ar || spec_bins <= 1) return;
     const double inv = 1.0 / (spec_bins - 1);
 
     for (int k = 0; k < spec_bins; ++k) {
@@ -463,7 +474,9 @@ static void blend_transition_spectra(
     double** spec_cur,  double** ap_cur,  int cur_len,
     double** spec_prev, double** ap_prev, int prev_len,
     int spec_bins, int transition_frames)
+
 {
+    if (!sr || !ar || spec_bins <= 1) return;
     const int blend_frames = std::min(transition_frames,
                                        std::min(cur_len, prev_len));
     for (int j = 0; j < blend_frames; ++j) {
@@ -497,7 +510,8 @@ extern "C" {
 void init_official_engine() { register_all_embedded_voices(); }
 
 DLLEXPORT void load_embedded_resource(const char* phoneme,
-                                      const int16_t* raw_data, int sample_count)
+                                      const int16_t* raw_data, int sample_count,
+                                      int sample_rate)
 {
     if (!phoneme || !raw_data || sample_count <= 0) return;
 
@@ -622,7 +636,8 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         const int     f0_len       = n.pitch_length;
 
         // --- キャッシュ取得（ミス時のみ Harvest / CheapTrick / D4C を実行） ---
-        auto cache_cur = get_or_analyze(pp.ev, fft_size, spec_bins);
+        auto cache_prev = get_or_analyze(pp.prev_ev, fft_size, spec_bins);
+
 
         tl_scratch.ensure_spec(cache_cur->length, spec_bins);
         copy_cache_to_scratch_cur(*cache_cur);
@@ -669,7 +684,7 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         note_buf.assign(note_samples, 0.0);
         Synthesis(tl_scratch.f0.data(), harvest_len,
                   tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(),
-                  fft_size, kFramePeriod, kFs,
+                  fft_size, kFramePeriod, pp.ev->fs,
                   static_cast<int>(note_samples), note_buf.data());
 
         const bool    do_xfade     = last_note_rendered;
