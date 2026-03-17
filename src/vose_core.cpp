@@ -119,9 +119,22 @@ struct SynthesisScratchPad {
     int reserved_f0   = 0;
     int reserved_bins = 0;
 
-    // f0_length × spec_bins 分の領域を確保し、ポインタ配列を再構築する
+    // f0_length × spec_bins 分の領域を確保し、ポインタ配列を必ず正しく設定する。
+    //
+    // 【設計メモ】
+    // resize が容量不足時に realloc を行うと flat_spec 等の先頭アドレスが変わる。
+    // そのため「realloc が起きたときだけポインタを更新する」実装では、
+    //
+    //   (A) ensure_spec(cur_len,  bins) → flat_spec realloc なし → ポインタ更新なし
+    //   (B) copy_cache_to_scratch_cur() → flat_spec[0..] に書き込む
+    //   (C) ensure_spec(prev_len, bins) → prev_len > cur_len なので realloc 発生
+    //       → flat_spec の内容は vector が新領域へ移動するので壊れないが
+    //          spec_ptrs[i] は旧アドレスを指したままダングリング化する
+    //
+    // という問題が生じる。これを防ぐため、ポインタ再設定を resize の後に
+    // 無条件で実行する。reserved_f0 個の単純なポインタ代入なので
+    // リビルドしないケースのオーバーヘッドは無視できる。
     void ensure_spec(int f0_length, int spec_bins) {
-        bool need_rebuild = false;
         if (f0_length > reserved_f0 || spec_bins > reserved_bins) {
             reserved_f0   = std::max(f0_length,  reserved_f0);
             reserved_bins = std::max(spec_bins,  reserved_bins);
@@ -136,16 +149,13 @@ struct SynthesisScratchPad {
             flat_ap_prev  .resize(static_cast<size_t>(reserved_f0) * reserved_bins);
             spec_ptrs_prev.resize(reserved_f0);
             ap_ptrs_prev  .resize(reserved_f0);
-
-            need_rebuild = true;
         }
-        if (need_rebuild) {
-            for (int i = 0; i < reserved_f0; ++i) {
-                spec_ptrs     [i] = &flat_spec     [static_cast<size_t>(i) * reserved_bins];
-                ap_ptrs       [i] = &flat_ap       [static_cast<size_t>(i) * reserved_bins];
-                spec_ptrs_prev[i] = &flat_spec_prev[static_cast<size_t>(i) * reserved_bins];
-                ap_ptrs_prev  [i] = &flat_ap_prev  [static_cast<size_t>(i) * reserved_bins];
-            }
+        // realloc の有無に関わらず常に再設定する（ダングリング防止）
+        for (int i = 0; i < reserved_f0; ++i) {
+            spec_ptrs     [i] = &flat_spec     [static_cast<size_t>(i) * reserved_bins];
+            ap_ptrs       [i] = &flat_ap       [static_cast<size_t>(i) * reserved_bins];
+            spec_ptrs_prev[i] = &flat_spec_prev[static_cast<size_t>(i) * reserved_bins];
+            ap_ptrs_prev  [i] = &flat_ap_prev  [static_cast<size_t>(i) * reserved_bins];
         }
     }
 
