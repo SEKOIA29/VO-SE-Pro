@@ -627,22 +627,24 @@ static void VOSE_Synthesis(
     }
 
     // --- 2. 波形合成（変調済みパラメータを使用してWORLDコアを駆動） ---
-    Synthesis(f0, f0_length, spectrogram, mod_ap,
+    // --- 合成 ---
+    Synthesis(f0, f0_length, spectrogram, mod_ap,  
               fft_size, kFramePeriod, fs,
               note_samples, note_buf.data());
-    // --- 3. 高域シェルフ（ポストエフェクト）による「ボコーダー臭さ」の除去 ---
-    // 簡易的な1次IIRハイパスフィルタを用いて高域の倍音を抽出し、原音に足し戻す（エキサイター効果）
-    double alpha = 0.85; // フィルタ係数（カットオフ周波数を決定）
+
+    // --- 3. 高域シェルフ（ポストエフェクト） ---
+    double alpha = 0.85;
     double prev_x = 0.0;
     double prev_y_hp = 0.0;
-    
-    for (int i = 0; i < y_length; ++i) {
-        double hp = y[i] - prev_x + alpha * prev_y_hp;
-        prev_x = y[i];
+
+    for (int i = 0; i < note_samples; ++i) {
+        double x = note_buf[i];
+        double hp = x - prev_x + alpha * prev_y_hp;
+        prev_x = x;
         prev_y_hp = hp;
-        
-        // 元の波形に抽出した高域成分を微量（5%）加算し、音の「ヌケ」を物理的に向上させる
-        y[i] = y[i] + (hp * 0.05);
+
+        note_buf[i] = x + hp * 0.05;  // 高域を5%加算
+
     }
 }
 
