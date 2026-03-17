@@ -56,9 +56,8 @@ struct AnalysisCache {
     int                 spec_bins = 0;
 };
 
-static std::map<const EmbeddedVoice*, std::shared_ptr<const AnalysisCache>> g_analysis_cache;
+static std::map<std::shared_ptr<const EmbeddedVoice>, std::shared_ptr<const AnalysisCache>> g_analysis_cache;
 static std::shared_mutex g_analysis_cache_mutex;
-
 // ============================================================
 // oto.ini 受け渡し
 // ============================================================
@@ -276,11 +275,11 @@ build_analysis_cache(const EmbeddedVoice& ev, int fft_size, int spec_bins)
         ap[i] = &cache->flat_ap  [static_cast<size_t>(i) * spec_bins];
     }
 
-    CheapTrick(ev.waveform.data(), wav_len, kFs,
+    CheapTrick(ev.waveform.data(), wav_len, ev.fs,
                cache->time.data(), cache->f0.data(),
                harvest_len, nullptr, sp.data());
 
-    D4C(ev.waveform.data(), wav_len, kFs,
+    D4C(ev.waveform.data(), wav_len, ev.fs,
         cache->time.data(), cache->f0.data(),
         harvest_len, fft_size, nullptr, ap.data());
 
@@ -295,22 +294,22 @@ build_analysis_cache(const EmbeddedVoice& ev, int fft_size, int spec_bins)
 // ============================================================
 
 static std::shared_ptr<const AnalysisCache>
-get_or_analyze(const EmbeddedVoice* ev_ptr, int fft_size, int spec_bins)
+get_or_analyze(std::shared_ptr<const EmbeddedVoice> ev_sp, int fft_size, int spec_bins)
 {
     // --- まず共有ロックでキャッシュ確認 ---
     {
         std::shared_lock<std::shared_mutex> rlock(g_analysis_cache_mutex);
-        auto it = g_analysis_cache.find(ev_ptr);
+        auto it = g_analysis_cache.find(ev_sp);
         if (it != g_analysis_cache.end()) return it->second;
     }
 
     // --- キャッシュミス: 排他ロックを取り直して再確認してから生成 ---
     std::unique_lock<std::shared_mutex> wlock(g_analysis_cache_mutex);
-    auto it = g_analysis_cache.find(ev_ptr);
-    if (it != g_analysis_cache.end()) return it->second;  // 他スレッドが先行した場合
+    auto it = g_analysis_cache.find(ev_sp);
+    if (it != g_analysis_cache.end()) return it->second;
 
-    auto cache = build_analysis_cache(*ev_ptr, fft_size, spec_bins);
-    g_analysis_cache[ev_ptr] = cache;
+    auto cache = build_analysis_cache(*ev_sp, fft_size, spec_bins);
+    g_analysis_cache[ev_sp] = cache;
     return cache;
 }
 
