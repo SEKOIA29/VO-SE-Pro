@@ -35,6 +35,31 @@ static std::map<std::string, std::shared_ptr<const EmbeddedVoice>> g_voice_db;
 static std::shared_mutex g_voice_db_mutex;
 
 // ============================================================
+// AnalysisCache
+//
+// EmbeddedVoice 1音源につき1エントリ。
+// Harvest / CheapTrick / D4C の結果をすべて保持する。
+// 音源データは不変（load_embedded_resource 後に書き換えない前提）なので
+// 解析結果もキャッシュ後は不変 → shared_lock での読み取りが安全。
+// ============================================================
+
+struct AnalysisCache {
+    // F0 / タイムスタンプ（Harvest出力）
+    std::vector<double> f0;
+    std::vector<double> time;
+    int                 length = 0;      // 有効フレーム数
+
+    // スペクトル包絡・非周期性（CheapTrick / D4C 出力）
+    // フラット配列 [frame * spec_bins] で保持
+    std::vector<double> flat_spec;
+    std::vector<double> flat_ap;
+    int                 spec_bins = 0;
+};
+
+static std::map<const EmbeddedVoice*, std::shared_ptr<const AnalysisCache>> g_analysis_cache;
+static std::shared_mutex g_analysis_cache_mutex;
+
+// ============================================================
 // oto.ini 受け渡し
 // ============================================================
 
@@ -55,7 +80,6 @@ struct NotePrepass {
     NoteState                            state        = NoteState::INVALID;
     int64_t                              note_samples = 0;
     std::shared_ptr<const EmbeddedVoice> ev;
-    // [FIX-③] 前ノートの音素キーを保持して遷移時のブレンド元を特定する
     std::shared_ptr<const EmbeddedVoice> prev_ev;
 
     NotePrepass() = default;
@@ -65,40 +89,54 @@ struct NotePrepass {
         : state(s), note_samples(ns), ev(std::move(e)), prev_ev(std::move(pe)) {}
 };
 
+// ============================================================
+// SynthesisScratchPad
+//
+// キャッシュ導入後は「キャッシュから作業バッファへのコピー先」として使う。
+// ポインタ配列（spec_ptrs / ap_ptrs）は作業バッファを指したまま維持する。
+// prev 用の作業バッファも保持するが、get_or_analyze() がコピーまで面倒を見るので
+// execute_render 側は "cur" / "prev" のどちらのバッファを使うかだけ意識すればよい。
+// ============================================================
+
 struct SynthesisScratchPad {
+    // カレント音素用作業バッファ
     std::vector<double>  flat_spec;
     std::vector<double>  flat_ap;
     std::vector<double>  spec_tmp;
     std::vector<double*> spec_ptrs;
     std::vector<double*> ap_ptrs;
-    std::vector<double>  f0_harvest;
-    std::vector<double>  time_harvest;
+    std::vector<double>  f0;
+    std::vector<double>  time;
 
-    // [FIX-③] 前音素のスペクトル包絡・非周期性をノート先頭でブレンドするための作業領域
+    // 前音素用作業バッファ
     std::vector<double>  flat_spec_prev;
     std::vector<double>  flat_ap_prev;
     std::vector<double*> spec_ptrs_prev;
     std::vector<double*> ap_ptrs_prev;
-    std::vector<double>  f0_harvest_prev;
-    std::vector<double>  time_harvest_prev;
+    std::vector<double>  f0_prev;
+    std::vector<double>  time_prev;
 
     int reserved_f0   = 0;
     int reserved_bins = 0;
 
+    // f0_length × spec_bins 分の領域を確保し、ポインタ配列を再構築する
     void ensure_spec(int f0_length, int spec_bins) {
         bool need_rebuild = false;
         if (f0_length > reserved_f0 || spec_bins > reserved_bins) {
             reserved_f0   = std::max(f0_length,  reserved_f0);
             reserved_bins = std::max(spec_bins,  reserved_bins);
+
             flat_spec     .resize(static_cast<size_t>(reserved_f0) * reserved_bins);
             flat_ap       .resize(static_cast<size_t>(reserved_f0) * reserved_bins);
             spec_tmp      .resize(reserved_bins);
             spec_ptrs     .resize(reserved_f0);
             ap_ptrs       .resize(reserved_f0);
+
             flat_spec_prev.resize(static_cast<size_t>(reserved_f0) * reserved_bins);
             flat_ap_prev  .resize(static_cast<size_t>(reserved_f0) * reserved_bins);
             spec_ptrs_prev.resize(reserved_f0);
             ap_ptrs_prev  .resize(reserved_f0);
+
             need_rebuild = true;
         }
         if (need_rebuild) {
@@ -111,17 +149,17 @@ struct SynthesisScratchPad {
         }
     }
 
-    void ensure_harvest(int length) {
-        if (length > static_cast<int>(f0_harvest.size())) {
-            f0_harvest  .resize(length);
-            time_harvest.resize(length);
+    void ensure_f0(int length) {
+        if (length > static_cast<int>(f0.size())) {
+            f0  .resize(length);
+            time.resize(length);
         }
     }
 
-    void ensure_harvest_prev(int length) {
-        if (length > static_cast<int>(f0_harvest_prev.size())) {
-            f0_harvest_prev  .resize(length);
-            time_harvest_prev.resize(length);
+    void ensure_f0_prev(int length) {
+        if (length > static_cast<int>(f0_prev.size())) {
+            f0_prev  .resize(length);
+            time_prev.resize(length);
         }
     }
 };
@@ -137,9 +175,7 @@ static constexpr double kFramePeriod      = 5.0;
 static constexpr double kInv32768         = 1.0 / 32768.0;
 static constexpr int    kCrossfadeSamples = static_cast<int>(kFs * 0.030);
 static constexpr int    kMaxPitchLength   = 120000;
-
-// [FIX-③] 音素遷移ブレンドのフレーム数（約60ms）
-static constexpr int kTransitionFrames = static_cast<int>(60.0 / kFramePeriod);
+static constexpr int    kTransitionFrames = static_cast<int>(60.0 / kFramePeriod);
 
 static int64_t note_samples_safe(int pitch_length)
 {
@@ -160,115 +196,145 @@ static std::shared_ptr<const EmbeddedVoice> find_voice_ref(const char* key)
 }
 
 // ============================================================
-// analyze_source_f0  （メインバッファ用）
+// build_analysis_cache
+//
+// キャッシュミス時にのみ呼ばれる。
+// Harvest → F0補完 → CheapTrick → D4C を実行し AnalysisCache を生成する。
+// 呼び出し元は書き込みロックを取得済みであること。
 // ============================================================
 
-static int analyze_source_f0(const EmbeddedVoice& ev, double frame_period)
+static std::shared_ptr<const AnalysisCache>
+build_analysis_cache(const EmbeddedVoice& ev, int fft_size, int spec_bins)
 {
+    auto cache = std::make_shared<AnalysisCache>();
+    cache->spec_bins = spec_bins;
+
+    // --- Harvest ---
     HarvestOption opt;
     InitializeHarvestOption(&opt);
-    opt.frame_period = frame_period;
+    opt.frame_period = kFramePeriod;
     opt.f0_floor     = 50.0;
     opt.f0_ceil      = 800.0;
 
     const int wav_len     = static_cast<int>(ev.waveform.size());
-    const int harvest_len = GetSamplesForHarvest(ev.fs, wav_len, frame_period);
-    tl_scratch.ensure_harvest(harvest_len);
+    const int harvest_len = GetSamplesForHarvest(ev.fs, wav_len, kFramePeriod);
+
+    cache->f0  .resize(harvest_len);
+    cache->time.resize(harvest_len);
+    cache->length = harvest_len;
 
     Harvest(ev.waveform.data(), wav_len, ev.fs, &opt,
-            tl_scratch.time_harvest.data(), tl_scratch.f0_harvest.data());
+            cache->time.data(), cache->f0.data());
 
-    // [FIX-④] 無声区間の補完を改善：前後の有声F0で線形補間する
-    //          端点は最近傍の有声値で外挿する（元の固定値150Hzをやめる）
+    // --- F0補完: 無声区間を前後の有声値で線形補間 (FIX-④) ---
     {
-        // まず有声フレームのインデックスを収集
         std::vector<int> voiced_idx;
         voiced_idx.reserve(harvest_len);
         for (int i = 0; i < harvest_len; ++i)
-            if (tl_scratch.f0_harvest[i] > 0.0)
+            if (cache->f0[i] > 0.0)
                 voiced_idx.push_back(i);
 
         if (!voiced_idx.empty()) {
-            // 先端の無声区間 → 最初の有声値で外挿
             for (int i = 0; i < voiced_idx.front(); ++i)
-                tl_scratch.f0_harvest[i] = tl_scratch.f0_harvest[voiced_idx.front()];
-
-            // 末端の無声区間 → 最後の有声値で外挿
+                cache->f0[i] = cache->f0[voiced_idx.front()];
             for (int i = voiced_idx.back() + 1; i < harvest_len; ++i)
-                tl_scratch.f0_harvest[i] = tl_scratch.f0_harvest[voiced_idx.back()];
-
-            // 中間の無声区間 → 前後の有声値で線形補間
+                cache->f0[i] = cache->f0[voiced_idx.back()];
             for (int vi = 0; vi + 1 < static_cast<int>(voiced_idx.size()); ++vi) {
-                const int ia = voiced_idx[vi];
-                const int ib = voiced_idx[vi + 1];
+                const int    ia = voiced_idx[vi];
+                const int    ib = voiced_idx[vi + 1];
                 if (ib - ia <= 1) continue;
-                const double fa = tl_scratch.f0_harvest[ia];
-                const double fb = tl_scratch.f0_harvest[ib];
+                const double fa = cache->f0[ia];
+                const double fb = cache->f0[ib];
                 for (int i = ia + 1; i < ib; ++i) {
                     const double t = static_cast<double>(i - ia) / (ib - ia);
-                    tl_scratch.f0_harvest[i] = fa + t * (fb - fa);
+                    cache->f0[i]  = fa + t * (fb - fa);
                 }
             }
         } else {
-            // 完全無声素材：一律440Hzを入れておく（合成自体は無意味だが安全に）
-            std::fill(tl_scratch.f0_harvest.begin(),
-                      tl_scratch.f0_harvest.begin() + harvest_len, 440.0);
+            std::fill(cache->f0.begin(), cache->f0.end(), 440.0);
         }
     }
 
-    return harvest_len;
+    // --- CheapTrick / D4C ---
+    // spec_ptrs / ap_ptrs はキャッシュ内フラット配列を指すローカルポインタ配列
+    cache->flat_spec.resize(static_cast<size_t>(harvest_len) * spec_bins);
+    cache->flat_ap  .resize(static_cast<size_t>(harvest_len) * spec_bins);
+
+    std::vector<double*> sp(harvest_len), ap(harvest_len);
+    for (int i = 0; i < harvest_len; ++i) {
+        sp[i] = &cache->flat_spec[static_cast<size_t>(i) * spec_bins];
+        ap[i] = &cache->flat_ap  [static_cast<size_t>(i) * spec_bins];
+    }
+
+    CheapTrick(ev.waveform.data(), wav_len, kFs,
+               cache->time.data(), cache->f0.data(),
+               harvest_len, nullptr, sp.data());
+
+    D4C(ev.waveform.data(), wav_len, kFs,
+        cache->time.data(), cache->f0.data(),
+        harvest_len, fft_size, nullptr, ap.data());
+
+    return cache;
 }
 
 // ============================================================
-// analyze_source_f0_prev  （前音素用・_prev バッファに書く）
+// get_or_analyze
+//
+// 指定音源のキャッシュを返す。未キャッシュなら build_analysis_cache() を呼ぶ。
+// スレッドセーフ（double-checked locking パターン）。
 // ============================================================
 
-static int analyze_source_f0_prev(const EmbeddedVoice& ev, double frame_period)
+static std::shared_ptr<const AnalysisCache>
+get_or_analyze(const EmbeddedVoice* ev_ptr, int fft_size, int spec_bins)
 {
-    HarvestOption opt;
-    InitializeHarvestOption(&opt);
-    opt.frame_period = frame_period;
-    opt.f0_floor     = 50.0;
-    opt.f0_ceil      = 800.0;
-
-    const int wav_len     = static_cast<int>(ev.waveform.size());
-    const int harvest_len = GetSamplesForHarvest(ev.fs, wav_len, frame_period);
-    tl_scratch.ensure_harvest_prev(harvest_len);
-
-    Harvest(ev.waveform.data(), wav_len, ev.fs, &opt,
-            tl_scratch.time_harvest_prev.data(), tl_scratch.f0_harvest_prev.data());
-
-    // [FIX-④] 同様の補完を前音素にも適用
+    // --- まず共有ロックでキャッシュ確認 ---
     {
-        std::vector<int> voiced_idx;
-        voiced_idx.reserve(harvest_len);
-        for (int i = 0; i < harvest_len; ++i)
-            if (tl_scratch.f0_harvest_prev[i] > 0.0)
-                voiced_idx.push_back(i);
-
-        if (!voiced_idx.empty()) {
-            for (int i = 0; i < voiced_idx.front(); ++i)
-                tl_scratch.f0_harvest_prev[i] = tl_scratch.f0_harvest_prev[voiced_idx.front()];
-            for (int i = voiced_idx.back() + 1; i < harvest_len; ++i)
-                tl_scratch.f0_harvest_prev[i] = tl_scratch.f0_harvest_prev[voiced_idx.back()];
-            for (int vi = 0; vi + 1 < static_cast<int>(voiced_idx.size()); ++vi) {
-                const int ia = voiced_idx[vi];
-                const int ib = voiced_idx[vi + 1];
-                if (ib - ia <= 1) continue;
-                const double fa = tl_scratch.f0_harvest_prev[ia];
-                const double fb = tl_scratch.f0_harvest_prev[ib];
-                for (int i = ia + 1; i < ib; ++i) {
-                    const double t = static_cast<double>(i - ia) / (ib - ia);
-                    tl_scratch.f0_harvest_prev[i] = fa + t * (fb - fa);
-                }
-            }
-        } else {
-            std::fill(tl_scratch.f0_harvest_prev.begin(),
-                      tl_scratch.f0_harvest_prev.begin() + harvest_len, 440.0);
-        }
+        std::shared_lock<std::shared_mutex> rlock(g_analysis_cache_mutex);
+        auto it = g_analysis_cache.find(ev_ptr);
+        if (it != g_analysis_cache.end()) return it->second;
     }
 
-    return harvest_len;
+    // --- キャッシュミス: 排他ロックを取り直して再確認してから生成 ---
+    std::unique_lock<std::shared_mutex> wlock(g_analysis_cache_mutex);
+    auto it = g_analysis_cache.find(ev_ptr);
+    if (it != g_analysis_cache.end()) return it->second;  // 他スレッドが先行した場合
+
+    auto cache = build_analysis_cache(*ev_ptr, fft_size, spec_bins);
+    g_analysis_cache[ev_ptr] = cache;
+    return cache;
+}
+
+// ============================================================
+// copy_cache_to_scratch
+//
+// AnalysisCache の内容を tl_scratch の cur バッファへコピーし、
+// ポインタ配列（spec_ptrs / ap_ptrs）を再設定する。
+// キャッシュは読み取り専用なので、変形処理（gender / tension 等）は
+// コピー先の scratch バッファに対して行う。
+// ============================================================
+
+static void copy_cache_to_scratch_cur(const AnalysisCache& c)
+{
+    const size_t total = static_cast<size_t>(c.length) * c.spec_bins;
+    std::copy(c.flat_spec.begin(), c.flat_spec.begin() + total,
+              tl_scratch.flat_spec.begin());
+    std::copy(c.flat_ap  .begin(), c.flat_ap  .begin() + total,
+              tl_scratch.flat_ap  .begin());
+    tl_scratch.ensure_f0(c.length);
+    std::copy(c.f0  .begin(), c.f0  .begin() + c.length, tl_scratch.f0  .begin());
+    std::copy(c.time.begin(), c.time.begin() + c.length, tl_scratch.time.begin());
+}
+
+static void copy_cache_to_scratch_prev(const AnalysisCache& c)
+{
+    const size_t total = static_cast<size_t>(c.length) * c.spec_bins;
+    std::copy(c.flat_spec.begin(), c.flat_spec.begin() + total,
+              tl_scratch.flat_spec_prev.begin());
+    std::copy(c.flat_ap  .begin(), c.flat_ap  .begin() + total,
+              tl_scratch.flat_ap_prev  .begin());
+    tl_scratch.ensure_f0_prev(c.length);
+    std::copy(c.f0  .begin(), c.f0  .begin() + c.length, tl_scratch.f0_prev  .begin());
+    std::copy(c.time.begin(), c.time.begin() + c.length, tl_scratch.time_prev.begin());
 }
 
 // ============================================================
@@ -315,33 +381,20 @@ static void apply_crossfade(std::vector<double>& dst, int64_t dst_size,
 }
 
 // ============================================================
-// apply_gender_shift  [FIX-①]
-//
-// 旧実装: スペクトルビンを線形にリマッピングするだけ（位相不連続）
-// 新実装: 対数周波数軸でのスペクトルシフト（メルケプストラム近似）
-//         1. スペクトルをlog振幅に変換
-//         2. 対数周波数軸でシフト（ゼロ詰め or クランプ）
-//         3. 線形振幅に戻す
-//   これにより「声道長を伸縮させた」ような自然な変化が得られる。
+// apply_gender_shift  (FIX-①: 対数周波数軸シフト)
 // ============================================================
 
 static void apply_gender_shift(double* sr, int spec_bins, double gender,
                                 double* tmp)
 {
-    if (std::abs(gender - 0.5) < 1e-4) return;  // 変化なしなら何もしない
+    if (std::abs(gender - 0.5) < 1e-4) return;
 
-    // shift_ratio: 1.0 より大きい → 声道を短く（高い声）
-    //              1.0 より小さい → 声道を長く（低い声）
-    // gender=1.0 → ratio≈1.22, gender=0.0 → ratio≈0.82 程度
     const double shift_ratio = std::exp((gender - 0.5) * 0.4 * std::log(2.0));
 
-    // log振幅に変換（ゼロ除算防止のため小さいフロアを設ける）
     constexpr double kFloor = 1e-12;
     for (int k = 0; k < spec_bins; ++k)
         tmp[k] = std::log(std::max(sr[k], kFloor));
 
-    // 対数周波数軸でのリマッピング
-    // 出力ビン k は入力の k / shift_ratio に対応する
     for (int k = 0; k < spec_bins; ++k) {
         const double src_k = static_cast<double>(k) / shift_ratio;
         const int    k0    = static_cast<int>(src_k);
@@ -355,19 +408,7 @@ static void apply_gender_shift(double* sr, int spec_bins, double gender,
 }
 
 // ============================================================
-// apply_tension_breath  [FIX-②]
-//
-// 旧実装: sr[k] *= (1 + tension * fw)  線形・単調増加のみ
-//         ap[k] += breath * fw          同上
-//
-// 新実装:
-//   テンション: 実際の声帯の緊張は高域を非線形に強調する。
-//               シグモイド型のウェイトで「高域だけ持ち上がる」特性を再現。
-//               過剰な増幅を抑えるため ±6dB でソフトクリップ。
-//
-//   ブレス:     非周期性は低域から滑らかに増加する特性を持つ。
-//               線形加算の代わりに既存値との加重ミックスにすることで
-//               「全部ノイズになる」暴走を防ぐ。
+// apply_tension_breath  (FIX-②: 非線形シグモイド + 加重ミックス)
 // ============================================================
 
 static void apply_tension_breath(double* sr, double* ar, int spec_bins,
@@ -376,44 +417,31 @@ static void apply_tension_breath(double* sr, double* ar, int spec_bins,
     const double inv = 1.0 / (spec_bins - 1);
 
     for (int k = 0; k < spec_bins; ++k) {
-        const double fw = static_cast<double>(k) * inv;   // 0→1（正規化周波数）
+        const double fw = static_cast<double>(k) * inv;
 
-        // --- テンション（非線形シグモイド重み） ---
         if (std::abs(tension - 0.5) > 1e-4) {
-            // pivot = 0.35 付近でカーブが急峻になるよう設計
             const double sigmoid_k  = 8.0;
             const double pivot      = 0.35;
             const double weight     = 1.0 / (1.0 + std::exp(-sigmoid_k * (fw - pivot)));
-            // tension>0.5: 高域ブースト, tension<0.5: 高域カット
             const double gain_db    = (tension - 0.5) * 12.0 * weight;
-            // ソフトクリップ: ±6dB を超えないよう tanh で抑制
             const double clipped_db = 6.0 * std::tanh(gain_db / 6.0);
             sr[k] *= std::pow(10.0, clipped_db / 20.0);
         }
 
-        // --- ブレス（既存 ap との加重ミックス） ---
         if (std::abs(breath - 0.5) > 1e-4) {
-            // 低域ほどブレスが乗りにくいよう fw^0.7 で重み付け
             const double bw     = std::pow(fw, 0.7);
             const double amount = (breath - 0.5) * bw;
-            if (amount >= 0.0) {
-                // ブレスを増やす: ap と 1.0 の間をミックス
+            if (amount >= 0.0)
                 ar[k] = ar[k] + amount * (1.0 - ar[k]);
-            } else {
-                // ブレスを減らす: ap と 0.0 の間をミックス
+            else
                 ar[k] = ar[k] + amount * ar[k];
-            }
             ar[k] = std::clamp(ar[k], 0.0, 1.0);
         }
     }
 }
 
 // ============================================================
-// blend_transition_spectra  [FIX-③]
-//
-// ノート先頭の kTransitionFrames フレームにわたって
-// 前音素のスペクトル包絡・非周期性を現在音素に線形ブレンドする。
-// これにより「音素境界でスペクトルが急変する」ロボット感を軽減する。
+// blend_transition_spectra  (FIX-③: 音素境界のスペクトルブレンド)
 // ============================================================
 
 static void blend_transition_spectra(
@@ -424,14 +452,11 @@ static void blend_transition_spectra(
     const int blend_frames = std::min(transition_frames,
                                        std::min(cur_len, prev_len));
     for (int j = 0; j < blend_frames; ++j) {
-        // t=0（先頭）で prev を100%, t=1（transition終わり）で cur を100%
         const double t      = static_cast<double>(j) / blend_frames;
-        const double w_prev = 0.5 * (1.0 - std::cos(M_PI * (1.0 - t)));  // コサイン窓
+        const double w_prev = 0.5 * (1.0 - std::cos(M_PI * (1.0 - t)));
         const double w_cur  = 1.0 - w_prev;
 
-        // スペクトル包絡ブレンドは対数域で行う（線形ブレンドより自然）
         constexpr double kFloor = 1e-12;
-        // prevの対応フレーム: prev末尾に近いフレームを使う
         const int prev_j = prev_len - blend_frames + j;
 
         double* sc = spec_cur [j];
@@ -467,8 +492,16 @@ DLLEXPORT void load_embedded_resource(const char* phoneme,
     for (int i = 0; i < sample_count; ++i)
         ev->waveform[i] = static_cast<double>(raw_data[i]) * kInv32768;
 
-    std::unique_lock<std::shared_mutex> lock(g_voice_db_mutex);
-    g_voice_db[phoneme] = std::move(ev);
+    {
+        std::unique_lock<std::shared_mutex> wlock(g_voice_db_mutex);
+        // 音源を差し替える場合は対応するキャッシュエントリを無効化する
+        auto old_it = g_voice_db.find(phoneme);
+        if (old_it != g_voice_db.end()) {
+            std::unique_lock<std::shared_mutex> clock(g_analysis_cache_mutex);
+            g_analysis_cache.erase(old_it->second.get());
+        }
+        g_voice_db[phoneme] = ev;
+    }
 }
 
 DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* output_path)
@@ -488,7 +521,7 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
     int64_t total_samples   = 0;
     int     xfade_count     = 0;
     bool    prev_renderable = false;
-    std::shared_ptr<const EmbeddedVoice> last_ev; // [FIX-③] 直前の音源を追跡
+    std::shared_ptr<const EmbeddedVoice> last_ev;
 
     for (int i = 0; i < note_count; ++i) {
         const int pitch_len = notes[i].pitch_length;
@@ -507,7 +540,6 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         auto ev = find_voice_ref(notes[i].wav_path);
 
         if (ev) {
-            // [FIX-③] 前音素の EmbeddedVoice を prepass に記録
             prepass[i] = NotePrepass(NoteState::RENDERABLE, ns, ev,
                                      prev_renderable ? last_ev : nullptr);
             if (prev_renderable) ++xfade_count;
@@ -565,52 +597,35 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         NoteEvent& n               = notes[i];
         const int64_t note_samples = pp.note_samples;
         const int     f0_len       = n.pitch_length;
-        const EmbeddedVoice& ev    = *pp.ev;
 
-        const int harvest_len = analyze_source_f0(ev, kFramePeriod);
-        tl_scratch.ensure_spec(harvest_len, spec_bins);
+        // --- キャッシュ取得（ミス時のみ Harvest / CheapTrick / D4C を実行） ---
+        auto cache_cur = get_or_analyze(pp.ev.get(), fft_size, spec_bins);
 
-        CheapTrick(ev.waveform.data(), static_cast<int>(ev.waveform.size()), kFs,
-                   tl_scratch.time_harvest.data(), tl_scratch.f0_harvest.data(),
-                   harvest_len, nullptr, tl_scratch.spec_ptrs.data());
+        tl_scratch.ensure_spec(cache_cur->length, spec_bins);
+        copy_cache_to_scratch_cur(*cache_cur);
 
-        D4C(ev.waveform.data(), static_cast<int>(ev.waveform.size()), kFs,
-            tl_scratch.time_harvest.data(), tl_scratch.f0_harvest.data(),
-            harvest_len, fft_size, nullptr, tl_scratch.ap_ptrs.data());
+        const int harvest_len = cache_cur->length;
 
-        // [FIX-③] 前音素がある場合はスペクトル遷移ブレンドを実施
+        // --- 前音素ブレンド (FIX-③) ---
         if (pp.prev_ev) {
-            const EmbeddedVoice& prev_ev = *pp.prev_ev;
-            const int prev_harvest_len   = analyze_source_f0_prev(prev_ev, kFramePeriod);
-            tl_scratch.ensure_spec(std::max(harvest_len, prev_harvest_len), spec_bins);
-
-            CheapTrick(prev_ev.waveform.data(),
-                       static_cast<int>(prev_ev.waveform.size()), kFs,
-                       tl_scratch.time_harvest_prev.data(),
-                       tl_scratch.f0_harvest_prev.data(),
-                       prev_harvest_len, nullptr,
-                       tl_scratch.spec_ptrs_prev.data());
-
-            D4C(prev_ev.waveform.data(),
-                static_cast<int>(prev_ev.waveform.size()), kFs,
-                tl_scratch.time_harvest_prev.data(),
-                tl_scratch.f0_harvest_prev.data(),
-                prev_harvest_len, fft_size, nullptr,
-                tl_scratch.ap_ptrs_prev.data());
+            auto cache_prev = get_or_analyze(pp.prev_ev.get(), fft_size, spec_bins);
+            tl_scratch.ensure_spec(
+                std::max(harvest_len, cache_prev->length), spec_bins);
+            copy_cache_to_scratch_prev(*cache_prev);
 
             blend_transition_spectra(
                 tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(), harvest_len,
                 tl_scratch.spec_ptrs_prev.data(), tl_scratch.ap_ptrs_prev.data(),
-                prev_harvest_len, spec_bins, kTransitionFrames);
+                cache_prev->length, spec_bins, kTransitionFrames);
         }
 
-        // ピッチカーブ適用
+        // --- ピッチカーブ適用 ---
         for (int j = 0; j < harvest_len; ++j)
-            tl_scratch.f0_harvest[j] = n.pitch_curve
+            tl_scratch.f0[j] = n.pitch_curve
                 ? resample_curve(n.pitch_curve, f0_len, j, harvest_len)
                 : kDefaultPitch;
 
-        // パラメータ変形（ジェンダー・テンション・ブレス）
+        // --- ジェンダー / テンション / ブレス ---
         double* const spec_tmp = tl_scratch.spec_tmp.data();
         for (int j = 0; j < harvest_len; ++j) {
             double* sr = tl_scratch.spec_ptrs[j];
@@ -623,15 +638,13 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
             const double breath  = n.breath_curve
                 ? resample_curve(n.breath_curve,  f0_len, j, harvest_len) : kDefaultBreath;
 
-            // [FIX-①] 対数域ジェンダーシフト（旧: 線形リマッピング）
-            apply_gender_shift(sr, spec_bins, gender, spec_tmp);
-
-            // [FIX-②] 非線形テンション＋加重ミックスブレス（旧: 線形加算）
-            apply_tension_breath(sr, ar, spec_bins, tension, breath);
+            apply_gender_shift   (sr, spec_bins, gender, spec_tmp);
+            apply_tension_breath (sr, ar, spec_bins, tension, breath);
         }
 
+        // --- Synthesis ---
         note_buf.assign(note_samples, 0.0);
-        Synthesis(tl_scratch.f0_harvest.data(), harvest_len,
+        Synthesis(tl_scratch.f0.data(), harvest_len,
                   tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(),
                   fft_size, kFramePeriod, kFs,
                   static_cast<int>(note_samples), note_buf.data());
