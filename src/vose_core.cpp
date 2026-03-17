@@ -590,7 +590,7 @@ static void VOSE_Synthesis(
     // --- 1. 励起パラメータの動的変調（ジッター・ブレスの付加） ---
     // WORLDの仕様に合わせてバッファを構築
     std::vector<std::vector<double>> mod_ap_buffer(f0_length, std::vector<double>(fft_size / 2 + 1));
-    std::vector<double*> mod_ap(f0_length);
+    
 
     // 高品質な位相揺らぎ（ジッター）を生成するための乱数エンジン
     // スレッドセーフ化のために thread_local で保持
