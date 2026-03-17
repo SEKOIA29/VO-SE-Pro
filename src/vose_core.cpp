@@ -122,6 +122,9 @@ struct SynthesisScratchPad {
     std::vector<double>  f0_prev;
     std::vector<double>  time_prev;
 
+    std::vector<std::vector<double>> mod_ap_buffer;
+    std::vector<double*> mod_ap_ptrs;
+
     int reserved_f0   = 0;
     int reserved_bins = 0;
 
@@ -155,6 +158,8 @@ struct SynthesisScratchPad {
             flat_ap_prev  .resize(static_cast<size_t>(reserved_f0) * reserved_bins);
             spec_ptrs_prev.resize(reserved_f0);
             ap_ptrs_prev  .resize(reserved_f0);
+            mod_ap_buffer.assign(reserved_f0, std::vector<double>(reserved_bins));
+            mod_ap_ptrs.resize(reserved_f0);
         }
         // realloc の有無に関わらず常に再設定する（ダングリング防止）
         for (int i = 0; i < reserved_f0; ++i) {
@@ -162,6 +167,7 @@ struct SynthesisScratchPad {
             ap_ptrs       [i] = &flat_ap       [static_cast<size_t>(i) * reserved_bins];
             spec_ptrs_prev[i] = &flat_spec_prev[static_cast<size_t>(i) * reserved_bins];
             ap_ptrs_prev  [i] = &flat_ap_prev  [static_cast<size_t>(i) * reserved_bins];
+            mod_ap_ptrs   [i] = mod_ap_buffer[i].data();
         }
     }
 
@@ -572,6 +578,9 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
 {
     if (!notes || note_count <= 0 || !output_path) return;
 
+    std::unique_lock<std::shared_mutex> clock(g_analysis_cache_mutex); 
+    std::unique_lock<std::shared_mutex> wlock(g_voice_db_mutex);
+
     const int fft_size  = GetFFTSizeForCheapTrick(kFs, nullptr);
     const int spec_bins = fft_size / 2 + 1;
 
@@ -752,6 +761,7 @@ static void VOSE_Synthesis(
     // スレッドセーフ化のために thread_local で保持
     static thread_local std::mt19937 rng(42);
     std::uniform_real_distribution<double> dist(-0.02, 0.02); // 2%の微細な揺らぎ
+    double** mod_ap = tl_scratch.mod_ap_ptrs.data();
 
     for (int i = 0; i < f0_length; ++i) {
         mod_ap[i] = mod_ap_buffer[i].data();
@@ -957,6 +967,15 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         const int64_t write_offset = do_xfade
             ? current_offset - kCrossfadeSamples : current_offset;
         const int xfade = do_xfade ? kCrossfadeSamples : 0;
+
+        // 【新規追加】ポストエフェクト（高域エキサイター）
+        double alpha = 0.85;
+        double prev_x = 0.0, prev_y_hp = 0.0;
+        for (int i = 0; i < y_length; ++i) {
+             double hp = y[i] - prev_x + alpha * prev_y_hp;
+             prev_x = y[i];
+             prev_y_hp = hp;
+             y[i] += (hp * 0.05); // 高域を5%足し戻す
 
         apply_crossfade(full_song_buffer, total_samples,
                         note_buf, note_samples, write_offset, xfade);
