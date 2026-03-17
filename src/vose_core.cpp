@@ -3,6 +3,7 @@
 #include <map>
 #include <algorithm>
 #include <cmath>
+#include <random>
 #include <cstring>
 #include <cstdint>
 #include <mutex>
@@ -711,6 +712,246 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
                   tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(),
                   fft_size, kFramePeriod, pp.ev->fs,
                   static_cast<int>(note_samples), note_buf.data());
+
+        const bool    do_xfade     = last_note_rendered;
+        const int64_t write_offset = do_xfade
+            ? current_offset - kCrossfadeSamples : current_offset;
+        const int xfade = do_xfade ? kCrossfadeSamples : 0;
+
+        apply_crossfade(full_song_buffer, total_samples,
+                        note_buf, note_samples, write_offset, xfade);
+
+        current_offset += do_xfade
+            ? note_samples - kCrossfadeSamples : note_samples;
+
+        last_note_rendered = true;
+    }
+
+    wavwrite(
+        full_song_buffer.data(),
+        static_cast<int>(full_song_buffer.size()),
+        kFs, 16, output_path);
+}
+
+// ============================================================
+// VOSE_Synthesis
+// VO-SE独自の励起信号注入およびポストエフェクト付き合成エンジン
+// ============================================================
+static void VOSE_Synthesis(
+    const double* f0, int f0_length,
+    double** spectrogram, double** aperiodicity,
+    int fft_size, double frame_period, int fs,
+    int y_length, double* y)
+{
+    // --- 1. 励起パラメータの動的変調（ジッター・ブレスの付加） ---
+    // WORLDの仕様に合わせてバッファを構築
+    std::vector<std::vector<double>> mod_ap_buffer(f0_length, std::vector<double>(fft_size / 2 + 1));
+    std::vector<double*> mod_ap(f0_length);
+
+    // 高品質な位相揺らぎ（ジッター）を生成するための乱数エンジン
+    // スレッドセーフ化のために thread_local で保持
+    static thread_local std::mt19937 rng(42);
+    std::uniform_real_distribution<double> dist(-0.02, 0.02); // 2%の微細な揺らぎ
+
+    for (int i = 0; i < f0_length; ++i) {
+        mod_ap[i] = mod_ap_buffer[i].data();
+
+        // F0の変動（ビブラートやしゃくり）を微分で検知
+        double delta_f0 = 0.0;
+        if (i > 0 && i < f0_length - 1) {
+            delta_f0 = std::abs(f0[i+1] - f0[i-1]) / 2.0;
+        }
+
+        // ビブラート時やピッチが激しく動く瞬間に声が掠れる（非周期成分が増える）現象をシミュレート
+        double vibrato_breath = std::min(0.15, delta_f0 * 0.003);
+
+        for (int k = 0; k < fft_size / 2 + 1; ++k) {
+            double freq = static_cast<double>(k) * fs / fft_size;
+            double current_ap = aperiodicity[i][k];
+
+            // 約2000Hz以上の高音域に対して、非線形なノイズとジッターを強制付加
+            // これにより「キーン」という機械音が「サー」という自然な息遣いに変わる
+            if (freq > 2000.0) {
+                double jitter = dist(rng);
+                current_ap = current_ap + vibrato_breath + jitter;
+            }
+
+            // Aperiodicityパラメータを 0.0(完全周期) ～ 1.0(完全非周期) に安全にクランプ
+            mod_ap[i][k] = std::clamp(current_ap, 0.0, 1.0);
+        }
+    }
+
+    // --- 2. 波形合成（変調済みパラメータを使用してWORLDコアを駆動） ---
+    Synthesis(f0, f0_length, spectrogram, mod_ap.data(),
+              fft_size, frame_period, fs, y_length, y);
+
+    // --- 3. 高域シェルフ（ポストエフェクト）による「ボコーダー臭さ」の除去 ---
+    // 簡易的な1次IIRハイパスフィルタを用いて高域の倍音を抽出し、原音に足し戻す（エキサイター効果）
+    double alpha = 0.85; // フィルタ係数（カットオフ周波数を決定）
+    double prev_x = 0.0;
+    double prev_y_hp = 0.0;
+    
+    for (int i = 0; i < y_length; ++i) {
+        double hp = y[i] - prev_x + alpha * prev_y_hp;
+        prev_x = y[i];
+        prev_y_hp = hp;
+        
+        // 元の波形に抽出した高域成分を微量（5%）加算し、音の「ヌケ」を物理的に向上させる
+        y[i] = y[i] + (hp * 0.05);
+    }
+}
+
+
+// ============================================================
+// extern "C" API (execute_render の完全な置き換え)
+// ============================================================
+
+extern "C" {
+
+DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* output_path)
+{
+    if (!notes || note_count <= 0 || !output_path) return;
+
+    const int fft_size  = GetFFTSizeForCheapTrick(kFs, nullptr);
+    const int spec_bins = fft_size / 2 + 1;
+
+    // ----------------------------------------------------------------
+    // パス1: NotePrepass 構築
+    // ----------------------------------------------------------------
+
+    std::vector<NotePrepass> prepass(note_count);
+
+    int     max_harvest_len = 0;
+    int64_t total_samples   = 0;
+    int     xfade_count     = 0;
+    bool    prev_renderable = false;
+    std::shared_ptr<const EmbeddedVoice> last_ev;
+
+    for (int i = 0; i < note_count; ++i) {
+        const int pitch_len = notes[i].pitch_length;
+
+        if (pitch_len <= 0 || pitch_len > kMaxPitchLength) {
+            std::fprintf(stderr,
+                "[vose_core] note[%d] pitch_length=%d out of range (1..%d), skipping.\n",
+                i, pitch_len, kMaxPitchLength);
+            prepass[i]      = NotePrepass(NoteState::INVALID, 0, nullptr);
+            prev_renderable = false;
+            last_ev         = nullptr;
+            continue;
+        }
+
+        const int64_t ns = note_samples_safe(pitch_len);
+        auto ev = find_voice_ref(notes[i].wav_path);
+
+        if (ev) {
+            prepass[i] = NotePrepass(NoteState::RENDERABLE, ns, ev,
+                                     prev_renderable ? last_ev : nullptr);
+            if (prev_renderable) ++xfade_count;
+            prev_renderable = true;
+            last_ev = ev;
+
+            const int wav_len     = static_cast<int>(ev->waveform.size());
+            const int harvest_len = GetSamplesForHarvest(ev->fs, wav_len, kFramePeriod);
+            if (harvest_len > max_harvest_len) max_harvest_len = harvest_len;
+        } else {
+            prepass[i]      = NotePrepass(NoteState::NO_VOICE, ns, nullptr);
+            prev_renderable = false;
+            last_ev         = nullptr;
+        }
+
+        total_samples += ns;
+    }
+
+    total_samples -= static_cast<int64_t>(kCrossfadeSamples) * xfade_count;
+    if (total_samples <= 0) return;
+
+    tl_scratch.ensure_spec(max_harvest_len, spec_bins);
+    std::vector<double> full_song_buffer(total_samples, 0.0);
+    std::vector<double> note_buf;
+
+    static constexpr double kDefaultPitch   = 440.0;
+    static constexpr double kDefaultGender  = 0.5;
+    static constexpr double kDefaultTension = 0.5;
+    static constexpr double kDefaultBreath  = 0.5;
+
+    int64_t current_offset     = 0;
+    bool    last_note_rendered = false;
+
+    // ----------------------------------------------------------------
+    // パス2: ノートごとの合成
+    // ----------------------------------------------------------------
+
+    for (int i = 0; i < note_count; ++i) {
+        const NotePrepass& pp = prepass[i];
+
+        switch (pp.state) {
+        case NoteState::INVALID:
+            last_note_rendered = false;
+            continue;
+
+        case NoteState::NO_VOICE:
+            last_note_rendered = false;
+            current_offset    += pp.note_samples;
+            continue;
+
+        case NoteState::RENDERABLE:
+            break;
+        }
+
+        NoteEvent& n               = notes[i];
+        const int64_t note_samples = pp.note_samples;
+        const int     f0_len       = n.pitch_length;
+
+        // --- キャッシュ取得（ミス時のみ Harvest / CheapTrick / D4C を実行） ---
+        auto cache_cur = get_or_analyze(pp.ev, fft_size, spec_bins);
+
+        tl_scratch.ensure_spec(cache_cur->length, spec_bins);
+        copy_cache_to_scratch_cur(*cache_cur);
+ 
+        const int harvest_len = cache_cur->length;
+
+        // --- 前音素ブレンド (FIX-③) ---
+        if (pp.prev_ev) {
+            auto cache_prev = get_or_analyze(pp.prev_ev, fft_size, spec_bins);
+            tl_scratch.ensure_spec(
+                std::max(harvest_len, cache_prev->length), spec_bins);
+            copy_cache_to_scratch_prev(*cache_prev);
+
+            blend_transition_spectra(
+                tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(), harvest_len,
+                tl_scratch.spec_ptrs_prev.data(), tl_scratch.ap_ptrs_prev.data(),
+                cache_prev->length, spec_bins, kTransitionFrames);
+        }
+
+        // --- ピッチカーブ適用 ---
+        for (int j = 0; j < harvest_len; ++j)
+            tl_scratch.f0[j] = n.pitch_curve
+                ? resample_curve(n.pitch_curve, f0_len, j, harvest_len)
+                : kDefaultPitch;
+
+        // --- ジェンダー / テンション / ブレス ---
+        double* const spec_tmp = tl_scratch.spec_tmp.data();
+        for (int j = 0; j < harvest_len; ++j) {
+            double* sr = tl_scratch.spec_ptrs[j];
+            double* ar = tl_scratch.ap_ptrs[j];
+
+            const double gender  = n.gender_curve
+                ? resample_curve(n.gender_curve,  f0_len, j, harvest_len) : kDefaultGender;
+            const double tension = n.tension_curve
+                ? resample_curve(n.tension_curve, f0_len, j, harvest_len) : kDefaultTension;
+            const double breath  = n.breath_curve
+                ? resample_curve(n.breath_curve,  f0_len, j, harvest_len) : kDefaultBreath;
+
+            apply_gender_shift   (sr, spec_bins, gender, spec_tmp);
+            apply_tension_breath (sr, ar, spec_bins, tension, breath);
+        }
+
+        // --- VOSE_Synthesis (VO-SE独自の合成器呼び出し) ---
+        note_buf.assign(note_samples, 0.0);
+        VOSE_Synthesis(tl_scratch.f0.data(), harvest_len,
+                       tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(),
+                       fft_size, kFramePeriod, pp.ev->fs,
+                       static_cast<int>(note_samples), note_buf.data());
 
         const bool    do_xfade     = last_note_rendered;
         const int64_t write_offset = do_xfade
