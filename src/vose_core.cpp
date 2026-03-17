@@ -324,6 +324,10 @@ get_or_analyze(std::shared_ptr<const EmbeddedVoice> ev_sp, int fft_size, int spe
 
 static void copy_cache_to_scratch_cur(const AnalysisCache& c)
 {
+    // 防御チェック: scratch が十分な容量を確保しているかを保証
+    if (tl_scratch.reserved_f0 < c.length || tl_scratch.reserved_bins < c.spec_bins)
+        tl_scratch.ensure_spec(c.length, c.spec_bins);
+    
     const size_t total = static_cast<size_t>(c.length) * c.spec_bins;
     std::copy(c.flat_spec.begin(), c.flat_spec.begin() + total,
               tl_scratch.flat_spec.begin());
@@ -336,6 +340,8 @@ static void copy_cache_to_scratch_cur(const AnalysisCache& c)
 
 static void copy_cache_to_scratch_prev(const AnalysisCache& c)
 {
+    if (tl_scratch.reserved_f0 < c.length || tl_scratch.reserved_bins < c.spec_bins)
+        tl_scratch.ensure_spec(c.length, c.spec_bins);
     const size_t total = static_cast<size_t>(c.length) * c.spec_bins;
     std::copy(c.flat_spec.begin(), c.flat_spec.begin() + total,
               tl_scratch.flat_spec_prev.begin());
@@ -509,8 +515,13 @@ DLLEXPORT void load_embedded_resource(const char* phoneme,
     std::unique_lock<std::shared_mutex> wlock(g_voice_db_mutex);       // 後
 
     auto old_it = g_voice_db.find(phoneme);
-    if (old_it != g_voice_db.end())
-        g_analysis_cache.erase(old_it->second.get());  // 古いキャッシュを削除
+    if (old_it != g_voice_db.end()) {
+        // shared_ptr をキーにしているので、同じ shared_ptr を探して削除
+        auto old_sp = old_it->second;
+        auto cache_it = g_analysis_cache.find(old_sp);
+        if (cache_it != g_analysis_cache.end())
+            g_analysis_cache.erase(cache_it);
+    }
 
     g_voice_db[phoneme] = std::move(ev);               // 音源を差し替え
     // 両ロックがここでスコープアウト → アトミックに解放
@@ -611,7 +622,7 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         const int     f0_len       = n.pitch_length;
 
         // --- キャッシュ取得（ミス時のみ Harvest / CheapTrick / D4C を実行） ---
-        auto cache_cur = get_or_analyze(pp.ev.get(), fft_size, spec_bins);
+        auto cache_cur = get_or_analyze(pp.ev, fft_size, spec_bins);
 
         tl_scratch.ensure_spec(cache_cur->length, spec_bins);
         copy_cache_to_scratch_cur(*cache_cur);
