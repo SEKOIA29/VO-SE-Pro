@@ -517,10 +517,15 @@ DLLEXPORT void load_embedded_resource(const char* phoneme,
 
     // ロック外でデータ構築（重い処理をロック前に済ませる）
     auto ev = std::make_shared<EmbeddedVoice>();
-    ev->fs = kFs;
+    ev->fs = sample_rate;
     ev->waveform.resize(sample_count);
     for (int i = 0; i < sample_count; ++i)
         ev->waveform[i] = static_cast<double>(raw_data[i]) * kInv32768;
+       // Optionally resample to kFs here if you want a single internal fs:
+    if (ev->fs != kFs) {
+        // perform resampling from ev->fs -> kFs and set ev->fs = kFs
+        // (implement or call a resampler here)
+    }
 
     // [FIX-ATOMIC] キャッシュ削除と音源更新を両ロック保持中にアトミックに実行。
     // ロック順序: analysis_cache → voice_db（get_or_analyze と同じ順序）。
