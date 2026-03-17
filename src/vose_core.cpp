@@ -574,172 +574,7 @@ extern "C" DLLEXPORT void load_embedded_resource(const char* phoneme,
     load_embedded_resource_impl(phoneme, raw_data, sample_count, kFs);
 }
 
-DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* output_path)
-{
-    if (!notes || note_count <= 0 || !output_path) return;
 
-    std::unique_lock<std::shared_mutex> clock(g_analysis_cache_mutex); 
-    std::unique_lock<std::shared_mutex> wlock(g_voice_db_mutex);
-
-    const int fft_size  = GetFFTSizeForCheapTrick(kFs, nullptr);
-    const int spec_bins = fft_size / 2 + 1;
-
-    // ----------------------------------------------------------------
-    // パス1: NotePrepass 構築
-    // ----------------------------------------------------------------
-
-    std::vector<NotePrepass> prepass(note_count);
-
-    int     max_harvest_len = 0;
-    int64_t total_samples   = 0;
-    int     xfade_count     = 0;
-    bool    prev_renderable = false;
-    std::shared_ptr<const EmbeddedVoice> last_ev;
-
-    for (int i = 0; i < note_count; ++i) {
-        const int pitch_len = notes[i].pitch_length;
-
-        if (pitch_len <= 0 || pitch_len > kMaxPitchLength) {
-            std::fprintf(stderr,
-                "[vose_core] note[%d] pitch_length=%d out of range (1..%d), skipping.\n",
-                i, pitch_len, kMaxPitchLength);
-            prepass[i]      = NotePrepass(NoteState::INVALID, 0, nullptr);
-            prev_renderable = false;
-            last_ev         = nullptr;
-            continue;
-        }
-
-        const int64_t ns = note_samples_safe(pitch_len);
-        auto ev = find_voice_ref(notes[i].wav_path);
-
-        if (ev) {
-            prepass[i] = NotePrepass(NoteState::RENDERABLE, ns, ev,
-                                     prev_renderable ? last_ev : nullptr);
-            if (prev_renderable) ++xfade_count;
-            prev_renderable = true;
-            last_ev = ev;
-
-            const int wav_len     = static_cast<int>(ev->waveform.size());
-            const int harvest_len = GetSamplesForHarvest(ev->fs, wav_len, kFramePeriod);
-            if (harvest_len > max_harvest_len) max_harvest_len = harvest_len;
-        } else {
-            prepass[i]      = NotePrepass(NoteState::NO_VOICE, ns, nullptr);
-            prev_renderable = false;
-            last_ev         = nullptr;
-        }
-
-        total_samples += ns;
-    }
-
-    total_samples -= static_cast<int64_t>(kCrossfadeSamples) * xfade_count;
-    if (total_samples <= 0) return;
-
-    tl_scratch.ensure_spec(max_harvest_len, spec_bins);
-    std::vector<double> full_song_buffer(total_samples, 0.0);
-    std::vector<double> note_buf;
-
-    static constexpr double kDefaultPitch   = 440.0;
-    static constexpr double kDefaultGender  = 0.5;
-    static constexpr double kDefaultTension = 0.5;
-    static constexpr double kDefaultBreath  = 0.5;
-
-    int64_t current_offset     = 0;
-    bool    last_note_rendered = false;
-
-    // ----------------------------------------------------------------
-    // パス2: ノートごとの合成
-    // ----------------------------------------------------------------
-
-    for (int i = 0; i < note_count; ++i) {
-        const NotePrepass& pp = prepass[i];
-
-        switch (pp.state) {
-        case NoteState::INVALID:
-            last_note_rendered = false;
-            continue;
-
-        case NoteState::NO_VOICE:
-            last_note_rendered = false;
-            current_offset    += pp.note_samples;
-            continue;
-
-        case NoteState::RENDERABLE:
-            break;
-        }
-
-        NoteEvent& n               = notes[i];
-        const int64_t note_samples = pp.note_samples;
-        const int     f0_len       = n.pitch_length;
-
-        // --- キャッシュ取得（ミス時のみ Harvest / CheapTrick / D4C を実行） ---
-        auto cache_cur = get_or_analyze(pp.ev, fft_size, spec_bins);
-
-        tl_scratch.ensure_spec(cache_cur->length, spec_bins);
-        copy_cache_to_scratch_cur(*cache_cur);
- 
-        const int harvest_len = cache_cur->length;
-
-        // --- 前音素ブレンド (FIX-③) ---
-        if (pp.prev_ev) {
-            auto cache_prev = get_or_analyze(pp.prev_ev, fft_size, spec_bins);
-            tl_scratch.ensure_spec(
-                std::max(harvest_len, cache_prev->length), spec_bins);
-            copy_cache_to_scratch_prev(*cache_prev);
-
-            blend_transition_spectra(
-                tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(), harvest_len,
-                tl_scratch.spec_ptrs_prev.data(), tl_scratch.ap_ptrs_prev.data(),
-                cache_prev->length, spec_bins, kTransitionFrames);
-        }
-
-        // --- ピッチカーブ適用 ---
-        for (int j = 0; j < harvest_len; ++j)
-            tl_scratch.f0[j] = n.pitch_curve
-                ? resample_curve(n.pitch_curve, f0_len, j, harvest_len)
-                : kDefaultPitch;
-
-        // --- ジェンダー / テンション / ブレス ---
-        double* const spec_tmp = tl_scratch.spec_tmp.data();
-        for (int j = 0; j < harvest_len; ++j) {
-            double* sr = tl_scratch.spec_ptrs[j];
-            double* ar = tl_scratch.ap_ptrs[j];
-
-            const double gender  = n.gender_curve
-                ? resample_curve(n.gender_curve,  f0_len, j, harvest_len) : kDefaultGender;
-            const double tension = n.tension_curve
-                ? resample_curve(n.tension_curve, f0_len, j, harvest_len) : kDefaultTension;
-            const double breath  = n.breath_curve
-                ? resample_curve(n.breath_curve,  f0_len, j, harvest_len) : kDefaultBreath;
-
-            apply_gender_shift   (sr, spec_bins, gender, spec_tmp);
-            apply_tension_breath (sr, ar, spec_bins, tension, breath);
-        }
-
-        // --- Synthesis ---
-        note_buf.assign(note_samples, 0.0);
-        Synthesis(tl_scratch.f0.data(), harvest_len,
-                  tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(),
-                  fft_size, kFramePeriod, pp.ev->fs,
-                  static_cast<int>(note_samples), note_buf.data());
-
-        const bool    do_xfade     = last_note_rendered;
-        const int64_t write_offset = do_xfade
-            ? current_offset - kCrossfadeSamples : current_offset;
-        const int xfade = do_xfade ? kCrossfadeSamples : 0;
-
-        apply_crossfade(full_song_buffer, total_samples,
-                        note_buf, note_samples, write_offset, xfade);
-
-        current_offset += do_xfade
-            ? note_samples - kCrossfadeSamples : note_samples;
-
-        last_note_rendered = true;
-    }
-
-    wavwrite(
-        full_song_buffer.data(),
-        static_cast<int>(full_song_buffer.size()),
-        kFs, 16, output_path);
 }
 
 // ============================================================
@@ -816,11 +651,15 @@ static void VOSE_Synthesis(
 // extern "C" API (execute_render の完全な置き換え)
 // ============================================================
 
+// 統合版 execute_render
 extern "C" {
-
 DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* output_path)
 {
     if (!notes || note_count <= 0 || !output_path) return;
+
+    // スレッド安全のためのロック（最初の実装に合わせる）
+    std::unique_lock<std::shared_mutex> clock(g_analysis_cache_mutex);
+    std::unique_lock<std::shared_mutex> wlock(g_voice_db_mutex);
 
     const int fft_size  = GetFFTSizeForCheapTrick(kFs, nullptr);
     const int spec_bins = fft_size / 2 + 1;
@@ -828,7 +667,6 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
     // ----------------------------------------------------------------
     // パス1: NotePrepass 構築
     // ----------------------------------------------------------------
-
     std::vector<NotePrepass> prepass(note_count);
 
     int     max_harvest_len = 0;
@@ -888,11 +726,10 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
     bool    last_note_rendered = false;
 
     // ----------------------------------------------------------------
-    // パス2: ノートごとの合成
+    // パス2: ノートごとの合成（VOSE_Synthesis + 高域エキサイター）
     // ----------------------------------------------------------------
-
-    for (int i = 0; i < note_count; ++i) {
-        const NotePrepass& pp = prepass[i];
+    for (int idx = 0; idx < note_count; ++idx) {
+        const NotePrepass& pp = prepass[idx];
 
         switch (pp.state) {
         case NoteState::INVALID:
@@ -908,7 +745,7 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
             break;
         }
 
-        NoteEvent& n               = notes[i];
+        NoteEvent& n               = notes[idx];
         const int64_t note_samples = pp.note_samples;
         const int     f0_len       = n.pitch_length;
 
@@ -917,10 +754,10 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
 
         tl_scratch.ensure_spec(cache_cur->length, spec_bins);
         copy_cache_to_scratch_cur(*cache_cur);
- 
+
         const int harvest_len = cache_cur->length;
 
-        // --- 前音素ブレンド (FIX-③) ---
+        // --- 前音素ブレンド（存在する場合） ---
         if (pp.prev_ev) {
             auto cache_prev = get_or_analyze(pp.prev_ev, fft_size, spec_bins);
             tl_scratch.ensure_spec(
@@ -934,12 +771,13 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         }
 
         // --- ピッチカーブ適用 ---
-        for (int j = 0; j < harvest_len; ++j)
+        for (int j = 0; j < harvest_len; ++j) {
             tl_scratch.f0[j] = n.pitch_curve
                 ? resample_curve(n.pitch_curve, f0_len, j, harvest_len)
                 : kDefaultPitch;
+        }
 
-        // --- ジェンダー / テンション / ブレス ---
+        // --- ジェンダー / テンション / ブレス適用 ---
         double* const spec_tmp = tl_scratch.spec_tmp.data();
         for (int j = 0; j < harvest_len; ++j) {
             double* sr = tl_scratch.spec_ptrs[j];
@@ -956,40 +794,47 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
             apply_tension_breath (sr, ar, spec_bins, tension, breath);
         }
 
-        // --- VOSE_Synthesis (VO-SE独自の合成器呼び出し) ---
-        note_buf.assign(note_samples, 0.0);
+        // --- VOSE_Synthesis 呼び出し（VO-SE独自合成器） ---
+        note_buf.assign(static_cast<size_t>(note_samples), 0.0);
         VOSE_Synthesis(tl_scratch.f0.data(), harvest_len,
                        tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(),
                        fft_size, kFramePeriod, pp.ev->fs,
                        static_cast<int>(note_samples), note_buf.data());
 
-        const bool    do_xfade     = last_note_rendered;
-        const int64_t write_offset = do_xfade
-            ? current_offset - kCrossfadeSamples : current_offset;
-        const int xfade = do_xfade ? kCrossfadeSamples : 0;
+        // --- ポストエフェクト: 高域エキサイター（修正版） ---
+        // パラメータ
+        const double exciter_alpha = 0.85;
+        const double exciter_gain  = 0.05; // 高域を戻す割合
+        double prev_x = 0.0;
+        double prev_y_hp = 0.0;
 
-        // 【新規追加】ポストエフェクト（高域エキサイター）
-        double alpha = 0.85;
-        double prev_x = 0.0, prev_y_hp = 0.0;
-        for (int i = 0; i < y_length; ++i) {
-             double hp = y[i] - prev_x + alpha * prev_y_hp;
-             prev_x = y[i];
-             prev_y_hp = hp;
-             y[i] += (hp * 0.05); // 高域を5%足し戻す
+        // note_buf の長さは note_samples（境界チェック済み）
+        for (int s = 0; s < static_cast<int>(note_buf.size()); ++s) {
+            double y_sample = note_buf[s];
+            double hp = y_sample - prev_x + exciter_alpha * prev_y_hp;
+            prev_x = y_sample;
+            prev_y_hp = hp;
+            // 元信号に高域成分を少し加える
+            note_buf[s] = y_sample + (hp * exciter_gain);
+        }
+
+        // --- クロスフェード書き込み ---
+        const bool    do_xfade     = last_note_rendered;
+        const int64_t write_offset = do_xfade ? current_offset - kCrossfadeSamples : current_offset;
+        const int xfade = do_xfade ? kCrossfadeSamples : 0;
 
         apply_crossfade(full_song_buffer, total_samples,
                         note_buf, note_samples, write_offset, xfade);
 
-        current_offset += do_xfade
-            ? note_samples - kCrossfadeSamples : note_samples;
-
+        current_offset += do_xfade ? note_samples - kCrossfadeSamples : note_samples;
         last_note_rendered = true;
     }
 
+    // --- wav 出力 ---
     wavwrite(
         full_song_buffer.data(),
         static_cast<int>(full_song_buffer.size()),
         kFs, 16, output_path);
 }
-
 } // extern "C"
+
