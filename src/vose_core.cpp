@@ -623,8 +623,8 @@ static void VOSE_Synthesis(
 
             // Aperiodicityパラメータを 0.0(完全周期) ～ 1.0(完全非周期) に安全にクランプ
             mod_ap[i][k] = std::clamp(current_ap, 0.0, 1.0);
-        }
-    }
+        
+    
 
     // --- 2. 波形合成（変調済みパラメータを使用してWORLDコアを駆動） ---
     // --- 合成 ---
