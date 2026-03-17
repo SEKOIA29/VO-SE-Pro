@@ -510,9 +510,9 @@ extern "C" {
 
 void init_official_engine() { register_all_embedded_voices(); }
 
-DLLEXPORT void load_embedded_resource(const char* phoneme,
-                                      const int16_t* raw_data, int sample_count,
-                                      int sample_rate)
+static void load_embedded_resource_impl(const char* phoneme,
+                                        const int16_t* raw_data, int sample_count,
+                                        int sample_rate)
 {
     if (!phoneme || !raw_data || sample_count <= 0) return;
 
@@ -526,12 +526,13 @@ DLLEXPORT void load_embedded_resource(const char* phoneme,
     for (int i = 0; i < sample_count; ++i)
         tmp[i] = static_cast<double>(raw_data[i]) * kInv32768;
 
-    // 内部標準 fs にリサンプルして保存（簡易線形リサンプラ）
-    if (ev->fs != kFs) {
+     // 内部標準 fs にリサンプルして保存（簡易線形リサンプラ）     
+    if (ev->fs != kFs) {       
+    
         const double ratio = static_cast<double>(kFs) / ev->fs;
         const size_t out_len = static_cast<size_t>(std::max<int64_t>(1, static_cast<int64_t>(std::floor(sample_count * ratio))));
         ev->waveform.resize(out_len);
-　       for (size_t i = 0; i < out_len; ++i) {
+        for (size_t i = 0; i < out_len; ++i) {
             const double src_pos = static_cast<double>(i) / ratio;
             const size_t i0 = static_cast<size_t>(std::floor(src_pos));
             const size_t i1 = std::min(i0 + 1, tmp.size() - 1);
@@ -544,22 +545,26 @@ DLLEXPORT void load_embedded_resource(const char* phoneme,
     }
 
     // [FIX-ATOMIC] キャッシュ削除と音源更新を両ロック保持中にアトミックに実行。
-    // ロック順序: analysis_cache → voice_db（get_or_analyze と同じ順序）。
-    // 2つのロックを同時に保持する唯一の箇所なので順序を崩さないこと。
-    std::unique_lock<std::shared_mutex> clock(g_analysis_cache_mutex); // 先
+    std::unique_lock<std::shared_mutex> clock(g_analysis_cache_mutex); // 
     std::unique_lock<std::shared_mutex> wlock(g_voice_db_mutex);       // 後
 
     auto old_it = g_voice_db.find(phoneme);
     if (old_it != g_voice_db.end()) {
-        // shared_ptr をキーにしているので、同じ shared_ptr を探して削除
         auto old_sp = old_it->second;
         auto cache_it = g_analysis_cache.find(old_sp);
         if (cache_it != g_analysis_cache.end())
             g_analysis_cache.erase(cache_it);
     }
-
+ 
     g_voice_db[phoneme] = std::move(ev);               // 音源を差し替え
     // 両ロックがここでスコープアウト → アトミックに解放
+}
+// ヘッダ互換の C シンボル（既存の呼び出しを壊さないためのラッパー）
+extern "C" DLLEXPORT void load_embedded_resource(const char* phoneme,
+                                                 const int16_t* raw_data, int sample_count)
+{
+    // 既存の呼び出しはサンプルレート情報を渡さないため、既定値として kFs を使う
+    load_embedded_resource_impl(phoneme, raw_data, sample_count, kFs);
 }
 
 DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* output_path)
@@ -657,17 +662,16 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         const int     f0_len       = n.pitch_length;
 
         // --- キャッシュ取得（ミス時のみ Harvest / CheapTrick / D4C を実行） ---
-        auto cache_prev = get_or_analyze(pp.prev_ev, fft_size, spec_bins);
-
+        auto cache_cur = get_or_analyze(pp.ev, fft_size, spec_bins);
 
         tl_scratch.ensure_spec(cache_cur->length, spec_bins);
         copy_cache_to_scratch_cur(*cache_cur);
-
+ 
         const int harvest_len = cache_cur->length;
 
         // --- 前音素ブレンド (FIX-③) ---
         if (pp.prev_ev) {
-            auto cache_prev = get_or_analyze(pp.prev_ev.get(), fft_size, spec_bins);
+            auto cache_prev = get_or_analyze(pp.prev_ev, fft_size, spec_bins);
             tl_scratch.ensure_spec(
                 std::max(harvest_len, cache_prev->length), spec_bins);
             copy_cache_to_scratch_prev(*cache_prev);
