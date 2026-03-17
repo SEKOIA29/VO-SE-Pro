@@ -136,38 +136,6 @@ static std::shared_ptr<const EmbeddedVoice> find_voice_ref(const char* key)
 // analyze_source_f0
 // ============================================================
 
-case NoteState::RENDERABLE:
-    break;
-}
-
-NoteEvent& n               = notes[i];
-const int64_t note_samples = pp.note_samples;
-const int     f0_len       = n.pitch_length;
-const EmbeddedVoice& ev    = *pp.ev;
-
-// oto.ini からエントリを取得
-double preutterance_ms = 0.0;
-double overlap_ms      = 0.0;
-double offset_ms       = 0.0;
-{
-    std::shared_lock<std::shared_mutex> lock(g_voice_db_mutex);
-    auto oto_it = g_oto_map.find(n.wav_path ? n.wav_path : "");
-    if (oto_it != g_oto_map.end()) {
-        preutterance_ms = oto_it->second.preutterance;
-        overlap_ms      = oto_it->second.overlap;
-        offset_ms       = oto_it->second.offset;
-    }
-}
-
-const int     offset_samples = static_cast<int>(offset_ms / 1000.0 * kFs);
-const int     wav_start      = std::min(offset_samples,
-                                   static_cast<int>(ev.waveform.size()) - 1);
-const int64_t overlap_samples = static_cast<int64_t>(overlap_ms / 1000.0 * kFs);
-
-const int harvest_len = analyze_source_f0(ev, kFramePeriod);
-tl_scratch.ensure_spec(harvest_len, spec_bins);
-
-
 static int analyze_source_f0(const EmbeddedVoice& ev, double frame_period)
 {
     HarvestOption opt;
@@ -232,22 +200,6 @@ static void apply_crossfade(std::vector<double>& dst, int64_t dst_size,
     const int64_t body_end = std::min(offset + src_size, dst_size);
     for (int64_t s = offset + safe_xfade; s < body_end; ++s)
         dst[s] = src[s - offset];
-}
-
-
-//先行発音
-static std::map<std::string, OtoEntry> g_oto_map;
-static std::string g_voice_path;
-
-extern "C" void set_voice_library(const char* voice_path) {
-    if (voice_path) g_voice_path = voice_path;
-}
-
-extern "C" void set_oto_data(const OtoEntry* entries, int count) {
-    std::unique_lock<std::shared_mutex> lock(g_voice_db_mutex);
-    g_oto_map.clear();
-    for (int i = 0; i < count; ++i)
-        g_oto_map[entries[i].alias] = entries[i];
 }
 
 // ============================================================
@@ -375,13 +327,9 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
             harvest_len, fft_size, nullptr, tl_scratch.ap_ptrs.data());
 
         for (int j = 0; j < harvest_len; ++j)
-            if (n.pitch_curve) {
-                // pitch_curve は MIDI ノート番号（float）で渡す設計に変更
-                const double midi = resample_curve(n.pitch_curve, f0_len, j, harvest_len);
-                tl_scratch.f0_harvest[j] = 440.0 * std::pow(2.0, (midi - 69.0) / 12.0);
-　　　　　　　　} else {             
-                tl_scratch.f0_harvest[j] = kDefaultPitch;
-            }
+            tl_scratch.f0_harvest[j] = n.pitch_curve
+                ? resample_curve(n.pitch_curve, f0_len, j, harvest_len)
+                : kDefaultPitch;
 
         double* const spec_tmp = tl_scratch.spec_tmp.data();
         for (int j = 0; j < harvest_len; ++j) {
@@ -394,18 +342,15 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
                 ? resample_curve(n.tension_curve, f0_len, j, harvest_len) : kDefaultTension;
             const double breath  = n.breath_curve
                 ? resample_curve(n.breath_curve,  f0_len, j, harvest_len) : kDefaultBreath;
-            const double semitone_shift = (gender - 0.5) * 4.0;
-            const double freq_ratio     = std::pow(2.0, semitone_shift / 12.0);
+            const double shift   = (gender - 0.5) * 0.4;
+
             memcpy(spec_tmp, sr, sizeof(double) * spec_bins);
             for (int k = 0; k < spec_bins; ++k) {
-                const double src_k = static_cast<double>(k) / freq_ratio;
-                const int    k0    = static_cast<int>(src_k);
-                if (k0 >= spec_bins - 1) {
-                    sr[k] = spec_tmp[spec_bins - 1]; 
-                } else {
-                    const double frac = src_k - k0;
-                    sr[k] = (1.0 - frac) * spec_tmp[k0] + frac * spec_tmp[k0 + 1]; 
-                }
+                const double tk = static_cast<double>(k) * (1.0 + shift);
+                const int    k0 = static_cast<int>(tk);
+                sr[k] = (k0 >= spec_bins - 1)
+                    ? spec_tmp[spec_bins - 1]
+                    : (1.0-(tk-k0))*spec_tmp[k0] + (tk-k0)*spec_tmp[k0+1];
             }
 
             const double inv = 1.0 / (spec_bins - 1);
@@ -422,20 +367,17 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
                   fft_size, kFramePeriod, kFs,
                   static_cast<int>(note_samples), note_buf.data());
 
-        const bool    do_xfade = last_note_rendered;
-        const int     xfade    = do_xfade ? kCrossfadeSamples : 0;
-
-        int64_t write_offset = do_xfade
+        const bool    do_xfade     = last_note_rendered;
+        const int64_t write_offset = do_xfade
             ? current_offset - kCrossfadeSamples : current_offset;
-        write_offset -= overlap_samples;
-        write_offset  = std::max<int64_t>(0, write_offset);
+        const int xfade = do_xfade ? kCrossfadeSamples : 0;
 
         apply_crossfade(full_song_buffer, total_samples,
                         note_buf, note_samples, write_offset, xfade);
 
         current_offset += do_xfade
             ? note_samples - kCrossfadeSamples : note_samples;
-        
+
         last_note_rendered = true;
     }
 
