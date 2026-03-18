@@ -558,14 +558,30 @@ static void load_embedded_resource_impl(const char* phoneme,
     // 両ロックがここでスコープアウト → アトミックに解放
 }
 // ヘッダ互換の C シンボル（既存の呼び出しを壊さないためのラッパー）
-extern "C" DLLEXPORT void load_embedded_resource(const char* phoneme,
-                                                 const int16_t* raw_data, int sample_count)
-{
-    // 既存の呼び出しはサンプルレート情報を渡さないため、既定値として kFs を使う
-    load_embedded_resource_impl(phoneme, raw_data, sample_count, kFs);
+extern "C" {
+DLLEXPORT void load_embedded_resource(const char* phoneme, const int16_t* raw_data, int sample_count) {
+    if (!phoneme || !raw_data || sample_count <= 0) return;
+    
+    // ロック前に重い処理（メモリ確保・初期化）を済ませることで、他スレッドの待機時間を最小化
+    auto ev = std::make_shared<EmbeddedVoice>();
+    ev->fs = kFs;
+    ev->waveform.resize(sample_count);
+    for (int i = 0; i < sample_count; ++i) {
+        ev->waveform[i] = static_cast<double>(raw_data[i]) * kInv32768;
+    }
+
+    // ★推敲箇所：キャッシュとDBのロックを同時に取得し、更新作業をアトミック化
+    std::unique_lock<std::shared_mutex> clock(g_analysis_cache_mutex);
+    std::unique_lock<std::shared_mutex> wlock(g_voice_db_mutex);
+
+    auto it = g_voice_db.find(phoneme);
+    if (it != g_voice_db.end()) {
+        // 既存の音源があれば、それに紐づくキャッシュを明示的に破棄
+        g_analysis_cache.erase(it->second);
+    }
+    // 音源DBを安全に更新
+    g_voice_db[phoneme] = std::move(ev);
 }
-
-
 }
 
 // ============================================================
