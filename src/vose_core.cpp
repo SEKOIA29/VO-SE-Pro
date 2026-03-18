@@ -789,6 +789,20 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         NoteEvent& n = notes[idx];
         const int64_t note_samples = pp.note_samples;
 
+        // --- map_time 用の変数計算 ---
+        // 音符の長さ (ms)
+        double note_ms = (static_cast<double>(note_samples) / kFs) * 1000.0;
+        // 元音源の長さ (ms)
+        double src_ms = get_source_ms(*(pp.ev));
+        
+        // [暫定] OtoEntry の取得。本来は音声ライブラリのDBからphonemeをキーに取得します。
+        // 現状はビルドを通すため、デフォルト値を設定。
+        OtoEntry current_oto; 
+        current_oto.offset = 0.0;
+        current_oto.consonant = 0.0;
+        current_oto.cutoff = 0.0;
+        // ------------------------------------
+
         // キャッシュ取得（この内部で適切にロック・解析が行われる）
         auto cache_cur = get_or_analyze(pp.ev, fft_size, spec_bins);
         copy_cache_to_scratch_cur(*cache_cur);
@@ -837,8 +851,10 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
             apply_tension_breath(sr, ar, spec_bins, tension, breath);
         }
 
+        // 合成
         note_buf.assign(static_cast<size_t>(note_samples), 0.0);
-        VOSE_Synthesis(tl_scratch.f0.data(), harvest_len, tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(),
+        // output_frames を渡す
+        VOSE_Synthesis(tl_scratch.f0.data(), output_frames, tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(),
                        fft_size, kFramePeriod, pp.ev->fs, static_cast<int>(note_samples), note_buf.data());
 
         const int64_t write_offset = last_note_rendered ? current_offset - kCrossfadeSamples : current_offset;
