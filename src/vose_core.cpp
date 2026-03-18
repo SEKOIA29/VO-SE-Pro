@@ -802,22 +802,37 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
                 tl_scratch.spec_ptrs_prev.data(), tl_scratch.ap_ptrs_prev.data(),
                 cache_prev->length, spec_bins, kTransitionFrames);
         }
+        // 1. 出力すべき総フレーム数を計算（ノート長 ms / フレーム周期）
+        int output_frames = static_cast<int>(note_ms / kFramePeriod);
 
-        // パラメータ適用・合成処理（省略せず維持）
-        for (int j = 0; j < harvest_len; ++j) {
-            double t_out_ms = j * kFramePeriod; // 出力側の現在の時間
-            double t_src_ms = map_time(t_out_ms, current_oto, src_ms, note_ms);
-    
-            // ソース側の時間(ms)を、キャッシュのインデックス(frame)に変換
-            // 5.0ms/frame なので 5.0 で割る
+        // 2. スクラッチパッドの容量を再確認（出力サイズに合わせる）
+        tl_scratch.ensure_f0(output_frames);
+        tl_scratch.ensure_spec(output_frames, spec_bins);
+
+        for (int j = 0; j < output_frames; ++j) {
+            double t_out_ms = j * kFramePeriod;
+            double t_src_ms = map_time(t_out_ms, current_oto, src_ms, note_ms);   
+            
+            // ソース側のフレーム特定       
             int src_frame = static_cast<int>(t_src_ms / kFramePeriod);
             src_frame = std::clamp(src_frame, 0, cache_cur->length - 1);
-            tl_scratch.f0[j] = n.pitch_curve ? resample_curve(n.pitch_curve, n.pitch_length, j, harvest_len) : 440.0;
+            
+            // 【重要】出力バッファ j に対して、ソース src_frame のデータをコピー
             double* sr = tl_scratch.spec_ptrs[j];
             double* ar = tl_scratch.ap_ptrs[j];
-            const double gender  = n.gender_curve  ? resample_curve(n.gender_curve,  n.pitch_length, j, harvest_len) : 0.5;
-            const double tension = n.tension_curve ? resample_curve(n.tension_curve, n.pitch_length, j, harvest_len) : 0.5;
-            const double breath  = n.breath_curve  ? resample_curve(n.breath_curve,  n.pitch_length, j, harvest_len) : 0.5;
+            
+            // キャッシュから伸縮後の位置へデータを転写（ここで UTAU 伸縮が物理的に完了する）
+            std::copy_n(&cache_cur->flat_spec[static_cast<size_t>(src_frame) * spec_bins], spec_bins, sr);
+            std::copy_n(&cache_cur->flat_ap[static_cast<size_t>(src_frame) * spec_bins],   spec_bins, ar);
+            
+            // --- 以降は既存のパラメータ加工 ---
+            // ピッチ・ジェンダー等のカーブは「出力時間 j」に対して適用
+            tl_scratch.f0[j] = n.pitch_curve ? resample_curve(n.pitch_curve, n.pitch_length, j, output_frames) : 440.0;
+    
+            const double gender  = n.gender_curve  ? resample_curve(n.gender_curve,  n.pitch_length, j, output_frames) : 0.5;
+            const double tension = n.tension_curve ? resample_curve(n.tension_curve, n.pitch_length, j, output_frames) : 0.5;
+            const double breath  = n.breath_curve  ? resample_curve(n.breath_curve,  n.pitch_length, j, output_frames) : 0.5;
+
             apply_gender_shift(sr, spec_bins, gender, tl_scratch.spec_tmp.data());
             apply_tension_breath(sr, ar, spec_bins, tension, breath);
         }
