@@ -320,21 +320,31 @@ get_or_analyze(std::shared_ptr<const EmbeddedVoice> ev_sp, int fft_size, int spe
 // UTAU伸縮ロジックの核心：時間マッピング
 // ============================================================
 // 簡略化した時間マッピングロジック
-double map_time(double t_out, const OtoEntry& oto, double note_duration_ms) {
-    double offset = oto.offset; // 左ブランク
-    double fixed = oto.consonant; // 固定部
-    double cutoff = (oto.cutoff < 0) ? (source_wav_len_ms + oto.cutoff) : (oto.cutoff); // 右ブランク
+double get_source_ms(const EmbeddedVoice& ev) {
+    // 全サンプル数 / サンプリングレート * 1000 = ミリ秒
+    return (static_cast<double>(ev.waveform.size()) / ev.fs) * 1000.0;
+}
+
+// 修正後の時間マッピング関数
+double map_time(double t_out_ms, const OtoEntry& oto, double source_wav_len_ms, double note_duration_ms) {
+    double offset = oto.offset;     // 左ブランク (ms)
+    double fixed = oto.consonant;   // 固定部 (ms)
     
-    // 伸縮が必要なソース側の長さ
-    double source_stretch_len = cutoff - (offset + fixed);
-    // 出力側で伸縮に割り当てられる長さ
+    // 右ブランクの解釈 (負の値なら末尾からのオフセット)
+    double cutoff_pos = (oto.cutoff < 0) ? (source_wav_len_ms + oto.cutoff) : (oto.cutoff);
+    
+    // ソース側で引き伸ばし対象となる区間の長さ
+    double source_stretch_len = cutoff_pos - (offset + fixed);
+    // 出力側で引き伸ばしに割り当てられる長さ
     double output_stretch_len = note_duration_ms - fixed;
 
-    if (t_out < fixed) {
-        return t_out + offset;
+    if (t_out_ms < fixed) {
+        // 固定部は等速（オフセットを加算するだけ）
+        return t_out_ms + offset;
     } else {
+        // 伸縮部は比率計算
         double ratio = source_stretch_len / std::max(1.0, output_stretch_len);
-        return (t_out - fixed) * ratio + (offset + fixed);
+        return (t_out_ms - fixed) * ratio + (offset + fixed);
     }
 }
 
@@ -795,6 +805,13 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
 
         // パラメータ適用・合成処理（省略せず維持）
         for (int j = 0; j < harvest_len; ++j) {
+            double t_out_ms = j * kFramePeriod; // 出力側の現在の時間
+            double t_src_ms = map_time(t_out_ms, current_oto, src_ms, note_ms);
+    
+            // ソース側の時間(ms)を、キャッシュのインデックス(frame)に変換
+            // 5.0ms/frame なので 5.0 で割る
+            int src_frame = static_cast<int>(t_src_ms / kFramePeriod);
+            src_frame = std::clamp(src_frame, 0, cache_cur->length - 1);
             tl_scratch.f0[j] = n.pitch_curve ? resample_curve(n.pitch_curve, n.pitch_length, j, harvest_len) : 440.0;
             double* sr = tl_scratch.spec_ptrs[j];
             double* ar = tl_scratch.ap_ptrs[j];
