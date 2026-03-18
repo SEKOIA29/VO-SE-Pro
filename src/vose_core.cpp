@@ -122,65 +122,56 @@ struct SynthesisScratchPad {
     std::vector<double>  f0_prev;
     std::vector<double>  time_prev;
 
-    std::vector<std::vector<double>> mod_ap_buffer;
+    // ★推敲箇所：2次元配列を廃止し、フラット配列＋ポインタ配列の構成に変更
+    std::vector<double>  flat_mod_ap; 
     std::vector<double*> mod_ap_ptrs;
 
     int reserved_f0   = 0;
     int reserved_bins = 0;
 
-    // f0_length × spec_bins 分の領域を確保し、ポインタ配列を必ず正しく設定する。
-    //
-    // 【設計メモ】
-    // resize が容量不足時に realloc を行うと flat_spec 等の先頭アドレスが変わる。
-    // そのため「realloc が起きたときだけポインタを更新する」実装では、
-    //
-    //   (A) ensure_spec(cur_len,  bins) → flat_spec realloc なし → ポインタ更新なし
-    //   (B) copy_cache_to_scratch_cur() → flat_spec[0..] に書き込む
-    //   (C) ensure_spec(prev_len, bins) → prev_len > cur_len なので realloc 発生
-    //       → flat_spec の内容は vector が新領域へ移動するので壊れないが
-    //          spec_ptrs[i] は旧アドレスを指したままダングリング化する
-    //
-    // という問題が生じる。これを防ぐため、ポインタ再設定を resize の後に
-    // 無条件で実行する。reserved_f0 個の単純なポインタ代入なので
-    // リビルドしないケースのオーバーヘッドは無視できる。
     void ensure_spec(int f0_length, int spec_bins) {
         if (f0_length > reserved_f0 || spec_bins > reserved_bins) {
             reserved_f0   = std::max(f0_length,  reserved_f0);
             reserved_bins = std::max(spec_bins,  reserved_bins);
 
-            flat_spec     .resize(static_cast<size_t>(reserved_f0) * reserved_bins);
-            flat_ap       .resize(static_cast<size_t>(reserved_f0) * reserved_bins);
-            spec_tmp      .resize(reserved_bins);
-            spec_ptrs     .resize(reserved_f0);
-            ap_ptrs       .resize(reserved_f0);
+            size_t total_size = static_cast<size_t>(reserved_f0) * reserved_bins;
+            flat_spec.resize(total_size);
+            flat_ap.resize(total_size);
+            spec_tmp.resize(reserved_bins);
+            spec_ptrs.resize(reserved_f0);
+            ap_ptrs.resize(reserved_f0);
 
-            flat_spec_prev.resize(static_cast<size_t>(reserved_f0) * reserved_bins);
-            flat_ap_prev  .resize(static_cast<size_t>(reserved_f0) * reserved_bins);
+            flat_spec_prev.resize(total_size);
+            flat_ap_prev.resize(total_size);
             spec_ptrs_prev.resize(reserved_f0);
-            ap_ptrs_prev  .resize(reserved_f0);
-            mod_ap_buffer.assign(reserved_f0, std::vector<double>(reserved_bins));
+            ap_ptrs_prev.resize(reserved_f0);
+
+            // ★推敲箇所：メモリの連続性を保証して一括確保
+            flat_mod_ap.resize(total_size);
             mod_ap_ptrs.resize(reserved_f0);
         }
-        // realloc の有無に関わらず常に再設定する（ダングリング防止）
+        // ダングリング（無効なポインタ）防止のため、リサイズ有無にかかわらず常にポインタを再設定
         for (int i = 0; i < reserved_f0; ++i) {
-            spec_ptrs     [i] = &flat_spec     [static_cast<size_t>(i) * reserved_bins];
-            ap_ptrs       [i] = &flat_ap       [static_cast<size_t>(i) * reserved_bins];
-            spec_ptrs_prev[i] = &flat_spec_prev[static_cast<size_t>(i) * reserved_bins];
-            ap_ptrs_prev  [i] = &flat_ap_prev  [static_cast<size_t>(i) * reserved_bins];
-            mod_ap_ptrs   [i] = mod_ap_buffer[i].data();
+            size_t offset = static_cast<size_t>(i) * reserved_bins;
+            spec_ptrs[i]      = &flat_spec[offset];
+            ap_ptrs[i]        = &flat_ap[offset];
+            spec_ptrs_prev[i] = &flat_spec_prev[offset];
+            ap_ptrs_prev[i]   = &flat_ap_prev[offset];
+            // ★推敲箇所：フラットなメモリ空間への正しいオフセット参照
+            mod_ap_ptrs[i]    = &flat_mod_ap[offset];
         }
     }
 
     void ensure_f0(int length) {
         if (length > static_cast<int>(f0.size())) {
-            f0  .resize(length);
+            f0.resize(length);
             time.resize(length);
         }
     }
 
     void ensure_f0_prev(int length) {
         if (length > static_cast<int>(f0_prev.size())) {
-            f0_prev  .resize(length);
+            f0_prev.resize(length);
             time_prev.resize(length);
         }
     }
@@ -621,23 +612,15 @@ static void VOSE_Synthesis(
     }
 
     // --- 2. WORLD Synthesis（変調済み AP を使用） ---
-    Synthesis(f0, f0_length,
-              spectrogram, mod_ap,
-              fft_size, frame_period, fs,
-              y_length, y);
+    Synthesis(f0, f0_length, spectrogram, mod_ap, fft_size, frame_period, fs, y_length, y);y);
 
     // --- 3. 高域エキサイター（ポストエフェクト） ---
-    double alpha = 0.85;
-    double prev_x = 0.0;
-    double prev_y_hp = 0.0;
-
+    double prev_x = 0.0, prev_y_hp = 0.0;
     for (int i = 0; i < y_length; ++i) {
-        double x = y[i];
-        double hp = x - prev_x + alpha * prev_y_hp;
-        prev_x = x;
+        double hp = y[i] - prev_x + 0.85 * prev_y_hp;
+        prev_x = y[i]; 
         prev_y_hp = hp;
-
-        y[i] = x + hp * 0.05;   // 高域を 5% 加算
+        y[i] += hp * 0.05;
     }
 }
 
