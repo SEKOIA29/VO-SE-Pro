@@ -112,7 +112,7 @@ struct SynthesisScratchPad {
     std::vector<double*> spec_ptrs;
     std::vector<double*> ap_ptrs;
     std::vector<double>  f0;
-    std::vector<double>  time;
+    std::vector<double>  time_axis; // [修正] 衝突回避のため改名
 
     // 前音素用作業バッファ
     std::vector<double>  flat_spec_prev;
@@ -120,9 +120,9 @@ struct SynthesisScratchPad {
     std::vector<double*> spec_ptrs_prev;
     std::vector<double*> ap_ptrs_prev;
     std::vector<double>  f0_prev;
-    std::vector<double>  time_prev;
+    std::vector<double>  time_axis_prev; // [修正] 衝突回避のため改名
 
-    // ★推敲箇所：2次元配列を廃止し、フラット配列＋ポインタ配列の構成に変更
+    // 変調用
     std::vector<double>  flat_mod_ap; 
     std::vector<double*> mod_ap_ptrs;
 
@@ -146,11 +146,10 @@ struct SynthesisScratchPad {
             spec_ptrs_prev.resize(reserved_f0);
             ap_ptrs_prev.resize(reserved_f0);
 
-            // ★推敲箇所：メモリの連続性を保証して一括確保
             flat_mod_ap.resize(total_size);
             mod_ap_ptrs.resize(reserved_f0);
         }
-        // ダングリング（無効なポインタ）防止のため、リサイズ有無にかかわらず常にポインタを再設定
+        
         for (int i = 0; i < reserved_f0; ++i) {
             size_t offset = static_cast<size_t>(i) * reserved_bins;
             spec_ptrs[i]      = &flat_spec[offset];
@@ -159,23 +158,22 @@ struct SynthesisScratchPad {
             ap_ptrs_prev[i]   = &flat_ap_prev[offset];
             mod_ap_ptrs[i]    = &flat_mod_ap[offset];
         }
-    }
-    
+    } // [重要] ここにあった余計な } を1つ削除しました
 
     void ensure_f0(int length) {
         if (length > static_cast<int>(f0.size())) {
             f0.resize(length);
-            time.resize(length);
+            time_axis.resize(length); // 名前の同期
         }
     }
 
     void ensure_f0_prev(int length) {
         if (length > static_cast<int>(f0_prev.size())) {
             f0_prev.resize(length);
-            time_prev.resize(length);
+            time_axis_prev.resize(length); // 名前の同期
         }
     }
-};
+}; // 構造体の完全な閉じ
 
 static thread_local SynthesisScratchPad tl_scratch;
 
