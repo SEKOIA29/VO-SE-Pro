@@ -557,6 +557,7 @@ static void load_embedded_resource_impl(const char* phoneme,
     g_voice_db[phoneme] = std::move(ev);               // 音源を差し替え
     // 両ロックがここでスコープアウト → アトミックに解放
 }
+}
 // ヘッダ互換の C シンボル（既存の呼び出しを壊さないためのラッパー）
 extern "C" {
 DLLEXPORT void load_embedded_resource(const char* phoneme, const int16_t* raw_data, int sample_count) {
