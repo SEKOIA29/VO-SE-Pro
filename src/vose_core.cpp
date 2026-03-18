@@ -813,7 +813,7 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
             // 元信号に高域成分を少し加える
             note_buf[s] = y_sample + (hp * exciter_gain);
         }
-
+        
         // --- クロスフェード書き込み ---
         const bool    do_xfade     = last_note_rendered;
         const int64_t write_offset = do_xfade ? current_offset - kCrossfadeSamples : current_offset;
