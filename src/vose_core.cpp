@@ -628,7 +628,7 @@ static void VOSE_Synthesis(
     }
 
     // --- 2. WORLD Synthesis（変調済み AP を使用） ---
-    Synthesis(f0, f0_length, spectrogram, mod_ap, fft_size, frame_period, fs, y_length, y);y);
+    Synthesis(f0, f0_length, spectrogram, mod_ap, fft_size, frame_period, fs, y_length, y);
 
     // --- 3. 高域エキサイター（ポストエフェクト） ---
     double prev_x = 0.0, prev_y_hp = 0.0;
