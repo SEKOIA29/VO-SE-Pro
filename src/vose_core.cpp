@@ -315,6 +315,29 @@ get_or_analyze(std::shared_ptr<const EmbeddedVoice> ev_sp, int fft_size, int spe
     return cache;
 }
 
+
+// ============================================================
+// UTAU伸縮ロジックの核心：時間マッピング
+// ============================================================
+// 簡略化した時間マッピングロジック
+double map_time(double t_out, const OtoEntry& oto, double note_duration_ms) {
+    double offset = oto.offset; // 左ブランク
+    double fixed = oto.consonant; // 固定部
+    double cutoff = (oto.cutoff < 0) ? (source_wav_len_ms + oto.cutoff) : (oto.cutoff); // 右ブランク
+    
+    // 伸縮が必要なソース側の長さ
+    double source_stretch_len = cutoff - (offset + fixed);
+    // 出力側で伸縮に割り当てられる長さ
+    double output_stretch_len = note_duration_ms - fixed;
+
+    if (t_out < fixed) {
+        return t_out + offset;
+    } else {
+        double ratio = source_stretch_len / std::max(1.0, output_stretch_len);
+        return (t_out - fixed) * ratio + (offset + fixed);
+    }
+}
+
 // ============================================================
 // copy_cache_to_scratch
 //
@@ -468,6 +491,35 @@ static void apply_tension_breath(double* sr, double* ar, int spec_bins,
             ar[k] = std::clamp(ar[k], 0.0, 1.0);
         }
     }
+}
+
+// ============================================================
+//ディスクキャッシュ（.vsc）の高速シリアライズ
+// ============================================================
+
+struct VoseCacheHeader {
+    uint32_t magic = 0x45534F56; // "VOSE"
+    uint32_t version = 1;
+    int32_t length;
+    int32_t spec_bins;
+};
+
+void save_cache(const std::string& cache_path, const AnalysisCache& cache) {
+    FILE* fp = fopen(cache_path.c_str(), "wb");
+    if (!fp) return;
+
+    VoseCacheHeader header;
+    header.length = cache.length;
+    header.spec_bins = cache.spec_bins;
+    fwrite(&header, sizeof(header), 1, fp);
+
+    // 各ベクトルを連続メモリとして書き出し
+    fwrite(cache.f0.data(), sizeof(double), cache.length, fp);
+    fwrite(cache.time.data(), sizeof(double), cache.length, fp);
+    fwrite(cache.flat_spec.data(), sizeof(double), (size_t)cache.length * cache.spec_bins, fp);
+    fwrite(cache.flat_ap.data(), sizeof(double), (size_t)cache.length * cache.spec_bins, fp);
+    
+    fclose(fp);
 }
 
 // ============================================================
