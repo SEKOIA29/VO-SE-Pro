@@ -160,7 +160,7 @@ struct SynthesisScratchPad {
             mod_ap_ptrs[i]    = &flat_mod_ap[offset];
         }
     }
-    }
+    
 
     void ensure_f0(int length) {
         if (length > static_cast<int>(f0.size())) {
