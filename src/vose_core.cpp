@@ -28,6 +28,20 @@
 //  2) Then acquire g_voice_db_mutex (shared or unique).
 //  Never acquire locks in the reverse order.
 
+// 音素名をキーにして原音設定を引くためのDB
+static std::map<std::string, OtoEntry> g_oto_db;
+static std::shared_mutex g_oto_db_mutex;
+
+// Python/GUI側から UTAU の oto.ini 情報を流し込むための関数
+extern "C" void set_oto_data(const OtoEntry* entries, int count) {
+    std::unique_lock<std::shared_mutex> lock(g_oto_db_mutex);
+    g_oto_db.clear();
+    for (int i = 0; i < count; ++i) {
+        // エイリアス（"あ", "ka", "- あ" 等）をキーにして登録
+        g_oto_db[entries[i].alias] = entries[i];
+    }
+}
+
 
 // ============================================================
 // データ構造
@@ -792,15 +806,25 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         // --- map_time 用の変数計算 ---
         // 音符の長さ (ms)
         double note_ms = (static_cast<double>(note_samples) / kFs) * 1000.0;
-        // 元音源の長さ (ms)
         double src_ms = get_source_ms(*(pp.ev));
         
-        // [暫定] OtoEntry の取得。本来は音声ライブラリのDBからphonemeをキーに取得します。
-        // 現状はビルドを通すため、デフォルト値を設定。
-        OtoEntry current_oto; 
-        current_oto.offset = 0.0;
-        current_oto.consonant = 0.0;
-        current_oto.cutoff = 0.0;
+        // 【重要】DBから原音設定を検索
+        OtoEntry current_oto;
+        {
+            std::shared_lock<std::shared_mutex> lock(g_oto_db_mutex);
+            // n.wav_path または n.phoneme (代表の実装に合わせて選択) をキーにする
+            auto it = g_oto_db.find(n.wav_path); 
+            if (it != g_oto_db.end()) {
+                current_oto = it->second;
+            } else {
+                // 見つからない場合はデフォルト（伸縮なし）
+                current_oto.offset = 0.0;
+                current_oto.consonant = 0.0;
+                current_oto.cutoff = 0.0;
+                current_oto.pre_utterance = 0.0; // 先行発声
+                current_oto.overlap = 0.0;       // オーバーラップ
+            }
+        }
         // ------------------------------------
 
         // キャッシュ取得（この内部で適切にロック・解析が行われる）
