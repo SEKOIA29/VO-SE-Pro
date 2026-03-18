@@ -569,24 +569,23 @@ extern "C" {
 DLLEXPORT void load_embedded_resource(const char* phoneme, const int16_t* raw_data, int sample_count) {
     if (!phoneme || !raw_data || sample_count <= 0) return;
     
-    // ロック前に重い処理（メモリ確保・初期化）を済ませることで、他スレッドの待機時間を最小化
+    // 重い変換処理はロック外で行う
     auto ev = std::make_shared<EmbeddedVoice>();
-    ev->fs = kFs;
+    ev->fs = kFs; 
     ev->waveform.resize(sample_count);
     for (int i = 0; i < sample_count; ++i) {
         ev->waveform[i] = static_cast<double>(raw_data[i]) * kInv32768;
     }
 
-    // ★推敲箇所：キャッシュとDBのロックを同時に取得し、更新作業をアトミック化
+    // ポリシー通り、先に Cache、次に DB の順でロックを取得
     std::unique_lock<std::shared_mutex> clock(g_analysis_cache_mutex);
     std::unique_lock<std::shared_mutex> wlock(g_voice_db_mutex);
 
     auto it = g_voice_db.find(phoneme);
     if (it != g_voice_db.end()) {
-        // 既存の音源があれば、それに紐づくキャッシュを明示的に破棄
+        // 旧音源に紐づくキャッシュを確実に削除
         g_analysis_cache.erase(it->second);
     }
-    // 音源DBを安全に更新
     g_voice_db[phoneme] = std::move(ev);
 }
 }
