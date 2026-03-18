@@ -157,9 +157,9 @@ struct SynthesisScratchPad {
             ap_ptrs[i]        = &flat_ap[offset];
             spec_ptrs_prev[i] = &flat_spec_prev[offset];
             ap_ptrs_prev[i]   = &flat_ap_prev[offset];
-            // ★推敲箇所：フラットなメモリ空間への正しいオフセット参照
             mod_ap_ptrs[i]    = &flat_mod_ap[offset];
         }
+    }
     }
 
     void ensure_f0(int length) {
