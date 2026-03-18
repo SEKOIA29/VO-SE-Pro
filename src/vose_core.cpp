@@ -328,32 +328,40 @@ get_or_analyze(std::shared_ptr<const EmbeddedVoice> ev_sp, int fft_size, int spe
 
 static void copy_cache_to_scratch_cur(const AnalysisCache& c)
 {
-    // 防御チェック: scratch が十分な容量を確保しているかを保証
-    if (tl_scratch.reserved_f0 < c.length || tl_scratch.reserved_bins < c.spec_bins)
+    // 1. スペクトル情報の容量確保とポインタの再配置
+    if (tl_scratch.reserved_f0 < c.length || tl_scratch.reserved_bins < c.spec_bins) {
         tl_scratch.ensure_spec(c.length, c.spec_bins);
+    }
     
+    // 2. スペクトル・非周期性指標のフラットコピー
     const size_t total = static_cast<size_t>(c.length) * c.spec_bins;
-    std::copy(c.flat_spec.begin(), c.flat_spec.begin() + total,
-              tl_scratch.flat_spec.begin());
-    std::copy(c.flat_ap  .begin(), c.flat_ap  .begin() + total,
-              tl_scratch.flat_ap  .begin());
+    std::copy(c.flat_spec.begin(), c.flat_spec.begin() + total, tl_scratch.flat_spec.begin());
+    std::copy(c.flat_ap.begin(),   c.flat_ap.begin() + total,   tl_scratch.flat_ap.begin());
+
+    // 3. F0およびタイムスタンプ（time_axis）のコピー
+    // ensure_f0 内で f0 と time_axis の両方がリサイズされます
     tl_scratch.ensure_f0(c.length);
-    std::copy(c.f0  .begin(), c.f0  .begin() + c.length, tl_scratch.f0  .begin());
-    std::copy(c.time.begin(), c.time.begin() + c.length, tl_scratch.time.begin());
+    std::copy(c.f0.begin(),   c.f0.begin() + c.length,   tl_scratch.f0.begin());
+    std::copy(c.time.begin(), c.time.begin() + c.length, tl_scratch.time_axis.begin());
 }
+
 
 static void copy_cache_to_scratch_prev(const AnalysisCache& c)
 {
-    if (tl_scratch.reserved_f0 < c.length || tl_scratch.reserved_bins < c.spec_bins)
+    // 1. 容量確保
+    if (tl_scratch.reserved_f0 < c.length || tl_scratch.reserved_bins < c.spec_bins) {
         tl_scratch.ensure_spec(c.length, c.spec_bins);
+    }
+
+    // 2. 前音素用フラットバッファへコピー
     const size_t total = static_cast<size_t>(c.length) * c.spec_bins;
-    std::copy(c.flat_spec.begin(), c.flat_spec.begin() + total,
-              tl_scratch.flat_spec_prev.begin());
-    std::copy(c.flat_ap  .begin(), c.flat_ap  .begin() + total,
-              tl_scratch.flat_ap_prev  .begin());
+    std::copy(c.flat_spec.begin(), c.flat_spec.begin() + total, tl_scratch.flat_spec_prev.begin());
+    std::copy(c.flat_ap.begin(),   c.flat_ap.begin() + total,   tl_scratch.flat_ap_prev.begin());
+
+    // 3. 前音素用 F0/タイムスタンプのコピー
     tl_scratch.ensure_f0_prev(c.length);
-    std::copy(c.f0  .begin(), c.f0  .begin() + c.length, tl_scratch.f0_prev  .begin());
-    std::copy(c.time.begin(), c.time.begin() + c.length, tl_scratch.time_prev.begin());
+    std::copy(c.f0.begin(),   c.f0.begin() + c.length,   tl_scratch.f0_prev.begin());
+    std::copy(c.time.begin(), c.time.begin() + c.length, tl_scratch.time_axis_prev.begin());
 }
 
 // ============================================================
