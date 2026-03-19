@@ -64,6 +64,9 @@ std::string generate_cache_hash(const std::string& wav_path) {
 static std::map<std::string, OtoEntry> g_oto_db;
 static std::shared_mutex g_oto_db_mutex;
 
+// ============================================================
+// oto.ini 受け渡し
+// ============================================================
 // Python/GUI側から UTAU の oto.ini 情報を流し込むための関数
 extern "C" void set_oto_data(const OtoEntry* entries, int count) {
     std::unique_lock<std::shared_mutex> lock(g_oto_db_mutex);
@@ -108,12 +111,6 @@ struct AnalysisCache {
 
 static std::map<std::shared_ptr<const EmbeddedVoice>, std::shared_ptr<const AnalysisCache>> g_analysis_cache;
 static std::shared_mutex g_analysis_cache_mutex;
-// ============================================================
-// oto.ini 受け渡し
-// ============================================================
-
-extern "C" void set_voice_library(const char* voice_path);
-extern "C" void set_oto_data(const OtoEntry* entries, int count);
 
 // ============================================================
 // NoteState / NotePrepass
@@ -254,20 +251,6 @@ fs::path get_cache_dir() {
         fs::create_directories(cache_path); // macOS/Windows両対応
     }
     return cache_path;
-}
-
-// 保存処理 (バイナリ書き出し)
-void save_cache(const fs::path& path, const AnalysisCache& cache) {
-    std::ofstream ofs(path, std::ios::binary);
-    if (!ofs) return;
-
-    VoseCacheHeader header = { 0x45534F56, cache.length, cache.spec_bins };
-    ofs.write(reinterpret_cast<const char*>(&header), sizeof(header));
-    
-    ofs.write(reinterpret_cast<const char*>(cache.f0.data()), sizeof(double) * cache.length);
-    ofs.write(reinterpret_cast<const char*>(cache.time.data()), sizeof(double) * cache.length);
-    ofs.write(reinterpret_cast<const char*>(cache.flat_spec.data()), sizeof(double) * cache.length * cache.spec_bins);
-    ofs.write(reinterpret_cast<const char*>(cache.flat_ap.data()), sizeof(double) * cache.length * cache.spec_bins);
 }
 
 // 読み込み処理
@@ -419,11 +402,9 @@ get_or_analyze(std::shared_ptr<const EmbeddedVoice> ev_sp, int fft_size, int spe
 
     // 4. キャッシュがどこにもないので解析実行
     auto cache = build_analysis_cache(*ev_sp, fft_size, spec_bins);
-    
-    // 解析結果をディスクに保存（ここは wlock の外でも良いが、確実な保存を優先）
-    save_cache(cache_file, *cache);
-    
-    g_analysis_cache[ev_sp] = cache;
+    g_analysis_cache[ev_sp] = cache;   // 先にキャッシュ登録
+    wlock.unlock();                    // アンロック
+    save_cache(cache_file, *cache);    // ロック外でファイルI/O
     return cache;
 }
 
@@ -618,8 +599,8 @@ static void apply_tension_breath(double* sr, double* ar, int spec_bins,
 //ディスクキャッシュ（.vsc）の高速シリアライズ
 // ============================================================
 
-void save_cache(const std::string& cache_path, const AnalysisCache& cache) {
-    FILE* fp = fopen(cache_path.c_str(), "wb");
+void save_cache(const fs::path& cache_path, const AnalysisCache& cache) {
+    FILE* fp = fopen(cache_path.string().c_str(), "wb");
     if (!fp) return;
 
     VoseCacheHeader header;
@@ -851,38 +832,32 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         const int64_t ns = note_samples_safe(pitch_len);
         auto ev = find_voice_ref(notes[i].wav_path); // 内部で shared_lock されるため安全
 
-        if (ev) {
-            prepass[i] = NotePrepass(NoteState::RENDERABLE, ns, ev,
-                                     prev_renderable ? last_ev : nullptr);
-            if (prev_renderable) ++xfade_count;
-            prev_renderable = true;
-            last_ev = ev;
+// oto検索を先に行う
+const OtoEntry* found_oto = nullptr;
+{
+    std::shared_lock<std::shared_mutex> lock(g_oto_db_mutex);
+    auto oto_it = g_oto_db.find(notes[i].wav_path);
+    if (oto_it != g_oto_db.end())
+        found_oto = &oto_it->second;
+}
 
-            const int wav_len = static_cast<int>(ev->waveform.size());
-            const int harvest_len = GetSamplesForHarvest(ev->fs, wav_len, kFramePeriod);
-            if (harvest_len > max_harvest_len) max_harvest_len = harvest_len;
-        } else {
-            prepass[i] = NotePrepass(NoteState::NO_VOICE, ns, nullptr);
-            prev_renderable = false;
-            last_ev = nullptr;
-        }
-
-        const OtoEntry* found_oto = nullptr;
-        {
-            std::shared_lock<std::shared_mutex> lock(g_oto_db_mutex);
-            auto it = g_oto_db.find(notes[i].wav_path); // または phoneme
-            if (it != g_oto_db.end()) {
-                found_oto = &(it->second);
-            }
-        }
-
-        if (ev) {
-            prepass[i] = NotePrepass(NoteState::RENDERABLE, ns, ev,
-                                     prev_renderable ? last_ev : nullptr,
-                                     found_oto); // ここでotoを渡す
-        }
-        total_samples += ns;
+    if (ev) {
+        prepass[i] = NotePrepass(NoteState::RENDERABLE, ns, ev,
+                                 prev_renderable ? last_ev : nullptr,
+                                 found_oto);          // otoも一緒に渡す（1回だけ）
+        if (prev_renderable) ++xfade_count;
+        prev_renderable = true;
+        last_ev = ev;
+        const int wav_len     = static_cast<int>(ev->waveform.size());
+        const int harvest_len = GetSamplesForHarvest(ev->fs, wav_len, kFramePeriod);
+        if (harvest_len > max_harvest_len) max_harvest_len = harvest_len;
+    } else {
+        prepass[i]      = NotePrepass(NoteState::NO_VOICE, ns, nullptr);
+        prev_renderable = false;
+        last_ev         = nullptr;
     }
+    total_samples += ns;
+    
 
     total_samples -= static_cast<int64_t>(kCrossfadeSamples) * xfade_count;
     if (total_samples <= 0) return;
