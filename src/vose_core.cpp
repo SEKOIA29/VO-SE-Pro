@@ -23,11 +23,6 @@
 #include "world/audioio.h"
 #include "world/constantnumbers.h"
 
-// LOCK ORDER POLICY:
-//  1) Acquire g_analysis_cache_mutex (shared or unique) first.
-//  2) Then acquire g_voice_db_mutex (shared or unique).
-//  Never acquire locks in the reverse order.
-
 // 音素名をキーにして原音設定を引くためのDB
 static std::map<std::string, OtoEntry> g_oto_db;
 static std::shared_mutex g_oto_db_mutex;
@@ -57,11 +52,6 @@ static std::shared_mutex g_voice_db_mutex;
 
 // ============================================================
 // AnalysisCache
-//
-// EmbeddedVoice 1音源につき1エントリ。
-// Harvest / CheapTrick / D4C の結果をすべて保持する。
-// 音源データは不変（load_embedded_resource 後に書き換えない前提）なので
-// 解析結果もキャッシュ後は不変 → shared_lock での読み取りが安全。
 // ============================================================
 
 struct AnalysisCache {
@@ -114,11 +104,6 @@ struct NotePrepass {
 
 // ============================================================
 // SynthesisScratchPad
-//
-// キャッシュ導入後は「キャッシュから作業バッファへのコピー先」として使う。
-// ポインタ配列（spec_ptrs / ap_ptrs）は作業バッファを指したまま維持する。
-// prev 用の作業バッファも保持するが、get_or_analyze() がコピーまで面倒を見るので
-// execute_render 側は "cur" / "prev" のどちらのバッファを使うかだけ意識すればよい。
 // ============================================================
 
 struct SynthesisScratchPad {
