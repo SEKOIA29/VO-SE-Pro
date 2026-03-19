@@ -336,23 +336,42 @@ build_analysis_cache(const EmbeddedVoice& ev, int fft_size, int spec_bins)
 static std::shared_ptr<const AnalysisCache>
 get_or_analyze(std::shared_ptr<const EmbeddedVoice> ev_sp, int fft_size, int spec_bins)
 {
-    // --- まず共有ロックでキャッシュ確認 ---
+    // 1. メモリキャッシュを共有ロックで確認
     {
         std::shared_lock<std::shared_mutex> rlock(g_analysis_cache_mutex);
         auto it = g_analysis_cache.find(ev_sp);
         if (it != g_analysis_cache.end()) return it->second;
     }
 
-    // --- キャッシュミス: 排他ロックを取り直して再確認してから生成 ---
+    // 2. ディスクキャッシュの確認 (ロックの外で実行可能)
+    // ※ generate_cache_hash, get_cache_dir, load_cache は実装済みとする
+    std::string h_str = generate_cache_hash(ev_sp->path); 
+    fs::path cache_file = get_cache_dir() / (h_str + ".vsc");
+
+    auto disk_cache = load_cache(cache_file);
+
+    // 3. 排他ロックを取得して最終確定
     std::unique_lock<std::shared_mutex> wlock(g_analysis_cache_mutex);
+    
+    // 再度メモリを確認（ディスク読み込み中に他スレッドが生成した可能性への対策）
     auto it = g_analysis_cache.find(ev_sp);
     if (it != g_analysis_cache.end()) return it->second;
 
+    if (disk_cache) {
+        // ディスクにあればそれをメモリに載せる
+        g_analysis_cache[ev_sp] = disk_cache;
+        return disk_cache;
+    }
+
+    // 4. キャッシュがどこにもないので解析実行
     auto cache = build_analysis_cache(*ev_sp, fft_size, spec_bins);
+    
+    // 解析結果をディスクに保存（ここは wlock の外でも良いが、確実な保存を優先）
+    save_cache(cache_file, *cache);
+    
     g_analysis_cache[ev_sp] = cache;
     return cache;
 }
-
 
 // ============================================================
 // UTAU伸縮ロジックの核心：時間マッピング
