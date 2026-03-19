@@ -3,6 +3,8 @@
 #include <map>
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <random>
 #include <cstring>
 #include <cstdint>
@@ -22,6 +24,40 @@
 #include "world/harvest.h"
 #include "world/audioio.h"
 #include "world/constantnumbers.h"
+
+namespace fs = std::filesystem;
+
+// 永続的な 64bit FNV-1a ハッシュ (環境に依存しない)
+uint64_t fnv1a_hash(const std::string& str) {
+    uint64_t hash = 0xcbf29ce484222325ULL;
+    for (char c : str) {
+        hash ^= static_cast<uint64_t>(c);
+        hash *= 0x100000001b3ULL;
+    }
+    return hash;
+}
+
+// OSを問わずキャッシュ用ハッシュを生成
+std::string generate_cache_hash(const std::string& wav_path) {
+    try {
+        fs::path p(wav_path);
+        if (!fs::exists(p)) return "0000000000000000";
+
+        auto last_time = fs::last_write_time(p).time_since_epoch().count();
+        auto file_size = fs::file_size(p);
+
+        // パス + サイズ + 更新日時 で一意性を確保
+        std::string seed = p.string() + std::to_string(last_time) + std::to_string(file_size);
+        
+        uint64_t h = fnv1a_hash(seed);
+        
+        std::stringstream ss;
+        ss << std::hex << std::setw(16) << std::setfill('0') << h;
+        return ss.str();
+    } catch (...) {
+        return "error_hash";
+    }
+}
 
 // 音素名をキーにして原音設定を引くためのDB
 static std::map<std::string, OtoEntry> g_oto_db;
