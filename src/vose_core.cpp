@@ -244,6 +244,57 @@ static std::shared_ptr<const EmbeddedVoice> find_voice_ref(const char* key)
     return it->second;
 }
 
+// キャッシュディレクトリの取得（実行ファイルと同じ階層に cache フォルダを作る例）
+fs::path get_cache_dir() {
+    fs::path cache_path = "cache"; 
+    if (!fs::exists(cache_path)) {
+        fs::create_directories(cache_path); // macOS/Windows両対応
+    }
+    return cache_path;
+}
+
+// 保存処理 (バイナリ書き出し)
+void save_cache(const fs::path& path, const AnalysisCache& cache) {
+    std::ofstream ofs(path, std::ios::binary);
+    if (!ofs) return;
+
+    VoseCacheHeader header = { 0x45534F56, cache.length, cache.spec_bins };
+    ofs.write(reinterpret_cast<const char*>(&header), sizeof(header));
+    
+    ofs.write(reinterpret_cast<const char*>(cache.f0.data()), sizeof(double) * cache.length);
+    ofs.write(reinterpret_cast<const char*>(cache.time.data()), sizeof(double) * cache.length);
+    ofs.write(reinterpret_cast<const char*>(cache.flat_spec.data()), sizeof(double) * cache.length * cache.spec_bins);
+    ofs.write(reinterpret_cast<const char*>(cache.flat_ap.data()), sizeof(double) * cache.length * cache.spec_bins);
+}
+
+// 読み込み処理
+std::shared_ptr<AnalysisCache> load_cache(const fs::path& path) {
+    if (!fs::exists(path)) return nullptr;
+
+    std::ifstream ifs(path, std::ios::binary);
+    VoseCacheHeader header;
+    ifs.read(reinterpret_cast<char*>(&header), sizeof(header));
+
+    if (header.magic != 0x45534F56) return nullptr;
+
+    auto cache = std::make_shared<AnalysisCache>();
+    cache->length = header.length;
+    cache->spec_bins = header.spec_bins;
+
+    cache->f0.resize(cache.length);
+    cache->time.resize(cache.length);
+    cache->flat_spec.resize((size_t)cache.length * cache.spec_bins);
+    cache->flat_ap.resize((size_t)cache.length * cache.spec_bins);
+
+    ifs.read(reinterpret_cast<char*>(cache->f0.data()), sizeof(double) * cache.length);
+    ifs.read(reinterpret_cast<char*>(cache->time.data()), sizeof(double) * cache.length);
+    ifs.read(reinterpret_cast<char*>(cache->flat_spec.data()), sizeof(double) * cache.length * cache.spec_bins);
+    ifs.read(reinterpret_cast<char*>(cache->flat_ap.data()), sizeof(double) * cache.length * cache.spec_bins);
+
+    return cache;
+}
+
+
 // ============================================================
 // build_analysis_cache
 //
