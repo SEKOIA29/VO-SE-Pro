@@ -369,6 +369,7 @@ build_analysis_cache(const EmbeddedVoice& ev, int fft_size, int spec_bins)
 // 指定音源のキャッシュを返す。未キャッシュなら build_analysis_cache() を呼ぶ。
 // スレッドセーフ（double-checked locking パターン）。
 // ============================================================
+void save_cache(const std::string& filename, const CacheData& cache);
 
 static std::shared_ptr<const AnalysisCache>
 get_or_analyze(std::shared_ptr<const EmbeddedVoice> ev_sp, int fft_size, int spec_bins)
@@ -832,14 +833,14 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         const int64_t ns = note_samples_safe(pitch_len);
         auto ev = find_voice_ref(notes[i].wav_path); // 内部で shared_lock されるため安全
 
-// oto検索を先に行う
-const OtoEntry* found_oto = nullptr;
-{
-    std::shared_lock<std::shared_mutex> lock(g_oto_db_mutex);
-    auto oto_it = g_oto_db.find(notes[i].wav_path);
-    if (oto_it != g_oto_db.end())
-        found_oto = &oto_it->second;
-}
+        // oto検索を先に行う
+        const OtoEntry* found_oto = nullptr;
+        {
+            std::shared_lock<std::shared_mutex> lock(g_oto_db_mutex);
+            auto oto_it = g_oto_db.find(notes[i].wav_path);
+            if (oto_it != g_oto_db.end())
+                found_oto = &oto_it->second;
+        }
 
     if (ev) {
         prepass[i] = NotePrepass(NoteState::RENDERABLE, ns, ev,
@@ -951,6 +952,7 @@ const OtoEntry* found_oto = nullptr;
     }
 
     wavwrite(full_song_buffer.data(), static_cast<int>(full_song_buffer.size()), kFs, 16, output_path);
+
 }
 } // extern "C"
 
