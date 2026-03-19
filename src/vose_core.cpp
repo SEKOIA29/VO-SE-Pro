@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <random>
+#include <sstream>
 #include <cstring>
 #include <cstdint>
 #include <mutex>
@@ -79,10 +80,12 @@ extern "C" void set_oto_data(const OtoEntry* entries, int count) {
 // ============================================================
 
 struct EmbeddedVoice {
-    std::vector<double> waveform;
-    int fs;
+    std::string path;              // 追加: 音声ファイルのフルパス（ハッシュ生成用）
+    std::vector<double> waveform;  // 波形データ
+    int fs;                        // サンプリングレート
 };
 
+// 既存のDB宣言
 static std::map<std::string, std::shared_ptr<const EmbeddedVoice>> g_voice_db;
 static std::shared_mutex g_voice_db_mutex;
 
