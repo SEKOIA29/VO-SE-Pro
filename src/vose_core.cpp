@@ -80,7 +80,7 @@ extern "C" void set_oto_data(const OtoEntry* entries, int count) {
 // ============================================================
 
 struct EmbeddedVoice {
-    std::string path;              // 追加: 音声ファイルのフルパス（ハッシュ生成用）
+    std::string path;              // 音声ファイルのフルパス（ハッシュ生成用）
     std::vector<double> waveform;  // 波形データ
     int fs;                        // サンプリングレート
 };
