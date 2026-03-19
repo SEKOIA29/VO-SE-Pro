@@ -5,6 +5,18 @@ import numpy as np
 import _ctypes
 import platform
 
+
+system = platform.system()
+lib_ext = ".dll" if system == "Windows" else ".dylib"
+if system == "Darwin": # Macのこと
+    lib_name = "libvose_core" + lib_ext
+else:
+    lib_name = "vose_core" + lib_ext
+
+# 実行ファイルのパスからライブラリを探す
+base_path = os.path.dirname(__file__)
+self.lib = ctypes.CDLL(os.path.join(base_path, lib_name))
+
 try:
     from .audio_types import SynthesisRequest, CNoteEvent  # type: ignore
 except Exception:
@@ -30,7 +42,7 @@ class DynamicsEngine:
         self._setup_ctypes()
         
         # 2. AIモデルのロード (onnxruntime等を想定)
-        # 今後M3のNeural Engineを活用する場合はここに初期化を書く
+        # 今後Apple siliconのNeural Engineを活用する場合はここに初期化を書く
         print("Dynamics Engine: System Initialized.")
 
     def _setup_ctypes(self):
