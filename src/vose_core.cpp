@@ -618,13 +618,6 @@ static void apply_tension_breath(double* sr, double* ar, int spec_bins,
 //ディスクキャッシュ（.vsc）の高速シリアライズ
 // ============================================================
 
-struct VoseCacheHeader {
-    uint32_t magic = 0x45534F56; // "VOSE"
-    uint32_t version = 1;
-    int32_t length;
-    int32_t spec_bins;
-};
-
 void save_cache(const std::string& cache_path, const AnalysisCache& cache) {
     FILE* fp = fopen(cache_path.c_str(), "wb");
     if (!fp) return;
