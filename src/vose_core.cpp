@@ -44,8 +44,8 @@ std::string generate_cache_hash(const std::string& wav_path) {
         fs::path p(wav_path);
         if (!fs::exists(p)) return "0000000000000000";
 
-        auto last_time = fs::last_write_time(p).time_since_epoch().count();
-        auto file_size = fs::file_size(p);
+        auto last_time = static_cast<long long>(fs::last_write_time(p).time_since_epoch().count());
+        auto file_size = static_cast<unsigned long long>(fs::file_size(p));
 
         // パス + サイズ + 更新日時 で一意性を確保
         std::string seed = p.string() + std::to_string(last_time) + std::to_string(file_size);
@@ -284,15 +284,15 @@ std::shared_ptr<AnalysisCache> load_cache(const fs::path& path) {
     cache->length = header.length;
     cache->spec_bins = header.spec_bins;
 
-    cache->f0.resize(cache.length);
-    cache->time.resize(cache.length);
-    cache->flat_spec.resize((size_t)cache.length * cache.spec_bins);
-    cache->flat_ap.resize((size_t)cache.length * cache.spec_bins);
+    cache->f0.resize(cache->length);
+    cache->time.resize(cache->length);
+    cache->flat_spec.resize((size_t)cache->length * cache->spec_bins);
+    cache->flat_ap.resize((size_t)cache->length * cache->spec_bins);
 
-    ifs.read(reinterpret_cast<char*>(cache->f0.data()), sizeof(double) * cache.length);
-    ifs.read(reinterpret_cast<char*>(cache->time.data()), sizeof(double) * cache.length);
-    ifs.read(reinterpret_cast<char*>(cache->flat_spec.data()), sizeof(double) * cache.length * cache.spec_bins);
-    ifs.read(reinterpret_cast<char*>(cache->flat_ap.data()), sizeof(double) * cache.length * cache.spec_bins);
+    ifs.read(reinterpret_cast<char*>(cache->f0.data()), sizeof(double) * cache->length);
+    ifs.read(reinterpret_cast<char*>(cache->time.data()), sizeof(double) * cache->length);
+    ifs.read(reinterpret_cast<char*>(cache->flat_spec.data()), sizeof(double) * cache->length * cache->spec_bins);
+    ifs.read(reinterpret_cast<char*>(cache->flat_ap.data()), sizeof(double) * cache->length * cache->spec_bins);
 
     return cache;
 }
