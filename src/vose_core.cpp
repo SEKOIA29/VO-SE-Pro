@@ -97,16 +97,19 @@ enum class NoteState : uint8_t {
 };
 
 struct NotePrepass {
-    NoteState                            state        = NoteState::INVALID;
-    int64_t                              note_samples = 0;
+    NoteState state = NoteState::INVALID;
+    int64_t note_samples = 0;
     std::shared_ptr<const EmbeddedVoice> ev;
     std::shared_ptr<const EmbeddedVoice> prev_ev;
+    // --- [追加] 原音設定の参照を保持 ---
+    const OtoEntry* oto = nullptr; 
 
     NotePrepass() = default;
     NotePrepass(NoteState s, int64_t ns,
                 std::shared_ptr<const EmbeddedVoice> e,
-                std::shared_ptr<const EmbeddedVoice> pe = nullptr)
-        : state(s), note_samples(ns), ev(std::move(e)), prev_ev(std::move(pe)) {}
+                std::shared_ptr<const EmbeddedVoice> pe = nullptr,
+                const OtoEntry* o = nullptr)
+        : state(s), note_samples(ns), ev(std::move(e)), prev_ev(std::move(pe)), oto(o) {}
 };
 
 // ============================================================
@@ -776,6 +779,21 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
             prev_renderable = false;
             last_ev = nullptr;
         }
+
+        const OtoEntry* found_oto = nullptr;
+        {
+            std::shared_lock<std::shared_mutex> lock(g_oto_db_mutex);
+            auto it = g_oto_db.find(notes[i].wav_path); // または phoneme
+            if (it != g_oto_db.end()) {
+                found_oto = &(it->second);
+            }
+        }
+
+        if (ev) {
+            prepass[i] = NotePrepass(NoteState::RENDERABLE, ns, ev,
+                                     prev_renderable ? last_ev : nullptr,
+                                     found_oto); // ここでotoを渡す
+        }
         total_samples += ns;
     }
 
@@ -802,6 +820,14 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
 
         NoteEvent& n = notes[idx];
         const int64_t note_samples = pp.note_samples;
+        
+        // パス1で解決済みのOTOを使用。なければデフォルト値。
+        static const OtoEntry kDefaultOto = {0}; // 全メンバ0初期化
+        const OtoEntry& current_oto = pp.oto ? *(pp.oto) : kDefaultOto;
+
+        double note_ms = (static_cast<double>(pp.note_samples) / kFs) * 1000.0;
+        double src_ms = get_source_ms(*(pp.ev));
+        int output_frames = static_cast<int>(note_ms / kFramePeriod);
 
         // --- map_time 用の変数計算 ---
         // 音符の長さ (ms)
@@ -849,7 +875,7 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
 
         for (int j = 0; j < output_frames; ++j) {
             double t_out_ms = j * kFramePeriod;
-            double t_src_ms = map_time(t_out_ms, current_oto, src_ms, note_ms);   
+            double t_src_ms = map_time(t_out_ms, current_oto, src_ms, note_ms);
             
             // ソース側のフレーム特定       
             int src_frame = static_cast<int>(t_src_ms / kFramePeriod);
@@ -875,16 +901,34 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
             apply_tension_breath(sr, ar, spec_bins, tension, breath);
         }
 
-        // 合成
+        // --- 1. 合成 ---
         note_buf.assign(static_cast<size_t>(note_samples), 0.0);
-        // output_frames を渡す
-        VOSE_Synthesis(tl_scratch.f0.data(), output_frames, tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(),
-                       fft_size, kFramePeriod, pp.ev->fs, static_cast<int>(note_samples), note_buf.data());
+        // [修正] harvest_len ではなく、伸縮計算後の output_frames を渡す
+        VOSE_Synthesis(tl_scratch.f0.data(), output_frames, 
+                       tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(),
+                       fft_size, kFramePeriod, pp.ev->fs, 
+                       static_cast<int>(note_samples), note_buf.data());
 
-        const int64_t write_offset = last_note_rendered ? current_offset - kCrossfadeSamples : current_offset;
-        apply_crossfade(full_song_buffer, total_samples, note_buf, note_samples, write_offset, last_note_rendered ? kCrossfadeSamples : 0);
+        // --- 2. 先行発声を考慮した書き出し位置の計算 ---
+        // ms を サンプル数に変換
+        int64_t pre_samples = static_cast<int64_t>(current_oto.preutterance * kFs / 1000.0);
+        
+        // 基本の書き出し位置（前ノートとのクロスフェード分を引く）
+        int64_t base_offset = last_note_rendered ? (current_offset - kCrossfadeSamples) : current_offset;
+        
+        // 先行発声分だけ「左（過去）」にずらして配置
+        int64_t write_offset = base_offset - pre_samples;
 
-        current_offset += last_note_rendered ? note_samples - kCrossfadeSamples : note_samples;
+        // 安全策：書き出し位置がマイナスにならないようガード
+        if (write_offset < 0) write_offset = 0;
+
+        // --- 3. クロスフェードと書き込み ---
+        apply_crossfade(full_song_buffer, total_samples, note_buf, note_samples, 
+                        write_offset, last_note_rendered ? kCrossfadeSamples : 0);
+
+        // --- 4. オフセットの更新 ---
+        // 次のノートの基準位置を更新（クロスフェード分を考慮）
+        current_offset += last_note_rendered ? (note_samples - kCrossfadeSamples) : note_samples;
         last_note_rendered = true;
     }
 
