@@ -806,78 +806,44 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         NoteEvent& n = notes[idx];
         const int64_t note_samples = pp.note_samples;
         
-        // パス1で解決済みのOTOを使用。なければデフォルト値。
-        static const OtoEntry kDefaultOto = {0}; // 全メンバ0初期化
+        // --- 1. 定数・変数の確定 (二重定義を排除) ---
+        const double note_ms = (static_cast<double>(note_samples) / kFs) * 1000.0;
+        const double src_ms  = get_source_ms(*(pp.ev));
+        const int output_frames = static_cast<int>(note_ms / kFramePeriod);
+
+        // パス1で解決済みの OTO を使用 (ループ内の DB 検索を廃止)
+        static const OtoEntry kDefaultOto = {0}; 
         const OtoEntry& current_oto = pp.oto ? *(pp.oto) : kDefaultOto;
 
-        double note_ms = (static_cast<double>(pp.note_samples) / kFs) * 1000.0;
-        double src_ms = get_source_ms(*(pp.ev));
-        int output_frames = static_cast<int>(note_ms / kFramePeriod);
-
-        // --- map_time 用の変数計算 ---
-        // 音符の長さ (ms)
-        double note_ms = (static_cast<double>(note_samples) / kFs) * 1000.0;
-        double src_ms = get_source_ms(*(pp.ev));
-        
-        // 【重要】DBから原音設定を検索
-        OtoEntry current_oto;
-        {
-            std::shared_lock<std::shared_mutex> lock(g_oto_db_mutex);
-            // n.wav_path または n.phoneme (代表の実装に合わせて選択) をキーにする
-            auto it = g_oto_db.find(n.wav_path); 
-            if (it != g_oto_db.end()) {
-                current_oto = it->second;
-            } else {
-                // 見つからない場合はデフォルト（伸縮なし）
-                current_oto.offset = 0.0;
-                current_oto.consonant = 0.0;
-                current_oto.cutoff = 0.0;
-                current_oto.pre_utterance = 0.0; // 先行発声
-                current_oto.overlap = 0.0;       // オーバーラップ
-            }
-        }
-        // ------------------------------------
-
-        // キャッシュ取得（この内部で適切にロック・解析が行われる）
+        // --- 2. キャッシュ取得とスクラッチ準備 ---
         auto cache_cur = get_or_analyze(pp.ev, fft_size, spec_bins);
-        copy_cache_to_scratch_cur(*cache_cur);
-        const int harvest_len = cache_cur->length;
+        tl_scratch.ensure_f0(output_frames);
+        tl_scratch.ensure_spec(output_frames, spec_bins);
 
         if (pp.prev_ev) {
             auto cache_prev = get_or_analyze(pp.prev_ev, fft_size, spec_bins);
             copy_cache_to_scratch_prev(*cache_prev);
-            blend_transition_spectra(
-                tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(), harvest_len,
-                tl_scratch.spec_ptrs_prev.data(), tl_scratch.ap_ptrs_prev.data(),
-                cache_prev->length, spec_bins, kTransitionFrames);
+            // 代表、ここは将来的に「出力フレーム単位」での補間が必要になるかもしれません
+            // blend_transition_spectra(tl_scratch.spec_ptrs.data(), ...);
         }
-        // 1. 出力すべき総フレーム数を計算（ノート長 ms / フレーム周期）
-        int output_frames = static_cast<int>(note_ms / kFramePeriod);
 
-        // 2. スクラッチパッドの容量を再確認（出力サイズに合わせる）
-        tl_scratch.ensure_f0(output_frames);
-        tl_scratch.ensure_spec(output_frames, spec_bins);
-
+        // --- 3. 伸縮・パラメータ転写ループ ---
         for (int j = 0; j < output_frames; ++j) {
             double t_out_ms = j * kFramePeriod;
+            // map_time に current_oto を渡す（スペルは preutterance に統一済み）
             double t_src_ms = map_time(t_out_ms, current_oto, src_ms, note_ms);
             
-            // ソース側のフレーム特定       
             int src_frame = static_cast<int>(t_src_ms / kFramePeriod);
             src_frame = std::clamp(src_frame, 0, cache_cur->length - 1);
             
-            // 【重要】出力バッファ j に対して、ソース src_frame のデータをコピー
             double* sr = tl_scratch.spec_ptrs[j];
             double* ar = tl_scratch.ap_ptrs[j];
             
-            // キャッシュから伸縮後の位置へデータを転写（ここで UTAU 伸縮が物理的に完了する）
             std::copy_n(&cache_cur->flat_spec[static_cast<size_t>(src_frame) * spec_bins], spec_bins, sr);
             std::copy_n(&cache_cur->flat_ap[static_cast<size_t>(src_frame) * spec_bins],   spec_bins, ar);
             
-            // --- 以降は既存のパラメータ加工 ---
-            // ピッチ・ジェンダー等のカーブは「出力時間 j」に対して適用
+            // パラメータ加工
             tl_scratch.f0[j] = n.pitch_curve ? resample_curve(n.pitch_curve, n.pitch_length, j, output_frames) : 440.0;
-    
             const double gender  = n.gender_curve  ? resample_curve(n.gender_curve,  n.pitch_length, j, output_frames) : 0.5;
             const double tension = n.tension_curve ? resample_curve(n.tension_curve, n.pitch_length, j, output_frames) : 0.5;
             const double breath  = n.breath_curve  ? resample_curve(n.breath_curve,  n.pitch_length, j, output_frames) : 0.5;
@@ -886,33 +852,23 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
             apply_tension_breath(sr, ar, spec_bins, tension, breath);
         }
 
-        // --- 1. 合成 ---
+        // --- 4. 合成と書き出し ---
         note_buf.assign(static_cast<size_t>(note_samples), 0.0);
-        // [修正] harvest_len ではなく、伸縮計算後の output_frames を渡す
         VOSE_Synthesis(tl_scratch.f0.data(), output_frames, 
                        tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(),
                        fft_size, kFramePeriod, pp.ev->fs, 
                        static_cast<int>(note_samples), note_buf.data());
 
-        // --- 2. 先行発声を考慮した書き出し位置の計算 ---
-        // ms を サンプル数に変換
+        // 先行発声を考慮した配置
         int64_t pre_samples = static_cast<int64_t>(current_oto.preutterance * kFs / 1000.0);
-        
-        // 基本の書き出し位置（前ノートとのクロスフェード分を引く）
         int64_t base_offset = last_note_rendered ? (current_offset - kCrossfadeSamples) : current_offset;
-        
-        // 先行発声分だけ「左（過去）」にずらして配置
         int64_t write_offset = base_offset - pre_samples;
 
-        // 安全策：書き出し位置がマイナスにならないようガード
         if (write_offset < 0) write_offset = 0;
 
-        // --- 3. クロスフェードと書き込み ---
         apply_crossfade(full_song_buffer, total_samples, note_buf, note_samples, 
                         write_offset, last_note_rendered ? kCrossfadeSamples : 0);
 
-        // --- 4. オフセットの更新 ---
-        // 次のノートの基準位置を更新（クロスフェード分を考慮）
         current_offset += last_note_rendered ? (note_samples - kCrossfadeSamples) : note_samples;
         last_note_rendered = true;
     }
