@@ -5,8 +5,6 @@ import numpy as np
 import platform
 import os
 
-
-
 try:
     from .audio_types import SynthesisRequest, CNoteEvent  # type: ignore
 except Exception:
@@ -36,14 +34,14 @@ class DynamicsEngine:
             lib_name = "vose_core.dll"
 
         # dll_path がディレクトリを指しているかファイル指しているかにかかわらず
-        # 適切なパスを構築する（ここで os を使用）
+        # 適切なパスを構築する
         if os.path.isdir(dll_path):
             full_path = os.path.join(dll_path, lib_name)
         else:
             full_path = dll_path
 
         # 1. DLLのロード
-        self.lib = ctypes.CDLL(full_path) # <--- self はメソッド内で使う (Error 2)
+        self.lib = ctypes.CDLL(full_path) 
         self._setup_ctypes()
         
         print(f"Dynamics Engine: System Initialized for {system}")
