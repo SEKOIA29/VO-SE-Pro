@@ -28,7 +28,7 @@ class DynamicsEngine:
     lib: Optional[ctypes.CDLL]
 
     def __init__(self, dll_path: str, _model_path: str):
-        self.lib = None # 初期化
+        self.lib = None 
         system = platform.system()
         
         if system == "Darwin":
