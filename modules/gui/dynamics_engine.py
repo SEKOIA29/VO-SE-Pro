@@ -4,6 +4,7 @@ import ctypes
 import numpy as np
 import platform
 import os
+from typing import Optional, Any
 
 try:
     from .audio_types import SynthesisRequest, CNoteEvent  # type: ignore
@@ -102,24 +103,25 @@ class DynamicsEngine:
         req.sample_rate = 44100
         return req
 
-    def unload(self):
+    def unload(self) -> None:
         """DLLをメモリから完全に解除する（OS別の低層処理）"""
-        if not hasattr(self, 'lib') or self.lib is None:
+        # self.lib が None である可能性を考慮 (Pyright対策)
+        lib = self.lib
+        if lib is None:
             return
 
-        handle = self.lib._handle
+        handle = lib._handle
         system = platform.system()
 
         try:
             if system == "Windows":
-                # Windows: kernel32.dllのFreeLibraryを使用
-                from _ctypes import FreeLibrary
-                FreeLibrary(handle)
+                # Pyrightのエラーを避けるため、kernel32から直接FreeLibraryを叩く
+                # これにより _ctypes からの不安定なインポートを回避できます
+                kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+                kernel32.FreeLibrary(handle)
             else:
-                # Mac / Linux: libdl.dylib(又はlibc)のdlcloseを使用
-                # pythonapiを経由することで、OS標準の動的ライブラリ操作を直接叩く
-                import ctypes
-                libdl = ctypes.CDLL(None) # Noneを指定すると標準Cライブラリをロード
+                # Mac / Linux: 標準Cライブラリの dlclose を使用
+                libdl = ctypes.CDLL(None)
                 dlclose = libdl.dlclose
                 dlclose.argtypes = [ctypes.c_void_p]
                 dlclose(handle)
@@ -128,5 +130,5 @@ class DynamicsEngine:
             print(f"Engine: DLL Unloaded successfully on {system}.")
             
         except Exception as e:
-            # 強制解放はリスクを伴うため、失敗してもクラッシュさせない
+            # 強制解放はリスクを伴うため、警告に留める
             print(f"Engine: Unload warning - {e}")
