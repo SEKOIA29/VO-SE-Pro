@@ -9,6 +9,8 @@
 #include <sstream>
 #include <cstring>
 #include <cstdint>
+#include <future>
+#include <thread>
 #include <mutex>
 #include <shared_mutex>
 #include <memory>
@@ -675,25 +677,50 @@ DLLEXPORT void load_embedded_resource(const char* phoneme,
 //   最終出力時は先頭の余白をスキップして wavwrite に渡す。
 // ============================================================
 
+e core · CPP
+コピー
+
+// ============================================================
+// execute_render  (並列合成版)
+//
+// 並列化の設計:
+//   パス2を「合成フェーズ」と「書き込みフェーズ」に分離する。
+//
+//   [合成フェーズ・並列]
+//     各ノートの note_buf を std::async で独立して合成する。
+//     ノード間の依存関係（current_offset, full_song_buffer）には
+//     一切触れないので安全に並列化できる。
+//     tl_scratch は thread_local なのでスレッドごとに独立している。
+//
+//   [書き込みフェーズ・順次]
+//     future.get() で合成完了を待ち、apply_crossfade でシングルスレッドで書き込む。
+//     full_song_buffer への書き込みはここだけなのでデータ競合なし。
+//
+// スレッド数:
+//   std::thread::hardware_concurrency() を上限とするが、
+//   音源の解析（get_or_analyze）は g_analysis_cache_mutex を取るため
+//   キャッシュミス時だけ直列化される。通常はキャッシュヒットするので問題なし。
+// ============================================================
+ 
 DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* output_path)
 {
     if (!notes || note_count <= 0 || !output_path) return;
-
+ 
     const int fft_size  = GetFFTSizeForCheapTrick(kFs, nullptr);
     const int spec_bins = fft_size / 2 + 1;
-
+ 
     // ----------------------------------------------------------------
-    // パス1: NotePrepass 構築
+    // パス1: NotePrepass 構築（変更なし）
     // ----------------------------------------------------------------
-
+ 
     std::vector<NotePrepass> prepass(note_count);
     int     max_harvest_len  = 0;
     int64_t total_samples    = 0;
     int     xfade_count      = 0;
     bool    prev_renderable  = false;
-    double  max_preutterance = 0.0;  // [NEW ②] 全ノート中の最大先行発声(ms)
+    double  max_preutterance = 0.0;
     std::shared_ptr<const EmbeddedVoice> last_ev;
-
+ 
     for (int i = 0; i < note_count; ++i) {
         const int pitch_len = notes[i].pitch_length;
         if (pitch_len <= 0 || pitch_len > kMaxPitchLength) {
@@ -702,22 +729,21 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
             last_ev         = nullptr;
             continue;
         }
-
+ 
         const int64_t ns = note_samples_safe(pitch_len);
         auto ev = find_voice_ref(notes[i].wav_path);
-
+ 
         const OtoEntry* found_oto = nullptr;
         {
             std::shared_lock<std::shared_mutex> lock(g_oto_db_mutex);
             auto oto_it = g_oto_db.find(notes[i].wav_path);
             if (oto_it != g_oto_db.end()) {
                 found_oto = &oto_it->second;
-                // [NEW ②] 最大先行発声を記録
                 max_preutterance = std::max(max_preutterance,
                                             found_oto->preutterance);
             }
         }
-
+ 
         if (ev) {
             prepass[i] = NotePrepass(NoteState::RENDERABLE, ns, ev,
                                      prev_renderable ? last_ev : nullptr,
@@ -735,32 +761,139 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         }
         total_samples += ns;
     }
-
+ 
     total_samples -= static_cast<int64_t>(kCrossfadeSamples) * xfade_count;
     if (total_samples <= 0) return;
-
-    // [NEW ②] 先行発声分の余白サンプル数を計算してバッファ先頭に追加
+ 
     const int64_t pre_buffer_samples =
         static_cast<int64_t>(max_preutterance * kFs / 1000.0);
     const int64_t buffer_total = total_samples + pre_buffer_samples;
-
+ 
     tl_scratch.ensure_spec(max_harvest_len, spec_bins);
     std::vector<double> full_song_buffer(buffer_total, 0.0);
-    std::vector<double> note_buf;
-
-    // current_offset は余白の後ろから始まる
+ 
+    static const OtoEntry kDefaultOto = {};
+ 
+    // ----------------------------------------------------------------
+    // パス2-A: 各ノートの note_buf を並列合成
+    //
+    // note_bufs[i] に RENDERABLE ノートの合成結果を格納する。
+    // INVALID / NO_VOICE は空のまま（書き込みフェーズでスキップ）。
+    // ----------------------------------------------------------------
+ 
+    // 並列度: 論理コア数を上限とする
+    // （過剰なスレッドはコンテキストスイッチのコストが高い）
+    const int max_threads = static_cast<int>(
+        std::max(1u, std::thread::hardware_concurrency()));
+ 
+    // 各ノートの合成結果バッファ
+    // RENDERABLE 以外は空のままにする
+    std::vector<std::vector<double>> note_bufs(note_count);
+ 
+    // 並列合成タスク
+    // lambdaはノートインデックスを受け取り、note_bufs[i]を埋めて返す
+    auto synthesize_note = [&](int idx) {
+        const NotePrepass& pp = prepass[idx];
+        if (pp.state != NoteState::RENDERABLE) return;
+ 
+        NoteEvent& n               = notes[idx];
+        const int64_t note_samples = pp.note_samples;
+        const double  note_ms      = static_cast<double>(note_samples) / kFs * 1000.0;
+        const double  src_ms       = get_source_ms(*pp.ev);
+        const int     output_frames = static_cast<int>(note_ms / kFramePeriod);
+        const OtoEntry& current_oto = pp.oto ? *pp.oto : kDefaultOto;
+ 
+        // get_or_analyze は内部でロックを取るのでスレッドセーフ
+        auto cache_cur = get_or_analyze(pp.ev, fft_size, spec_bins);
+ 
+        // tl_scratch はスレッドローカルなので各スレッドが独立したバッファを持つ
+        tl_scratch.ensure_f0(output_frames);
+        tl_scratch.ensure_spec(output_frames, spec_bins);
+ 
+        if (pp.prev_ev) {
+            auto cache_prev = get_or_analyze(pp.prev_ev, fft_size, spec_bins);
+            copy_cache_to_scratch_prev(*cache_prev);
+            blend_transition_spectra(
+                tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(), output_frames,
+                tl_scratch.spec_ptrs_prev.data(), tl_scratch.ap_ptrs_prev.data(),
+                cache_prev->length, spec_bins, kTransitionFrames);
+        }
+ 
+        for (int j = 0; j < output_frames; ++j) {
+            const double t_out_ms = j * kFramePeriod;
+            const double t_src_ms = map_time(t_out_ms, current_oto, src_ms, note_ms);
+            const int src_frame   = std::clamp(
+                static_cast<int>(t_src_ms / kFramePeriod), 0, cache_cur->length-1);
+ 
+            double* sr = tl_scratch.spec_ptrs[j];
+            double* ar = tl_scratch.ap_ptrs  [j];
+            std::copy_n(&cache_cur->flat_spec[static_cast<size_t>(src_frame)*spec_bins],
+                        spec_bins, sr);
+            std::copy_n(&cache_cur->flat_ap  [static_cast<size_t>(src_frame)*spec_bins],
+                        spec_bins, ar);
+ 
+            tl_scratch.f0[j] = n.pitch_curve
+                ? resample_curve(n.pitch_curve, n.pitch_length, j, output_frames)
+                : 440.0;
+            const double gender  = n.gender_curve
+                ? resample_curve(n.gender_curve,  n.pitch_length, j, output_frames) : 0.5;
+            const double tension = n.tension_curve
+                ? resample_curve(n.tension_curve, n.pitch_length, j, output_frames) : 0.5;
+            const double breath  = n.breath_curve
+                ? resample_curve(n.breath_curve,  n.pitch_length, j, output_frames) : 0.5;
+ 
+            apply_gender_shift  (sr, spec_bins, gender, tl_scratch.spec_tmp.data());
+            apply_tension_breath(sr, ar, spec_bins, tension, breath);
+        }
+ 
+        smooth_f0_gaussian(tl_scratch.f0.data(), output_frames);
+        apply_vibrato(tl_scratch.f0.data(), output_frames, kFramePeriod);
+ 
+        note_bufs[idx].assign(static_cast<size_t>(note_samples), 0.0);
+        VOSE_Synthesis(tl_scratch.f0.data(), output_frames,
+                       tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(),
+                       fft_size, kFramePeriod, pp.ev->fs,
+                       static_cast<int>(note_samples), note_bufs[idx].data());
+    };
+ 
+    // スロットリング付きバッチ並列実行
+    // max_threads 個ずつ future を発行し、バッチごとに完了を待つ。
+    // ノート数が多い曲でスレッドが溢れるのを防ぐ。
+    {
+        std::vector<std::future<void>> futures;
+        futures.reserve(max_threads);
+ 
+        for (int i = 0; i < note_count; ++i) {
+            if (prepass[i].state != NoteState::RENDERABLE) continue;
+ 
+            futures.push_back(std::async(std::launch::async,
+                                         synthesize_note, i));
+ 
+            // バッチが満杯になったら全完了を待つ
+            if (static_cast<int>(futures.size()) >= max_threads) {
+                for (auto& f : futures) f.get();
+                futures.clear();
+            }
+        }
+ 
+        // 残りのフューチャーを回収
+        for (auto& f : futures) f.get();
+    }
+ 
+    // ----------------------------------------------------------------
+    // パス2-B: 書き込みフェーズ（シングルスレッド・順次）
+    //
+    // current_offset と full_song_buffer への書き込みは
+    // ノートの順序に依存するため並列化しない。
+    // note_bufs はすでに埋まっているので apply_crossfade だけ行う。
+    // ----------------------------------------------------------------
+ 
     int64_t current_offset     = pre_buffer_samples;
     bool    last_note_rendered = false;
-
-    static const OtoEntry kDefaultOto = {};
-
-    // ----------------------------------------------------------------
-    // パス2: 合成
-    // ----------------------------------------------------------------
-
+ 
     for (int idx = 0; idx < note_count; ++idx) {
         const NotePrepass& pp = prepass[idx];
-
+ 
         switch (pp.state) {
         case NoteState::INVALID:
             last_note_rendered = false;
@@ -772,90 +905,31 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         case NoteState::RENDERABLE:
             break;
         }
-
-        NoteEvent& n               = notes[idx];
+ 
         const int64_t note_samples = pp.note_samples;
-        const double  note_ms      = static_cast<double>(note_samples) / kFs * 1000.0;
-        const double  src_ms       = get_source_ms(*pp.ev);
-        const int     output_frames = static_cast<int>(note_ms / kFramePeriod);
         const OtoEntry& current_oto = pp.oto ? *pp.oto : kDefaultOto;
-
-        auto cache_cur = get_or_analyze(pp.ev, fft_size, spec_bins);
-        tl_scratch.ensure_f0(output_frames);
-        tl_scratch.ensure_spec(output_frames, spec_bins);
-
-        if (pp.prev_ev) {
-            auto cache_prev = get_or_analyze(pp.prev_ev, fft_size, spec_bins);
-            copy_cache_to_scratch_prev(*cache_prev);
-            blend_transition_spectra(
-                tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(), output_frames,
-                tl_scratch.spec_ptrs_prev.data(), tl_scratch.ap_ptrs_prev.data(),
-                cache_prev->length, spec_bins, kTransitionFrames);
-        }
-
-        // スペクトル・パラメータ転写ループ
-        for (int j = 0; j < output_frames; ++j) {
-            const double t_out_ms = j * kFramePeriod;
-            const double t_src_ms = map_time(t_out_ms, current_oto, src_ms, note_ms);
-            const int src_frame   = std::clamp(
-                static_cast<int>(t_src_ms / kFramePeriod), 0, cache_cur->length-1);
-
-            double* sr = tl_scratch.spec_ptrs[j];
-            double* ar = tl_scratch.ap_ptrs  [j];
-            std::copy_n(&cache_cur->flat_spec[static_cast<size_t>(src_frame)*spec_bins],
-                        spec_bins, sr);
-            std::copy_n(&cache_cur->flat_ap  [static_cast<size_t>(src_frame)*spec_bins],
-                        spec_bins, ar);
-
-            tl_scratch.f0[j] = n.pitch_curve
-                ? resample_curve(n.pitch_curve, n.pitch_length, j, output_frames)
-                : 440.0;
-            const double gender  = n.gender_curve
-                ? resample_curve(n.gender_curve,  n.pitch_length, j, output_frames) : 0.5;
-            const double tension = n.tension_curve
-                ? resample_curve(n.tension_curve, n.pitch_length, j, output_frames) : 0.5;
-            const double breath  = n.breath_curve
-                ? resample_curve(n.breath_curve,  n.pitch_length, j, output_frames) : 0.5;
-
-            apply_gender_shift  (sr, spec_bins, gender, tl_scratch.spec_tmp.data());
-            apply_tension_breath(sr, ar, spec_bins, tension, breath);
-        }
-
-        // [NEW ③] F0スムージング（音符境界のピッチジャンプを緩和）
-        smooth_f0_gaussian(tl_scratch.f0.data(), output_frames);
-
-        // [NEW ①] ビブラート付加（ノート後半50%からfade-in）
-        apply_vibrato(tl_scratch.f0.data(), output_frames, kFramePeriod);
-
-        note_buf.assign(static_cast<size_t>(note_samples), 0.0);
-        VOSE_Synthesis(tl_scratch.f0.data(), output_frames,
-                       tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(),
-                       fft_size, kFramePeriod, pp.ev->fs,
-                       static_cast<int>(note_samples), note_buf.data());
-
-        // [NEW ②] 先行発声: pre_buffer_samples を足した空間内で負にならない
+ 
         const int64_t pre_samples  =
             static_cast<int64_t>(current_oto.preutterance * kFs / 1000.0);
         const int64_t base_offset  = last_note_rendered
                                      ? current_offset - kCrossfadeSamples
                                      : current_offset;
-        // pre_buffer_samples があるので write_offset は原則 >= 0
         const int64_t write_offset = std::max<int64_t>(0, base_offset - pre_samples);
         const int     xfade        = last_note_rendered ? kCrossfadeSamples : 0;
-
+ 
         apply_crossfade(full_song_buffer, buffer_total,
-                        note_buf, note_samples, write_offset, xfade);
-
+                        note_bufs[idx], note_samples, write_offset, xfade);
+ 
         current_offset += last_note_rendered
                           ? note_samples - kCrossfadeSamples
                           : note_samples;
         last_note_rendered = true;
     }
-
-    // [NEW ②] 先頭の余白をスキップして書き出す
+ 
+    // 先頭の余白をスキップして書き出す
     wavwrite(full_song_buffer.data() + pre_buffer_samples,
              static_cast<int>(total_samples),
              kFs, 16, output_path);
 }
-
+ 
 } // extern "C"
