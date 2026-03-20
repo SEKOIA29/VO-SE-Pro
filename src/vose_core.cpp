@@ -667,20 +667,6 @@ DLLEXPORT void load_embedded_resource(const char* phoneme,
 }
 
 // ============================================================
-// [NEW ②] execute_render
-//
-// 先行発声バッファ拡張:
-//   全ノートのうち最大の preutterance_ms を先行計算し、
-//   full_song_buffer の先頭に pre_buffer_samples 分の余白を確保する。
-//   write_offset = base_offset - pre_samples + pre_buffer_samples
-//   として負にならない位置に書き込む。
-//   最終出力時は先頭の余白をスキップして wavwrite に渡す。
-// ============================================================
-
-e core · CPP
-コピー
-
-// ============================================================
 // execute_render  (並列合成版)
 //
 // 並列化の設計:
