@@ -8,19 +8,6 @@ import os
 
 
 
-system = platform.system()
-lib_ext = ".dll" if system == "Windows" else ".dylib"
-if system == "Darwin": # Macのこと
-    lib_name = "libvose_core" + lib_ext
-else:
-    lib_name = "vose_core" + lib_ext
-
-# 実行ファイルのパスからライブラリを探す
-base_path = os.path.dirname(__file__)
-
-# self.lib を lib（または任意の変数名）に変更し、os をインポートすることで解決
-lib = ctypes.CDLL(os.path.join(base_path, lib_name))
-
 try:
     from .audio_types import SynthesisRequest, CNoteEvent  # type: ignore
 except Exception:
@@ -40,14 +27,27 @@ except Exception:
         ]
 
 class DynamicsEngine:
-    def __init__(self, dll_path, _model_path): # 未使用引数に _ を付与
+    def __init__(self, dll_path, _model_path):
+        # OSに応じたライブラリ名の自動判別
+        system = platform.system()
+        # GitHub Actionsのパス構造に合わせて、ファイル名だけを抽出、または補完する
+        if system == "Darwin":  # Mac
+            lib_name = "libvose_core.dylib"
+        else:                   # Windows
+            lib_name = "vose_core.dll"
+
+        # dll_path がディレクトリを指しているかファイル指しているかにかかわらず
+        # 適切なパスを構築する（ここで os を使用）
+        if os.path.isdir(dll_path):
+            full_path = os.path.join(dll_path, lib_name)
+        else:
+            full_path = dll_path
+
         # 1. DLLのロード
-        self.lib = ctypes.CDLL(dll_path)
+        self.lib = ctypes.CDLL(full_path) # <--- self はメソッド内で使う (Error 2)
         self._setup_ctypes()
         
-        # 2. AIモデルのロード (onnxruntime等を想定)
-        # 今後Apple siliconのNeural Engineを活用する場合はここに初期化を書く
-        print("Dynamics Engine: System Initialized.")
+        print(f"Dynamics Engine: System Initialized for {system}")
 
     def _setup_ctypes(self):
         """C言語関数の入出力型を定義（メモリ安全のため）"""
@@ -105,14 +105,30 @@ class DynamicsEngine:
         return req
 
     def unload(self):
-        """DLLをメモリから完全に解除する"""
+        """DLLをメモリから完全に解除する（OS別の低層処理）"""
+        if not hasattr(self, 'lib') or self.lib is None:
+            return
+
         handle = self.lib._handle
-        if platform.system() == "Windows":
-            free_library = getattr(_ctypes, "FreeLibrary", None)
-            if callable(free_library):
-                free_library(handle)
-        else:
-            dlclose = getattr(_ctypes, "dlclose", None)
-            if callable(dlclose):
+        system = platform.system()
+
+        try:
+            if system == "Windows":
+                # Windows: kernel32.dllのFreeLibraryを使用
+                from _ctypes import FreeLibrary
+                FreeLibrary(handle)
+            else:
+                # Mac / Linux: libdl.dylib(又はlibc)のdlcloseを使用
+                # pythonapiを経由することで、OS標準の動的ライブラリ操作を直接叩く
+                import ctypes
+                libdl = ctypes.CDLL(None) # Noneを指定すると標準Cライブラリをロード
+                dlclose = libdl.dlclose
+                dlclose.argtypes = [ctypes.c_void_p]
                 dlclose(handle)
-        print("Engine: DLL Unloaded.")
+            
+            self.lib = None
+            print(f"Engine: DLL Unloaded successfully on {system}.")
+            
+        except Exception as e:
+            # 強制解放はリスクを伴うため、失敗してもクラッシュさせない
+            print(f"Engine: Unload warning - {e}")
