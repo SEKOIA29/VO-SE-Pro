@@ -4,7 +4,7 @@ import ctypes
 import numpy as np
 import platform
 import os
-from typing import Optional, Any
+from typing import Optional
 
 try:
     from .audio_types import SynthesisRequest, CNoteEvent  # type: ignore
