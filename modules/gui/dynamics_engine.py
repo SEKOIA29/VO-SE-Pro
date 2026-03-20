@@ -24,27 +24,28 @@ except Exception:
         ]
 
 class DynamicsEngine:
-    def __init__(self, dll_path, _model_path):
-        # OSに応じたライブラリ名の自動判別
+    lib: Optional[ctypes.CDLL]
+
+    def __init__(self, dll_path: str, _model_path: str):
+        self.lib = None # 初期化
         system = platform.system()
-        # GitHub Actionsのパス構造に合わせて、ファイル名だけを抽出、または補完する
-        if system == "Darwin":  # Mac
+        
+        if system == "Darwin":
             lib_name = "libvose_core.dylib"
-        else:                   # Windows
+        else:
             lib_name = "vose_core.dll"
 
-        # dll_path がディレクトリを指しているかファイル指しているかにかかわらず
-        # 適切なパスを構築する
         if os.path.isdir(dll_path):
             full_path = os.path.join(dll_path, lib_name)
         else:
             full_path = dll_path
 
-        # 1. DLLのロード
-        self.lib = ctypes.CDLL(full_path) 
-        self._setup_ctypes()
-        
-        print(f"Dynamics Engine: System Initialized for {system}")
+        try:
+            self.lib = ctypes.CDLL(full_path)
+            self._setup_ctypes()
+            print(f"Dynamics Engine: System Initialized for {system}")
+        except Exception as e:
+            print(f"Error: Could not load DLL from {full_path}. {e}")
 
     def _setup_ctypes(self):
         """C言語関数の入出力型を定義（メモリ安全のため）"""
