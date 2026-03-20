@@ -1,8 +1,5 @@
 #dynamics_engine.py
 
-
-#dynamics_engine.py
-
 import ctypes
 import numpy as np
 import platform
@@ -52,42 +49,39 @@ class DynamicsEngine:
             print(f"Error: Could not load DLL from {full_path}. {e}")
 
     def _setup_ctypes(self):
-        """C言語関数の入出力型を定義（メモリ安全のため）"""
-        self.lib.init_engine.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
-        self.lib.init_engine.restype = ctypes.c_int
+        lib = self.lib
+        if lib is None:
+            raise RuntimeError("DLL is not loaded, cannot setup ctypes.")
 
-        self.lib.request_synthesis_full.argtypes = [SynthesisRequest, ctypes.POINTER(ctypes.c_int)]
-        self.lib.request_synthesis_full.restype = ctypes.POINTER(ctypes.c_float)
+        lib.init_engine.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+        lib.init_engine.restype = ctypes.c_int
 
-        self.lib.vse_free_buffer.argtypes = [ctypes.POINTER(ctypes.c_float)]
-        self.lib.vse_free_buffer.restype = None
+        lib.request_synthesis_full.argtypes = [SynthesisRequest, ctypes.POINTER(ctypes.c_int)]
+        lib.request_synthesis_full.restype = ctypes.POINTER(ctypes.c_float)
+
+        lib.vse_free_buffer.argtypes = [ctypes.POINTER(ctypes.c_float)]
+        lib.vse_free_buffer.restype = None
+
 
     def run_full_synthesis(self, raw_notes):
-        """
-        AI推論 -> C言語合成 -> メモリ解放 までを一括で行うメイン関数
-        """
-        # --- STEP 2: C言語用リクエストの作成 ---
+        lib = self.lib
+        if lib is None:
+            raise RuntimeError("DLL is not loaded, cannot run synthesis.")
+
         req = self._build_request(raw_notes)
         out_count = ctypes.c_int(0)
 
-        # --- STEP 3: C言語による高速合成 ---
-        audio_ptr = self.lib.request_synthesis_full(req, ctypes.byref(out_count))
-        
+        audio_ptr = lib.request_synthesis_full(req, ctypes.byref(out_count))
         if not audio_ptr:
             print("Error: Synthesis failed.")
             return None
 
         try:
-            # --- STEP 4: 安全なデータ取得 ---
             count = out_count.value
             float_array = np.ctypeslib.as_array(audio_ptr, shape=(count,))
-            audio_result = float_array.copy() # M3のメモリ上に完全複製
-            
-            return audio_result
-            
+            return float_array.copy()
         finally:
-            # --- STEP 5: 【最重要】C側のメモリを即座に解放 ---
-            self.lib.vse_free_buffer(audio_ptr)
+            lib.vse_free_buffer(audio_ptr)
 
     def _build_request(self, raw_notes):
         """PythonのデータをC言語の構造体にパッキングする"""
@@ -107,8 +101,6 @@ class DynamicsEngine:
         return req
 
     def unload(self) -> None:
-        """DLLをメモリから完全に解除する（OS別の低層処理）"""
-        # self.lib が None である可能性を考慮 (Pyright対策)
         lib = self.lib
         if lib is None:
             return
@@ -117,21 +109,16 @@ class DynamicsEngine:
         system = platform.system()
 
         try:
-            if system == "Windows":
-                # Pyrightのエラーを避けるため、kernel32から直接FreeLibraryを叩く
-                # これにより _ctypes からの不安定なインポートを回避できます
+            if system == "Windows" and hasattr(ctypes, "WinDLL"):
                 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
                 kernel32.FreeLibrary(handle)
             else:
-                # Mac / Linux: 標準Cライブラリの dlclose を使用
                 libdl = ctypes.CDLL(None)
                 dlclose = libdl.dlclose
                 dlclose.argtypes = [ctypes.c_void_p]
                 dlclose(handle)
-            
+
             self.lib = None
             print(f"Engine: DLL Unloaded successfully on {system}.")
-            
         except Exception as e:
-            # 強制解放はリスクを伴うため、警告に留める
             print(f"Engine: Unload warning - {e}")
