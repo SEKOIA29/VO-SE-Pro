@@ -99,8 +99,9 @@ class DynamicsEngine:
         req.note_count = note_count
         req.sample_rate = 44100
         return req
-
+        
     def unload(self) -> None:
+        """DLLをメモリから完全に解除する（OS別の低層処理）"""
         lib = self.lib
         if lib is None:
             return
@@ -109,19 +110,19 @@ class DynamicsEngine:
         system = platform.system()
 
         try:
-            if system == "Windows" and hasattr(ctypes, "WinDLL"):if system == "Windows":
-                # WinDLL が存在するかチェック（Pyright 対策）
-                if hasattr(ctypes, "WinDLL"):
-                    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            if system == "Windows":
+                # Pyright対策: WinDLL が存在するかチェック
+                WinDLL = getattr(ctypes, "WinDLL", None)
+                if WinDLL is not None:
+                    kernel32 = WinDLL("kernel32", use_last_error=True)
                     kernel32.FreeLibrary(handle)
                 else:
-                    # 型スタブ上は存在しないが、実行時には Windows なら存在する
-                    win_dll = getattr(ctypes, "WinDLL")
-                    kernel32 = win_dll("kernel32", use_last_error=True)
+                    # 実行時には Windows なら WinDLL が存在するので fallback
+                    win_dll = getattr(ctypes, "WinDLL")  
+                    kernel32 = win_dll("kernel32", use_last_error=True)   
                     kernel32.FreeLibrary(handle)
-
-            
             else:
+                # Mac / Linux: 標準Cライブラリの dlclose を使用
                 libdl = ctypes.CDLL(None)
                 dlclose = libdl.dlclose
                 dlclose.argtypes = [ctypes.c_void_p]
@@ -129,5 +130,7 @@ class DynamicsEngine:
 
             self.lib = None
             print(f"Engine: DLL Unloaded successfully on {system}.")
+
         except Exception as e:
             print(f"Engine: Unload warning - {e}")
+
