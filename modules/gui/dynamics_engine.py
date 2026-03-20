@@ -4,6 +4,8 @@ import ctypes
 import numpy as np
 import _ctypes
 import platform
+import os
+
 
 
 system = platform.system()
@@ -15,7 +17,9 @@ else:
 
 # 実行ファイルのパスからライブラリを探す
 base_path = os.path.dirname(__file__)
-self.lib = ctypes.CDLL(os.path.join(base_path, lib_name))
+
+# self.lib を lib（または任意の変数名）に変更し、os をインポートすることで解決
+lib = ctypes.CDLL(os.path.join(base_path, lib_name))
 
 try:
     from .audio_types import SynthesisRequest, CNoteEvent  # type: ignore
