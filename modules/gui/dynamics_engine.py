@@ -2,7 +2,6 @@
 
 import ctypes
 import numpy as np
-import _ctypes
 import platform
 import os
 
