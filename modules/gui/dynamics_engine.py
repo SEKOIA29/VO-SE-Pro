@@ -109,9 +109,18 @@ class DynamicsEngine:
         system = platform.system()
 
         try:
-            if system == "Windows" and hasattr(ctypes, "WinDLL"):
-                kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-                kernel32.FreeLibrary(handle)
+            if system == "Windows" and hasattr(ctypes, "WinDLL"):if system == "Windows":
+                # WinDLL が存在するかチェック（Pyright 対策）
+                if hasattr(ctypes, "WinDLL"):
+                    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+                    kernel32.FreeLibrary(handle)
+                else:
+                    # 型スタブ上は存在しないが、実行時には Windows なら存在する
+                    win_dll = getattr(ctypes, "WinDLL")
+                    kernel32 = win_dll("kernel32", use_last_error=True)
+                    kernel32.FreeLibrary(handle)
+
+            
             else:
                 libdl = ctypes.CDLL(None)
                 dlclose = libdl.dlclose
