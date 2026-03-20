@@ -521,7 +521,7 @@ static void blend_transition_spectra(
 }
 
 // ============================================================
-// [NEW ①] apply_vibrato
+// apply_vibrato
 //
 // ノート後半50%からビブラートを自然に立ち上げる。
 // フェードイン: raised cosine で 0→1
