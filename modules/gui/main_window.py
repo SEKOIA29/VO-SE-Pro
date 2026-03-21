@@ -62,6 +62,7 @@ if TYPE_CHECKING:
 # 5. 自作モジュール (実際の読み込み)
 # ==========================================================================
 # GitHub Desktopとの同期を維持するため、プロジェクトルート(modules)からの絶対パスを使用
+from modules.core_manager import vose_manager, CNoteEvent
 
 try:
     # プロジェクトルートからの絶対パスで統一（GitHub Desktopとの親和性重視）
@@ -486,10 +487,12 @@ class WorkerSignals(QObject):
     progress = Signal(int)
 
 class SynthesisWorker(QRunnable):
-    def __init__(self, render_func, *args):
+    def __init__(self, vose_core, c_notes, note_count, output_path):
         super().__init__()
-        self.render_func = render_func
-        self.args = args
+        self.vose_core = vose_core
+        self.c_notes = c_notes # これでメモリを保護
+        self.note_count = note_count
+        self.output_path = output_path
         self.signals = WorkerSignals()
 
     def run(self):
