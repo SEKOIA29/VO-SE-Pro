@@ -28,7 +28,8 @@ import onnxruntime as ort # type: ignore
 # 3. GUIライブラリ (PySide6 / Qt)
 # ==========================================================================
 from PySide6.QtCore import (
-    Qt, Signal, Slot, QThread, QTimer
+    Qt, Signal, Slot, QThread, QTimer,
+    QObject, QRunnable, QThreadPool
 )
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSlider,
