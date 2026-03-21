@@ -507,7 +507,6 @@ class AutoOtoEngine:
         WAVファイルを解析して、UTAU形式のパラメータを返す。
         音量エンベロープに加え、ゼロ交差率(ZCR)を用いて子音と母音の境界を特定する。
         """
-        import wave
         import numpy as np
 
         with wave.open(file_path, 'rb') as f:
