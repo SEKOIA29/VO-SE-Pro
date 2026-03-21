@@ -507,6 +507,7 @@ class AutoOtoEngine:
         WAVファイルを解析して、UTAU形式のパラメータを返す。
         音量エンベロープに加え、ゼロ交差率(ZCR)を用いて子音と母音の境界を特定する。
         """
+        import wave
         import numpy as np
 
         with wave.open(file_path, 'rb') as f:
@@ -5885,52 +5886,67 @@ class MainWindow(QMainWindow):
     @Slot()
     def request_render(self) -> None:
         """
-        タイムライン上の全ノートをスキャンし、代表のC++エンジンでWAVを生成する。
-        歌唱モードとトークモードを自動判別して NoteEvent を構築します。
+        タイムライン上の全ノートをスキャンし、非同期でレンダリングを開始する。
         """
         # 1. 保存先の決定
         output_wav = os.path.join(os.getcwd(), "output", "render_result.wav")
         os.makedirs(os.path.dirname(output_wav), exist_ok=True)
 
-
-
-        # 2. タイムラインから全ノートを取得（省略なしで走査）
-        # 各ノートは {'phoneme': 'a', 'pitch': [...], 'gender': [...], etc. } の辞書を想定
-        raw_notes: List[Dict[str, Any]] = self.timeline_widget.get_all_notes_data()
+        # 2. データの取得
+        raw_notes = self.timeline_widget.get_all_notes_data()
         if not raw_notes:
             self.statusBar().showMessage("エラー: レンダリングするノートがありません。")
             return
 
-        self.statusBar().showMessage("レンダリング中...")
+        if not (hasattr(self, "vose_core") and self.vose_core):
+            self.statusBar().showMessage("エラー: エンジンがロードされていません。")
+            return
 
-        # 3. C++側の構造体配列を作成
-        # 前述の prepare_c_note_event を使用して構造体配列を構築
+        # 3. 準備（ここは一瞬なのでメインスレッドでOK）
         try:
+            self.statusBar().showMessage("レンダリング準備中...")
             note_count = len(raw_notes)
-            NotesArrayType = NoteEvent * note_count
+            # NoteEvent型が定義されている前提
+            NotesArrayType = NoteEvent * note_count 
             c_notes = NotesArrayType()
-            c_events: List[NoteEvent] = []
-
+            
             for i, note_data in enumerate(raw_notes):
-                # UIからの生データを C++ NoteEvent 構造体に変換
-                c_event = prepare_c_note_event(note_data)
-                c_events.append(c_event)
-                c_notes[i] = c_event
+                c_notes[i] = prepare_c_note_event(note_data)
 
-            # 4. 代表のC++エンジン (DLL/so) を呼び出し
-            # ここで UTAUトーク も 歌唱 も一気に処理されます
-            if hasattr(self, "vose_core") and self.vose_core:
-                self.vose_core.execute_render(c_notes, note_count, output_wav.encode('utf-8'))
-                
-                self.statusBar().showMessage(f"レンダリング完了: {output_wav}")
-                # 自動再生へ（省略なしの実装）
-                self.play_rendered_audio(output_wav)
-            else:
-                self.statusBar().showMessage("エラー: VOSE Coreエンジンがロードされていません。")
+            # --- 【ここから非同期化の修正】 ---
+            self.statusBar().showMessage("レンダリング中（バックグラウンド）...")
+            # プログレスバーがあれば動かす
+            if hasattr(self, "progress_bar"):
+                self.progress_bar.setRange(0, 0) # ぐるぐる回るモード
+                self.progress_bar.setVisible(True)
+
+            # ワーカーの作成
+            worker = SynthesisWorker(self.vose_core, c_notes, note_count, output_wav)
+            
+            # シグナルの接続
+            worker.signals.finished.connect(self.on_render_success)
+            worker.signals.error.connect(self.on_render_failed)
+
+            # スレッドプールで実行開始（これでGUIが固まらなくなる）
+            QThreadPool.globalInstance().start(worker)
 
         except Exception as e:
-            self.statusBar().showMessage(f"レンダリング失敗: {str(e)}")
-            print(f"Render Error: {e}")
+            self.on_render_failed(str(e))
+
+    # --- コールバック用メソッド ---
+    def on_render_success(self, output_wav):
+        """レンダリング成功時の処理"""
+        if hasattr(self, "progress_bar"):
+            self.progress_bar.setVisible(False)
+        self.statusBar().showMessage(f"レンダリング完了: {output_wav}")
+        self.play_rendered_audio(output_wav)
+
+    def on_render_failed(self, error_msg):
+        """レンダリング失敗時の処理"""
+        if hasattr(self, "progress_bar"):
+            self.progress_bar.setVisible(False)
+        self.statusBar().showMessage(f"失敗: {error_msg}")
+        QMessageBox.critical(self, "Render Error", f"レンダリング中にエラーが発生しました:\n{error_msg}")
 
     def play_rendered_audio(self, wav_path: str) -> None:
         """生成されたWAVをAudioPlayerで再生する"""
