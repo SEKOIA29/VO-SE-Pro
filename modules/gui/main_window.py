@@ -477,9 +477,25 @@ class ProMonitoringUI(QWidget):
         painter.fillRect(25, 110 - h, 10, h, QColor("#34C759"))
 
 
+class WorkerSignals(QObject):
+    finished = Signal(str) # 生成されたパスを返す
+    error = Signal(str)
+    progress = Signal(int)
 
+class SynthesisWorker(QRunnable):
+    def __init__(self, render_func, *args):
+        super().__init__()
+        self.render_func = render_func
+        self.args = args
+        self.signals = WorkerSignals()
 
-
+    def run(self):
+        try:
+            # 重い合成処理を実行
+            result_path = self.render_func(*self.args)
+            self.signals.finished.emit(result_path)
+        except Exception as e:
+            self.signals.error.emit(str(e))
 
 
 class AutoOtoEngine:
