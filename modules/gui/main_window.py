@@ -62,20 +62,23 @@ if TYPE_CHECKING:
 # 5. 自作モジュール (実際の読み込み)
 # ==========================================================================
 # GitHub Desktopとの同期を維持するため、プロジェクトルート(modules)からの絶対パスを使用
-try:
-    from modules.gui.timeline_widget import TimelineWidget # type: ignore
-    from modules.gui.graph_editor_widget import GraphEditorWidget # type: ignore
-    from modules.gui.keyboard_sidebar_widget import KeyboardSidebarWidget # type: ignore
-    from modules.audio.voice_manager import VoiceManager # type: ignore
-    #from modules.backend.ai_manager import AIManager # type: ignore
-    from modules.gui.aural_engine import AuralAIEngine # type: ignore
-except ImportError:
-    # ローカルの実行環境で modules が見えない場合のバックアップ
-    from .timeline_widget import TimelineWidget # type: ignore
-    from .keyboard_sidebar_widget import KeyboardSidebarWidget # type: ignore
-    from modules.audio.voice_manager import VoiceManager # type: ignore
-    from .aural_engine import AuralAIEngine
+from modules.core_manager import vose_manager, CNoteEvent
 
+try:
+    # プロジェクトルートからの絶対パスで統一（GitHub Desktopとの親和性重視）
+    from modules.gui.timeline_widget import TimelineWidget
+    from modules.gui.graph_editor_widget import GraphEditorWidget
+    from modules.gui.keyboard_sidebar_widget import KeyboardSidebarWidget
+    from modules.audio.voice_manager import VoiceManager
+    from modules.gui.aural_engine import AuralAIEngine
+    # from modules.backend.audio_player import AudioPlayer # 実装済みなら有効化
+except ImportError as e:
+    print(f"⚠️ Absolute import failed, falling back to relative: {e}")
+    # フォールバック（開発環境用）
+    from .timeline_widget import TimelineWidget
+    from .graph_editor_widget import GraphEditorWidget
+    from .keyboard_sidebar_widget import KeyboardSidebarWidget
+    from .aural_engine import AuralAIEngine
 
 # ==========================================================================
 # 6. グローバル設定
