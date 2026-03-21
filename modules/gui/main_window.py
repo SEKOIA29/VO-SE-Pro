@@ -503,37 +503,74 @@ class AutoOtoEngine:
         self.sample_rate = sample_rate
 
     def analyze_wav(self, file_path):
-        """WAVファイルを解析して、UTAU形式のパラメータを返す"""
+        """
+        WAVファイルを解析して、UTAU形式のパラメータを返す。
+        音量エンベロープに加え、ゼロ交差率(ZCR)を用いて子音と母音の境界を特定する。
+        """
+        import wave
+        import numpy as np
+
         with wave.open(file_path, 'rb') as f:
+            sr = f.getframerate()
             n_frames = f.getnframes()
             frames = f.readframes(n_frames)
+            # ステレオの場合はモノラル化して処理
             samples = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
+            if f.getnchannels() == 2:
+                samples = samples.reshape(-1, 2).mean(axis=1)
 
-        # 1. 振幅のエンベロープ（外形）を計算
-        # 窓幅 10ms 程度で移動平均をとる
-        win_size = int(self.sample_rate * 0.01) 
+        # 1. 振幅のエンベロープ計算（既存ロジック）
+        win_size = int(sr * 0.01) # 10ms
         envelope = np.convolve(np.abs(samples), np.ones(win_size)/win_size, mode='same')
-        max_amp = np.max(envelope)
+        max_amp = np.max(envelope) if np.max(envelope) > 0 else 1.0
 
-        # 2. オフセット (Offset): 音が始まる地点 (最大振幅の 5%)
-        start_idx = np.where(envelope > max_amp * 0.05)[0][0]
-        offset_ms = (start_idx / self.sample_rate) * 1000
+        # 2. オフセット (Offset): 無音を除去し、音が立ち上がる地点
+        # 閾値を少し下げて(2%)、小さな子音も拾えるようにします
+        start_indices = np.where(envelope > max_amp * 0.02)[0]
+        start_idx = start_indices[0] if len(start_indices) > 0 else 0
+        offset_ms = (start_idx / sr) * 1000
 
-        # 3. 先行発声 (Pre-utterance): 子音から母音へ（音量が急増し終わる地点）
-        # 音量の増加率が最大になる付近を特定
-        diff = np.diff(envelope[start_idx : start_idx + int(self.sample_rate * 0.5)])
-        accel_idx = np.argmax(diff) + start_idx
-        preutter_ms = ((accel_idx - start_idx) / self.sample_rate) * 1000
+        # 3. 先行発声 (Pre-utterance) の精密解析 【ここを大幅修正】
+        # 子音(摩擦音など)は波形の符号が頻繁に入れ替わるため、ゼロ交差率が高い。
+        # 母音に入ると波形が安定し、ゼロ交差率が急落する。
+        
+        # 5msごとの窓でZCRを計算
+        zcr_win = int(sr * 0.005) 
+        zcr = []
+        # start_idxから500msの範囲を調査
+        search_range = samples[start_idx : start_idx + int(sr * 0.5)]
+        for i in range(0, len(search_range) - zcr_win, zcr_win):
+            window = search_range[i : i + zcr_win]
+            # 符号反転回数をカウント
+            crossings = np.sum(np.abs(np.diff(np.sign(window)))) / 2
+            zcr.append(crossings / zcr_win)
 
-        # 4. オーバーラップ (Overlap): 前の音との重なり (先行発声の 1/2)
-        overlap_ms = preutter_ms / 2
+        # ZCRが急激に減少した（高周波成分が減り、母音が始まった）地点を探す
+        zcr_diff = np.diff(zcr)
+        # argmin(zcr_diff) は最も減少率が高いインデックス
+        zcr_drop_idx = np.argmin(zcr_diff) * zcr_win if len(zcr_diff) > 0 else 0
+        
+        # 音量増加率の最大点（既存ロジック）
+        vol_diff = np.diff(envelope[start_idx : start_idx + int(sr * 0.5)])
+        vol_accel_idx = np.argmax(vol_diff) if len(vol_diff) > 0 else 0
+
+        # ZCRの落下点と音量の急増点を統合して先行発声を決定
+        # 子音の種類によって重みを変えるのが理想ですが、まずは平均的な位置を採用
+        preutter_idx = (zcr_drop_idx + vol_accel_idx) // 2
+        preutter_ms = (preutter_idx / sr) * 1000
+
+        # 4. オーバーラップ (Overlap) と 固定範囲 (Constant)
+        # オーバーラップは先行発声の1/3〜1/2が一般的
+        overlap_ms = preutter_ms / 3 
+        # 固定範囲は先行発声の少し先まで（母音が安定するまで）
+        constant_ms = preutter_ms * 1.5
 
         return {
             "offset": int(offset_ms),
             "preutter": int(preutter_ms),
             "overlap": int(overlap_ms),
-            "constant": int(preutter_ms * 2), # 子音固定範囲
-            "blank": -10 # 右ブランク（とりあえず末尾10msカット）
+            "constant": int(constant_ms),
+            "blank": -10 
         }
 
     def generate_oto_text(self, wav_name, params):
