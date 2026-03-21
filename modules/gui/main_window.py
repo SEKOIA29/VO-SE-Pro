@@ -62,7 +62,6 @@ if TYPE_CHECKING:
 # 5. 自作モジュール (実際の読み込み)
 # ==========================================================================
 # GitHub Desktopとの同期を維持するため、プロジェクトルート(modules)からの絶対パスを使用
-from modules.core_manager import vose_manager, CNoteEvent
 
 try:
     # プロジェクトルートからの絶対パスで統一（GitHub Desktopとの親和性重視）
