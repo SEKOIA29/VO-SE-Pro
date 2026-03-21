@@ -57,6 +57,9 @@ if TYPE_CHECKING:
     from modules.audio.voice_manager import VoiceManager # type: ignore
     #from modules.backend.ai_manager import AIManager # type: ignore
     from modules.gui.aural_engine import AuralAIEngine # type: ignore
+    import modules.gui.timeline_widget as tw
+    import modules.gui.graph_editor_widget as gew
+    import modules.audio.voice_manager as vm
 
 # ==========================================================================
 # 5. 自作モジュール (実際の読み込み)
@@ -449,6 +452,7 @@ class HistoryManager:
 # ==========================================================
 #  Pro audio modeling レンダリングボタンを押さなくても、スペースキーで「今あるデータ」を合成して即座に鳴らす機能。
 # ==========================================================
+        
 class ProMonitoringUI(QWidget):  
     def __init__(self, parent=None):
         super().__init__(parent)   # ← super().__init__ が必要
@@ -490,6 +494,8 @@ class SynthesisWorker(QRunnable):
         super().__init__()
         self.vose_core = vose_core
         self.c_notes = c_notes # これでメモリを保護
+        self.render_func = render_func  #
+        self.args = args
         self.note_count = note_count
         self.output_path = output_path
         self.signals = WorkerSignals()
