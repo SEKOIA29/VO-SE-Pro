@@ -1,10 +1,10 @@
-# core_manager.py
+# modules/core_manager.py
 import ctypes
 import os
 import platform
 from typing import Optional
 
-# 構造体の定義をここに集約（各ファイルでの重複定義を排除）
+# --- 構造体定義の一元化 ---
 class CNoteEvent(ctypes.Structure):
     _fields_ = [
         ("wav_path", ctypes.c_char_p),
@@ -12,46 +12,48 @@ class CNoteEvent(ctypes.Structure):
         ("pitch_length", ctypes.c_int),
         ("preutterance", ctypes.c_double),
         ("overlap", ctypes.c_double),
-        # 代表の C++ 側の構造体定義に合わせて適宜追加
+        ("constant", ctypes.c_double),
+        ("blank", ctypes.c_double),
     ]
 
 class VoseCoreManager:
+    """DLLロードと構造体管理を行うシングルトンクラス"""
     _instance: Optional['VoseCoreManager'] = None
     lib: Optional[ctypes.CDLL] = None
 
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(VoseCoreManager, cls).__new__(cls)
-            cls._instance._initialize_lib()
+            cls._instance._init_engine()
         return cls._instance
 
-    def _initialize_lib(self):
-        # OSに合わせたライブラリ名の判定
+    def _init_engine(self):
         system = platform.system()
         lib_name = "vose_core.dll" if system == "Windows" else "libvose_core.dylib"
         
-        # dllの場所を特定（プロジェクトルートのbinフォルダを想定）
-        base_path = os.path.dirname(os.path.abspath(__file__))
-        dll_path = os.path.join(base_path, "..", "..", "bin", lib_name)
+        # 実行環境に合わせてパスを探索
+        search_paths = [
+            os.path.join(os.getcwd(), "bin", lib_name),
+            os.path.join(os.path.dirname(__file__), "..", "bin", lib_name),
+        ]
         
-        if not os.path.exists(dll_path):
-            print(f"[Warning] DLL not found at: {dll_path}")
-            return
+        for path in search_paths:
+            if os.path.exists(path):
+                try:
+                    self.lib = ctypes.CDLL(path)
+                    # 関数のプロトタイプ宣言
+                    self.lib.execute_render.argtypes = [
+                        ctypes.POINTER(CNoteEvent),
+                        ctypes.c_int,
+                        ctypes.c_char_p
+                    ]
+                    print(f"✅ VOSE Core Engine Loaded: {path}")
+                    break
+                except Exception as e:
+                    print(f"❌ Load Error: {e}")
+        
+        if not self.lib:
+            print("⚠️ Warning: VOSE Core DLL not found. Offline mode.")
 
-        try:
-            self.lib = ctypes.CDLL(dll_path)
-            # 関数の引数と戻り値を定義（型安全の徹底）
-            self.lib.execute_render.argtypes = [
-                ctypes.POINTER(CNoteEvent),
-                ctypes.c_int,
-                ctypes.c_char_p
-            ]
-            print(f"✅ Vose Core Engine Loaded Successfully ({system})")
-        except Exception as e:
-            print(f"❌ Failed to load DLL: {e}")
-
-    def get_lib(self):
-        return self.lib
-
-# シングルトンインスタンスをエクスポート
-vose_core_manager = VoseCoreManager()
+# インスタンスをエクスポート
+vose_manager = VoseCoreManager()
