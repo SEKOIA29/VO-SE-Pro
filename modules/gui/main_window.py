@@ -49,9 +49,7 @@ from PySide6.QtMultimedia import QMediaPlayer
 # ==========================================================================
 if TYPE_CHECKING:
     # 代表、ここで 'as' を使って別名を定義するのが Pyright エラーを消す秘訣です
-    from modules.gui.timeline_widget import TimelineWidget as TimelineT
-    from modules.gui.graph_editor_widget import GraphEditorWidget as GraphEditorT
-    from modules.audio.voice_manager import VoiceManager as VoiceManagerT
+    pass
     # 既存の importlib 等でロードするクラスも型だけ定義
 
 # ==========================================================================
