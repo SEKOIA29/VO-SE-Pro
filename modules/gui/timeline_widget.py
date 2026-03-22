@@ -504,29 +504,77 @@ class TimelineWidget(QWidget):
             p.drawLine(int(rect.left()), int(rect.top()),
                        int(rect.left()), int(rect.bottom()))
 
-    def _draw_notes(self, p: QPainter) -> None:
-        """[OPT-2] 可視範囲外ノートを早期スキップ"""
-        vw = self.width()
-        for n in self.notes_list:
+    def _draw_notes(self, painter: QPainter) -> None:
+        """
+        [VO-SE Pro: Ultra Fast Rendering]
+        代表、このメソッドは二分探索を用いて、画面内に映るノートだけをピンポイントで描画します。
+        """
+        if not self.notes_list:
+            return
+
+        import bisect
+
+        # 1. 描画範囲の計算（ピクセルから拍数へ変換）
+        view_width = self.width()
+        # 画面の左端と右端が「何拍目」に相当するか
+        visible_start_time = self.scroll_x_offset / self.pixels_per_beat
+        visible_end_time = (self.scroll_x_offset + view_width) / self.pixels_per_beat
+
+        # 2. 描画開始インデックスの特定 (O(log N))
+        # 検索用に開始時間だけのリストを作成（またはキャッシュされたものを使用）
+        # ※ ノートは start_time 順にソートされている必要があります
+        self.notes_list.sort(key=lambda n: n.start_time) 
+        start_times = [n.start_time for n in self.notes_list]
+        
+        # 画面左端から少し余裕（1拍分）を持って検索開始
+        start_idx = bisect.bisect_left(start_times, visible_start_time - 1.0)
+
+        # 3. 描画ループ
+        for i in range(start_idx, len(self.notes_list)):
+            n = self.notes_list[i]
+            
+            # 画面右端を越えたら、これ以降のノートは見えないのでループを完全に抜ける
+            if n.start_time > visible_end_time:
+                break
+
+            # 座標計算
             rect = self.get_note_rect(n)
-            if rect.right() < 0 or rect.left() > vw:
+            
+            # [セーフティ] 上下の画面外チェック
+            if rect.bottom() < 0 or rect.top() > self.height():
                 continue
+
+            # --- 描画ロジック ---
             is_selected = bool(getattr(n, 'is_selected', False))
+            
+            # Apple風・高品位カラー
             base_color = QColor(255, 159, 10) if is_selected else QColor(10, 132, 255)
-            p.setBrush(QBrush(base_color))
-            p.setPen(QPen(base_color.lighter(130), 1))
-            p.drawRoundedRect(rect, 4, 4)
+            
+            # ノート本体の描画（角丸）
+            painter.setBrush(QBrush(base_color))
+            painter.setPen(QPen(base_color.lighter(130), 1))
+            painter.drawRoundedRect(rect, 4, 4)
+
+            # テキスト描画（十分な幅がある場合のみ）
             if rect.width() > 15:
-                p.setPen(Qt.GlobalColor.white)
-                p.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
-                p.drawText(rect.adjusted(5, 0, -2, 0),
-                           Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                           n.lyrics)
-                p.setPen(QColor(255, 255, 255, 180))
-                p.setFont(QFont("Consolas", 7))
-                phoneme_text = n.phoneme or self.analyze_lyric_to_phoneme(n.lyrics)
-                p.drawText(rect.adjusted(5, self.key_height_pixels * 0.6, 0, 0),
-                           Qt.AlignmentFlag.AlignLeft, phoneme_text)
+                # 歌詞（メイン）
+                painter.setPen(Qt.GlobalColor.white)
+                painter.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+                painter.drawText(
+                    rect.adjusted(5, 0, -2, 0),
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                    n.lyrics
+                )
+
+                # 音素（サブ）
+                painter.setPen(QColor(255, 255, 255, 180))
+                painter.setFont(QFont("Consolas", 7))
+                phoneme_text = getattr(n, 'phoneme', "") or self.analyze_lyric_to_phoneme(n.lyrics)
+                painter.drawText(
+                    rect.adjusted(5, int(self.key_height_pixels * 0.6), 0, 0),
+                    Qt.AlignmentFlag.AlignLeft, 
+                    phoneme_text
+                )
 
     def _draw_parameter_curves(self, p: QPainter) -> None:
         for name, data in self.parameters.items():
