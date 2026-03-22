@@ -25,7 +25,7 @@ import mido
 import onnxruntime as ort # type: ignore
 
 # ==========================================================================
-# 3. GUIライブラリ (PySide6 / Qt)
+# 3. GUIライブラリ (PySide6 )
 # ==========================================================================
 from PySide6.QtCore import (
     Qt, Signal, Slot, QThread, QTimer,
