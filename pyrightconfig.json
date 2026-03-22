@@ -2,23 +2,16 @@
   "include": ["."],
   "exclude": [
     "**/node_modules",
-    "**/__pycache__",
-    ".venv"
+    "**/__pycache__"
   ],
-  "venvPath": ".",
-  "venv": ".venv",
-  "pythonVersion": "3.11",
-  "pythonPlatform": "All",
+  "pythonVersion": "3.10",
   "typeCheckingMode": "basic",
   "reportMissingImports": "warning",
   "reportMissingModuleSource": "none",
-  "reportAttributeAccessIssue": "error",
   "executionEnvironments": [
     {
       "root": ".",
-      "extraPaths": [
-        "."
-      ]
+      "extraPaths": ["."]
     }
   ]
 }
