@@ -1,17 +1,24 @@
 {
   "include": ["."],
-  "exclude": ["**/__pycache__", ".venv"],
-  "venvPath": ".", 
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    ".venv"
+  ],
+  "venvPath": ".",
   "venv": ".venv",
+  "pythonVersion": "3.11",
+  "pythonPlatform": "All",
+  "typeCheckingMode": "basic",
   "reportMissingImports": "warning",
   "reportMissingModuleSource": "none",
-  "pythonVersion": "3.11",
-  "typeCheckingMode": "basic",
-  "extraPaths": ["."],
+  "reportAttributeAccessIssue": "error",
   "executionEnvironments": [
     {
       "root": ".",
-      "extraPaths": ["."]
+      "extraPaths": [
+        "."
+      ]
     }
   ]
 }
