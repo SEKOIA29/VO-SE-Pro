@@ -489,21 +489,34 @@ class WorkerSignals(QObject):
 
 class SynthesisWorker(QRunnable):
     def __init__(self, vose_core, c_notes, note_count, output_path):
+        """
+        [VO-SE Pro: Dedicated Synthesis Worker]
+        代表、このWorkerはレンダリングに必要な全ての材料を直接受け取り、
+        処理が終わるまで参照を保持（Keep-alive）します。
+        """
         super().__init__()
         self.vose_core = vose_core
-        self.c_notes = c_notes # これでメモリを保護
-        self.render_func = render_func  #
-        self.args = args
+        self.c_notes = c_notes       # ctypes構造体配列の参照を保持（重要）
         self.note_count = note_count
         self.output_path = output_path
         self.signals = WorkerSignals()
 
     def run(self):
         try:
-            # 重い合成処理を実行
-            result_path = self.render_func(*self.args)
-            self.signals.finished.emit(result_path)
+            # 代表、ここがバックグラウンドスレッドです。
+            # C++側の execute_render を直接呼び出します。
+            # 引数は (構造体ポインタ, ノート数, 出力パス) です。
+            self.vose_core.execute_render(
+                self.c_notes, 
+                self.note_count, 
+                self.output_path.encode('utf-8')
+            )
+            
+            # 完了したら出力パスを添えてメインスレッドへ通知
+            self.signals.finished.emit(self.output_path)
+            
         except Exception as e:
+            # 万が一のクラッシュも捕捉してエラー通知
             self.signals.error.emit(str(e))
 
 
