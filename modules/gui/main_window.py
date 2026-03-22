@@ -57,8 +57,6 @@ if TYPE_CHECKING:
     from modules.audio.voice_manager import VoiceManager # type: ignore
     #from modules.backend.ai_manager import AIManager # type: ignore
     from modules.gui.aural_engine import AuralAIEngine # type: ignore
-    from modules.gui.graph_editor_widget import GraphEditorWidget as GEditor
-    from modules.audio.voice_manager import VoiceManager as VManager
 
 # ==========================================================================
 # 5. 自作モジュール (実際の読み込み)
