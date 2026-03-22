@@ -48,33 +48,34 @@ from PySide6.QtMultimedia import QMediaPlayer
 # 4. 型チェック時のみのインポート (reportAssignmentType エラーを根本解決)
 # ==========================================================================
 if TYPE_CHECKING:
-
-    from modules.gui.timeline_widget import TimelineWidget # type: ignore
-    from modules.gui.graph_editor_widget import GraphEditorWidget # type: ignore
-    from modules.gui.keyboard_sidebar_widget import KeyboardSidebarWidget # type: ignore
-    from modules.backend.audio_player import AudioPlayer # type: ignore
-    from modules.backend.intonation import IntonationAnalyzer # type: ignore
-    from modules.audio.voice_manager import VoiceManager # type: ignore
-    #from modules.backend.ai_manager import AIManager # type: ignore
-    from modules.gui.aural_engine import AuralAIEngine # type: ignore
+    # 代表、ここで 'as' を使って別名を定義するのが Pyright エラーを消す秘訣です
+    from modules.gui.timeline_widget import TimelineWidget as TimelineT
+    from modules.gui.graph_editor_widget import GraphEditorWidget as GraphEditorT
+    from modules.gui.keyboard_sidebar_widget import KeyboardSidebarWidget as KeyboardSidebarT
+    from modules.audio.voice_manager import VoiceManager as VoiceManagerT
+    from modules.gui.aural_engine import AuralAIEngine as AuralEngineT
+    # 既存の importlib 等でロードするクラスも型だけ定義
+    from modules.talk.talk_manager import IntonationAnalyzer as AnalyzerT
 
 # ==========================================================================
 # 5. 自作モジュール (実際の読み込み)
 # ==========================================================================
-# GitHub Desktopとの同期を維持するため、プロジェクトルート(modules)からの絶対パスを使用
+# プロジェクトルートを sys.path に追加（GitHub Desktop/CI環境でのパス解決を確実に）
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 try:
-    # プロジェクトルートからの絶対パスで統一（GitHub Desktopとの親和性重視）
+    # 代表の指定通り、絶対パスで統一
     from modules.gui.timeline_widget import TimelineWidget
     from modules.gui.graph_editor_widget import GraphEditorWidget
     from modules.gui.keyboard_sidebar_widget import KeyboardSidebarWidget
     from modules.core_manager import vose_manager, CNoteEvent
     from modules.audio.voice_manager import VoiceManager
     from modules.gui.aural_engine import AuralAIEngine
-    # from modules.backend.audio_player import AudioPlayer # 実装済みなら有効化
 except ImportError as e:
     print(f"⚠️ Absolute import failed, falling back to relative: {e}")
-    # フォールバック（開発環境用）
+    # フォールバック（相対インポート）
     from .timeline_widget import TimelineWidget
     from .graph_editor_widget import GraphEditorWidget
     from .keyboard_sidebar_widget import KeyboardSidebarWidget
@@ -1161,8 +1162,9 @@ class MainWindow(QMainWindow):
 
         self.vol_slider = None
         self.vol_label = None
-        self.timeline_widget = None
-        self.graph_editor_widget = None
+        self.timeline_widget: Optional['TimelineT'] = None
+        self.graph_editor_widget: Optional['GraphEditorT'] = None
+        self.voice_manager: Optional['VoiceManagerT'] = None
 
         self.status_label = QLabel("")
         self.voice_grid = QGridLayout()
