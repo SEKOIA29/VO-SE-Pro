@@ -1034,7 +1034,28 @@ class TimelineWidget(QWidget):
 
     @Slot(float)
     def set_playback_time(self, t: float) -> None:
+        """[UX: 官能的スクロール] 再生ヘッドに合わせて背景を滑らかに動かす"""
         self._current_playback_time = t
+        
+        # 追従設定がONの場合のみ実行
+        if getattr(self, "auto_scroll_enabled", True):
+            # 現在の再生位置(px)
+            playback_px = self.time_to_x(t) + self.scroll_x_offset
+            vw = self.width()
+            
+            # 再生ヘッドが画面の70%を越えたらスクロール開始
+            threshold = vw * 0.7
+            if playback_px > self.scroll_x_offset + threshold:
+                # ターゲットのオフセット（ヘッドを画面の30%位置に保つ）
+                target_offset = playback_px - (vw * 0.3)
+                
+                # 直接代入せず、少しずつ近づけることで「ヌルヌル」感を出す（イージング）
+                # 0.1 は追従の速さ。数値を上げるとキビキビ動きます
+                diff = target_offset - self.scroll_x_offset
+                self.scroll_x_offset += diff * 0.1
+                
+                self._invalidate_grid() # グリッド更新
+        
         self.update()
 
     @Slot(int)
