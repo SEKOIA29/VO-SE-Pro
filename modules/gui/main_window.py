@@ -51,11 +51,8 @@ if TYPE_CHECKING:
     # 代表、ここで 'as' を使って別名を定義するのが Pyright エラーを消す秘訣です
     from modules.gui.timeline_widget import TimelineWidget as TimelineT
     from modules.gui.graph_editor_widget import GraphEditorWidget as GraphEditorT
-    from modules.gui.keyboard_sidebar_widget import KeyboardSidebarWidget as KeyboardSidebarT
     from modules.audio.voice_manager import VoiceManager as VoiceManagerT
-    from modules.gui.aural_engine import AuralAIEngine as AuralEngineT
     # 既存の importlib 等でロードするクラスも型だけ定義
-    from modules.talk.talk_manager import IntonationAnalyzer as AnalyzerT
 
 # ==========================================================================
 # 5. 自作モジュール (実際の読み込み)
