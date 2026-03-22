@@ -753,37 +753,88 @@ class TimelineWidget(QWidget):
         self.selection_rect = QRect(self.drag_start_pos, QSize(0, 0))
         self.update()
 
+    def _get_snapped_time(self, raw_time: float) -> float:
+        """[UX: マグネット] 最も近いグリッドに吸い付かせる計算"""
+        # grid_unit: 0.25 = 16分音符
+        grid_unit = 0.25 
+        snapped = round(raw_time / grid_unit) * grid_unit
+        
+        # 吸い付いた瞬間にわずかにフィードバック（振動や色変化）を
+        # 与えるためのフラグをここで立てることも可能です
+        return snapped
+
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if event is None or self.drag_start_pos is None:
             return
+            
         pos_f = event.position()
         curr_pos = QPoint(int(pos_f.x()), int(pos_f.y()))
+        
+        # --- [1. エッジ・オートスクロール] ---
+        # ドラッグ中に画面端にマウスが行ったら、背景を自動でスクロールさせる
+        self._handle_edge_auto_scroll(curr_pos)
 
         if self.edit_mode == "draw_parameter":
             self._add_param_pt(pos_f)
+
         elif self.edit_mode == "move":
+            # --- [2. マグネット・スナップ実装] ---
+            # 開始点からの移動距離を「拍」で計算
             dx_beats = (curr_pos.x() - self.drag_start_pos.x()) / self.pixels_per_beat
             dy_notes = -int(round((curr_pos.y() - self.drag_start_pos.y()) / self.key_height_pixels))
-            dt = self.beats_to_seconds(dx_beats)
+            
+            # グリッド（16分音符など）にスナップさせる
+            res = self.quantize_resolution  # 例: 0.25 (16分音符)
+            snapped_dx = round(dx_beats / res) * res
+            
+            dt = self.beats_to_seconds(snapped_dx)
+            
             if abs(dt) > 0.0001 or dy_notes != 0:
                 for n in self.notes_list:
                     if getattr(n, 'is_selected', False):
+                        # 負の開始時間を防ぎつつ移動
                         n.start_time = max(0.0, n.start_time + dt)
                         n.note_number = max(0, min(127, n.note_number + dy_notes))
-                self._invalidate_note_rects()  # [OPT-3] ノート移動で矩形無効化
-                self.drag_start_pos = curr_pos
+                        
+                        # [官能性フィードバック] 移動中のノートを識別するための一時フラグ
+                        setattr(n, 'is_dragging', True) 
+
+                self._invalidate_note_rects()
+                # 座標をリセットして次の増分に備える
+                self.drag_start_pos = curr_pos 
+
         elif self.edit_mode == "resize" and self._resizing_note is not None:
-            note_start_px = (self.seconds_to_beats(self._resizing_note.start_time)
+            # --- [3. リサイズのスナップ] ---
+            note_start_px = (self.seconds_to_beats(self._resizing_note.start_time) 
                              * self.pixels_per_beat)
-            new_w_beats = (curr_pos.x() + self.scroll_x_offset - note_start_px) / self.pixels_per_beat
-            self._resizing_note.duration = self.beats_to_seconds(
-                max(self.quantize_resolution, new_w_beats))
-            self._invalidate_note_rects()  # [OPT-3] リサイズで矩形無効化
+            
+            # マウス位置から新しい幅（拍）を計算し、スナップ
+            raw_w_beats = (curr_pos.x() + self.scroll_x_offset - note_start_px) / self.pixels_per_beat
+            res = self.quantize_resolution
+            snapped_w_beats = max(res, round(raw_w_beats / res) * res)
+            
+            self._resizing_note.duration = self.beats_to_seconds(snapped_w_beats)
+            self._invalidate_note_rects()
+
         elif self.edit_mode == "select_box":
             self.selection_rect = QRect(self.drag_start_pos, curr_pos).normalized()
+            # [LOD/高速化] get_note_rect()の代わりにキャッシュ済み矩形を使うとさらに高速です
             for n in self.notes_list:
                 n.is_selected = self.selection_rect.intersects(self.get_note_rect(n).toRect())
+        
         self.update()
+
+    def _handle_edge_auto_scroll(self, pos: QPoint) -> None:
+        """[UX] 画面端にマウスがある場合、スクロールを加速させる"""
+        margin = 40  # 反応する端からのピクセル数
+        scroll_speed = 15.0 # スクロールの速さ
+        
+        if pos.x() > self.width() - margin:
+            self.scroll_x_offset += scroll_speed
+            self._invalidate_grid()
+        elif pos.x() < margin and self.scroll_x_offset > 0:
+            self.scroll_x_offset = max(0, self.scroll_x_offset - scroll_speed)
+            self._invalidate_grid()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if self.edit_mode == "draw_parameter":
