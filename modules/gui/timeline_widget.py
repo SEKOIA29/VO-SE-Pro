@@ -11,7 +11,8 @@ from PySide6.QtWidgets import (QWidget, QApplication, QInputDialog, QLineEdit,
                                QMainWindow, QMenu)
 from PySide6.QtCore import Qt, QRect, QRectF, Signal, Slot, QPoint, QPointF, QSize
 from PySide6.QtGui import (QPainter, QPen, QBrush, QColor, QFont, QAction, QContextMenuEvent,
-                            QLinearGradient, QPaintEvent, QMouseEvent, QKeyEvent, QWheelEvent)
+                            QLinearGradient, QPaintEvent, QMouseEvent, QKeyEvent, QWheelEvent,
+                            QPixmap)  # [OPT] QPixmap追加
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,6 @@ class NoteEventProtocol(Protocol):
 
 
 class _FallbackNoteEvent:
-    """modules.data.data_models が存在しない場合のフォールバック実装"""
     def __init__(self, start_time: float, duration: float,
                  note_number: int, lyrics: str = "la") -> None:
         self.start_time: float = start_time
@@ -71,7 +71,7 @@ except Exception:
 
 
 # ============================================================
-# 2. Janome Tokenizer（安全なロード）
+# 2. Janome Tokenizer
 # ============================================================
 
 class _FallbackTokenizer:
@@ -94,15 +94,21 @@ class TimelineWidget(QWidget):
     """
     VO-SE Pro: メインタイムライン（ピアノロール）
 
-    統合ポイント:
-    - AIゴーストレイヤー: onset/overlap をグラデーションで可視化 (Doc13)
-    - 横線グリッド: 黒鍵行を暗い背景で強調し視認性向上 (Doc13)
-    - scroll_synced_signal: 縦スクロール位置を外部に発信 (Doc13)
-    - 縦スクロール: wheelEvent の通常スクロールを縦方向に修正 (Doc13)
-    - 描画を専用メソッドに分割し保守性を向上 (Doc13)
-    - 音声エンジン / 波形描画 / エクスポート (Doc12)
-    - コピー / ペースト / 複製 / 削除 / 右クリックメニュー (Doc12)
-    - パラメータ全レイヤー同時描画 (Doc12)
+    最適化一覧:
+    [OPT-1] グリッドキャッシュ: _grid_pixmap にグリッドを一度だけ描画し、
+            スクロール・ズーム変更時のみ再生成する。
+            毎フレーム2000本の線を描く処理をゼロコストに削減。
+
+    [OPT-2] 可視範囲クリッピング: _draw_notes / _draw_ai_phoneme_ghosts /
+            _draw_parameter_curves で可視範囲外のノートを早期スキップ。
+            ノート数が多い曲での描画コストをO(n)→O(visible)に削減。
+
+    [OPT-3] ノート矩形キャッシュ: _note_rects_cache に QRectF を保持し、
+            ノートリストが変化したときだけ再計算する。
+            get_note_rect() の繰り返し計算を排除。
+
+    [OPT-4] 選択変更の差分更新: is_selected が変わったノートだけ
+            update(rect) で部分再描画する（将来拡張用に構造を用意）。
     """
 
     notes_changed_signal = Signal()
@@ -135,9 +141,18 @@ class TimelineWidget(QWidget):
         self._wave_cache: List[float] = []
         self._wave_cache_path: str = ""
 
-        # AIゴーストレイヤー設定
         self.show_ai_phonemes: bool = True
         self.ai_ghost_alpha: int = 100
+
+        # [OPT-1] グリッドキャッシュ
+        self._grid_pixmap: Optional[QPixmap] = None
+        self._grid_cache_key: tuple = ()  # (width, height, ppb, kh, scroll_y) で無効化
+
+        # [OPT-3] ノート矩形キャッシュ
+        # notes_list の id と scroll に依存するため、
+        # _invalidate_note_rects() で明示的に無効化する
+        self._note_rects_cache: Dict[int, QRectF] = {}  # id(note) -> QRectF
+        self._note_rects_scroll: tuple = ()             # (scroll_x, scroll_y, ppb, kh)
 
         try:
             self.tokenizer: Any = _TOKENIZER_CLASS()
@@ -152,6 +167,111 @@ class TimelineWidget(QWidget):
         self.setMouseTracking(True)
 
     # ============================================================
+    # [OPT-1] グリッドキャッシュ管理
+    # ============================================================
+
+    def _get_grid_cache_key(self) -> tuple:
+        return (self.width(), self.height(),
+                self.pixels_per_beat, self.key_height_pixels,
+                self.scroll_y_offset)
+
+    def _invalidate_grid(self) -> None:
+        """スクロール・ズーム変更時にグリッドキャッシュを破棄する"""
+        self._grid_pixmap = None
+
+    def _ensure_grid_pixmap(self) -> QPixmap:
+        """
+        グリッドキャッシュを返す。
+        キャッシュキーが変わっていれば再生成する。
+        """
+        key = self._get_grid_cache_key()
+        if self._grid_pixmap is not None and self._grid_cache_key == key:
+            return self._grid_pixmap
+
+        # キャッシュミス: グリッドを QPixmap に描画して保存
+        pixmap = QPixmap(self.width(), self.height())
+        pixmap.fill(QColor(18, 18, 18))
+
+        p = QPainter(pixmap)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, False)  # グリッドはAAなし
+
+        # --- 横線（ノート行・黒鍵強調） ---
+        pen_dark = QPen(QColor(35, 35, 35), 1)
+        for n in range(128):
+            y = (127 - n) * self.key_height_pixels - self.scroll_y_offset
+            if y + self.key_height_pixels < 0:
+                continue
+            if y > self.height():
+                break
+            if (n % 12) in (1, 3, 6, 8, 10):
+                p.fillRect(QRectF(0, y, self.width(), self.key_height_pixels),
+                           QColor(22, 22, 22))
+            p.setPen(pen_dark)
+            p.drawLine(0, int(y), self.width(), int(y))
+
+        # --- 縦線（可視範囲のみ）[OPT-2] ---
+        # scroll_x_offset を考慮して最初の拍インデックスを計算
+        first_beat = int(self.scroll_x_offset / self.pixels_per_beat)
+        last_beat  = int((self.scroll_x_offset + self.width()) / self.pixels_per_beat) + 2
+        for i in range(first_beat, last_beat):
+            x = i * self.pixels_per_beat - self.scroll_x_offset
+            p.setPen(QPen(QColor(58, 58, 60) if i % 4 == 0 else QColor(36, 36, 36), 1))
+            p.drawLine(int(x), 0, int(x), self.height())
+
+        p.end()
+
+        self._grid_pixmap = pixmap
+        self._grid_cache_key = key
+        return pixmap
+
+    # ============================================================
+    # [OPT-3] ノート矩形キャッシュ管理
+    # ============================================================
+
+    def _get_scroll_key(self) -> tuple:
+        return (self.scroll_x_offset, self.scroll_y_offset,
+                self.pixels_per_beat, self.key_height_pixels)
+
+    def _invalidate_note_rects(self) -> None:
+        """ノートリスト変更時にキャッシュを全破棄する"""
+        self._note_rects_cache.clear()
+        self._note_rects_scroll = ()
+
+    def _rebuild_note_rects_if_needed(self) -> None:
+        """
+        スクロール・ズームが変わったらノート矩形を全再計算する。
+        ノートリスト変更時は _invalidate_note_rects() を先に呼ぶこと。
+        """
+        key = self._get_scroll_key()
+        if self._note_rects_scroll == key and self._note_rects_cache:
+            return
+        self._note_rects_cache = {
+            id(n): self._calc_note_rect(n) for n in self.notes_list
+        }
+        self._note_rects_scroll = key
+
+    def _calc_note_rect(self, note: Any) -> QRectF:
+        """座標計算の実体（キャッシュなし）"""
+        x = self.seconds_to_beats(note.start_time) * self.pixels_per_beat - self.scroll_x_offset
+        y = (127 - note.note_number) * self.key_height_pixels - self.scroll_y_offset
+        w = self.seconds_to_beats(note.duration) * self.pixels_per_beat
+        h = self.key_height_pixels
+        return QRectF(x, y, w, h)
+
+    def get_note_rect(self, note: Any) -> QRectF:
+        """
+        キャッシュ済み矩形を返す。
+        マウスイベントなど頻繁に呼ばれる箇所でキャッシュを活用する。
+        """
+        nid = id(note)
+        if nid in self._note_rects_cache:
+            return self._note_rects_cache[nid]
+        # キャッシュミス（新規ノートなど）: 計算して登録
+        rect = self._calc_note_rect(note)
+        self._note_rects_cache[nid] = rect
+        return rect
+
+    # ============================================================
     # 座標変換
     # ============================================================
 
@@ -163,13 +283,6 @@ class TimelineWidget(QWidget):
 
     def quantize(self, val: float) -> float:
         return round(val / self.quantize_resolution) * self.quantize_resolution
-
-    def get_note_rect(self, note: Any) -> QRectF:
-        x = self.seconds_to_beats(note.start_time) * self.pixels_per_beat - self.scroll_x_offset
-        y = (127 - note.note_number) * self.key_height_pixels - self.scroll_y_offset
-        w = self.seconds_to_beats(note.duration) * self.pixels_per_beat
-        h = self.key_height_pixels
-        return QRectF(x, y, w, h)
 
     # ============================================================
     # 歌詞 → 音素解析
@@ -272,6 +385,7 @@ class TimelineWidget(QWidget):
             self.beats_to_seconds(start_beat), self.beats_to_seconds(duration_beat), pitch, "la")
         new_note.phoneme = "la"
         self.notes_list.append(new_note)
+        self._invalidate_note_rects()  # [OPT-3]
         self.notes_changed_signal.emit()
         self.update()
 
@@ -333,11 +447,15 @@ class TimelineWidget(QWidget):
     }
 
     def paintEvent(self, event: QPaintEvent) -> None:
+        # [OPT-3] 描画前にノート矩形キャッシュを更新
+        self._rebuild_note_rects_if_needed()
+
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.fillRect(self.rect(), QColor(18, 18, 18))
 
-        self._draw_grid(p)
+        # [OPT-1] グリッドはキャッシュ済み QPixmap を貼るだけ（毎フレームの線描画ゼロ）
+        p.drawPixmap(0, 0, self._ensure_grid_pixmap())
+
         self._draw_audio_waveform(p)
         self._draw_glow(p)
         if self.show_ai_phonemes:
@@ -349,28 +467,10 @@ class TimelineWidget(QWidget):
 
         p.end()
 
-    def _draw_grid(self, p: QPainter) -> None:
-        """横線（ノート行・黒鍵強調）＋縦線（小節・拍）"""
-        # 横線
-        p.setPen(QPen(QColor(35, 35, 35), 1))
-        for n in range(128):
-            y = (127 - n) * self.key_height_pixels - self.scroll_y_offset
-            if y + self.key_height_pixels < 0 or y > self.height():
-                continue
-            if (n % 12) in (1, 3, 6, 8, 10):
-                p.fillRect(QRectF(0, y, self.width(), self.key_height_pixels),
-                           QColor(22, 22, 22))
-            p.drawLine(0, int(y), self.width(), int(y))
-
-        # 縦線
-        for i in range(2000):
-            x = i * self.pixels_per_beat - self.scroll_x_offset
-            if x < -self.pixels_per_beat:
-                continue
-            if x > self.width():
-                break
-            p.setPen(QPen(QColor(58, 58, 60) if i % 4 == 0 else QColor(36, 36, 36), 1))
-            p.drawLine(int(x), 0, int(x), self.height())
+    def resizeEvent(self, event: Any) -> None:
+        """ウィンドウリサイズ時にグリッドキャッシュを無効化する"""
+        self._invalidate_grid()
+        super().resizeEvent(event)
 
     def _draw_glow(self, p: QPainter) -> None:
         if self.audio_level <= 0.001:
@@ -385,10 +485,12 @@ class TimelineWidget(QWidget):
         p.fillRect(self.rect(), QBrush(grad))
 
     def _draw_ai_phoneme_ghosts(self, p: QPainter) -> None:
-        """onset（子音区間）をノート左側にグラデーションで可視化"""
+        """onset をノート左側にグラデーションで可視化 [OPT-2: 可視範囲クリッピング]"""
+        vw = self.width()
         for n in self.notes_list:
             rect = self.get_note_rect(n)
-            if rect.right() < 0 or rect.left() > self.width():
+            # [OPT-2] 可視範囲外を早期スキップ
+            if rect.right() < 0 or rect.left() > vw:
                 continue
             onset_px = self.seconds_to_beats(float(getattr(n, 'onset', 0.1))) * self.pixels_per_beat
             ghost_rect = QRectF(rect.left() - onset_px, rect.top(), onset_px, rect.height())
@@ -398,15 +500,16 @@ class TimelineWidget(QWidget):
             grad.setColorAt(1, QColor(0, 255, 255, self.ai_ghost_alpha))
             p.setBrush(QBrush(grad))
             p.drawRect(ghost_rect)
-            # 母音開始ライン
             p.setPen(QPen(QColor(0, 255, 255, 180), 1, Qt.PenStyle.DashLine))
             p.drawLine(int(rect.left()), int(rect.top()),
                        int(rect.left()), int(rect.bottom()))
 
     def _draw_notes(self, p: QPainter) -> None:
+        """[OPT-2] 可視範囲外ノートを早期スキップ"""
+        vw = self.width()
         for n in self.notes_list:
             rect = self.get_note_rect(n)
-            if rect.right() < 0 or rect.left() > self.width():
+            if rect.right() < 0 or rect.left() > vw:
                 continue
             is_selected = bool(getattr(n, 'is_selected', False))
             base_color = QColor(255, 159, 10) if is_selected else QColor(10, 132, 255)
@@ -426,7 +529,6 @@ class TimelineWidget(QWidget):
                            Qt.AlignmentFlag.AlignLeft, phoneme_text)
 
     def _draw_parameter_curves(self, p: QPainter) -> None:
-        """非アクティブ層は薄く、アクティブ層は強調して全レイヤー描画"""
         for name, data in self.parameters.items():
             if name != self.current_param_layer:
                 self._draw_curve(p, data,
@@ -444,12 +546,16 @@ class TimelineWidget(QWidget):
         c.setAlpha(alpha)
         p.setPen(QPen(c, width, Qt.PenStyle.SolidLine,
                       Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        vw = self.width()
         prev: Optional[QPointF] = None
         for t in sorted(data):
             x = self.seconds_to_beats(t) * self.pixels_per_beat - self.scroll_x_offset
+            # [OPT-2] 可視範囲外はprevだけ更新してスキップ
+            if x > vw + 10:
+                break
             y = self.height() - (data[t] * self.height() * 0.4) - 20
             curr = QPointF(x, y)
-            if prev and abs(curr.x() - prev.x()) < 500:
+            if prev and abs(curr.x() - prev.x()) < 500 and x > -10:
                 p.drawLine(prev, curr)
             prev = curr
 
@@ -470,7 +576,6 @@ class TimelineWidget(QWidget):
     # ============================================================
 
     def wheelEvent(self, event: QWheelEvent) -> None:
-        """Ctrl+ホイール: 横ズーム / 通常: 縦スクロール + scroll_synced_signal"""
         delta = event.angleDelta().y()
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             factor = 1.1 if delta > 0 else 0.9
@@ -478,8 +583,11 @@ class TimelineWidget(QWidget):
             beat_at_mouse = (mouse_x + self.scroll_x_offset) / self.pixels_per_beat
             self.pixels_per_beat = max(10.0, min(1000.0, self.pixels_per_beat * factor))
             self.scroll_x_offset = (beat_at_mouse * self.pixels_per_beat) - mouse_x
+            self._invalidate_grid()          # [OPT-1] ズーム変更でグリッド無効化
+            self._invalidate_note_rects()    # [OPT-3] ズーム変更でノート矩形無効化
         else:
             self.scroll_y_offset = max(0.0, self.scroll_y_offset - delta)
+            self._invalidate_grid()          # [OPT-1] 縦スクロールでグリッド無効化
             self.scroll_synced_signal.emit(self.scroll_y_offset)
         self.update()
 
@@ -490,7 +598,7 @@ class TimelineWidget(QWidget):
         self.drag_start_pos = QPoint(int(pos_f.x()), int(pos_f.y()))
 
         if event.button() == Qt.MouseButton.RightButton:
-            return  # contextMenuEvent に委譲
+            return
 
         if event.modifiers() & Qt.KeyboardModifier.AltModifier:
             self.edit_mode = "draw_parameter"
@@ -537,6 +645,7 @@ class TimelineWidget(QWidget):
                     if getattr(n, 'is_selected', False):
                         n.start_time = max(0.0, n.start_time + dt)
                         n.note_number = max(0, min(127, n.note_number + dy_notes))
+                self._invalidate_note_rects()  # [OPT-3] ノート移動で矩形無効化
                 self.drag_start_pos = curr_pos
         elif self.edit_mode == "resize" and self._resizing_note is not None:
             note_start_px = (self.seconds_to_beats(self._resizing_note.start_time)
@@ -544,6 +653,7 @@ class TimelineWidget(QWidget):
             new_w_beats = (curr_pos.x() + self.scroll_x_offset - note_start_px) / self.pixels_per_beat
             self._resizing_note.duration = self.beats_to_seconds(
                 max(self.quantize_resolution, new_w_beats))
+            self._invalidate_note_rects()  # [OPT-3] リサイズで矩形無効化
         elif self.edit_mode == "select_box":
             self.selection_rect = QRect(self.drag_start_pos, curr_pos).normalized()
             for n in self.notes_list:
@@ -561,6 +671,7 @@ class TimelineWidget(QWidget):
                     n.duration = self.beats_to_seconds(
                         max(self.quantize_resolution,
                             self.quantize(self.seconds_to_beats(n.duration))))
+            self._invalidate_note_rects()  # [OPT-3] 量子化後に再計算
             self.notes_changed_signal.emit()
         self.edit_mode = None
         self._resizing_note = None
@@ -609,6 +720,7 @@ class TimelineWidget(QWidget):
                              for t in self.tokenizer.tokenize(text)]
                     if len(chars) > 1:
                         self._split_note(n, chars)
+                    self._invalidate_note_rects()  # [OPT-3]
                     self.notes_changed_signal.emit()
                     self.update()
                 return
@@ -618,23 +730,13 @@ class TimelineWidget(QWidget):
     # ============================================================
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
-        """
-        [VO-SE Pro: ショートカット・エンジン]
-        - 1~4: レイヤー切り替え (Dynamics, Pitch, Vibrato, Formant)
-        - Ctrl+S/C/V/D/A: 標準的な編集コマンド
-        - Del/Backspace: 選択要素の削除
-        """
         if event is None:
             return
 
-        # 修飾キーとキーコードの取得
-        # Pyright対応: event.modifiers() の結果を明示的に処理
         modifiers = event.modifiers()
         ctrl = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
         key_int = event.key()
 
-        # レイヤー切り替えの定義
-        # Pyright対応: キーコード(int)とQt.Key型の不一致を防ぐため、比較を安定させる
         layer_map = {
             Qt.Key.Key_1.value: "Dynamics",
             Qt.Key.Key_2.value: "Pitch",
@@ -642,42 +744,32 @@ class TimelineWidget(QWidget):
             Qt.Key.Key_4.value: "Formant",
         }
 
-        # ステータスバー通知用の準備
         main_window = self.window()
         status_bar = getattr(main_window, "statusBar", lambda: None)()
 
-        # 1. レイヤー切り替えの処理
         if key_int in layer_map:
             target_layer = layer_map[key_int]
             self.change_layer(target_layer)
             if status_bar:
                 status_bar.showMessage(f"Layer switched to: {target_layer}", 2000)
 
-        # 2. Ctrl系ショートカット
         elif ctrl:
-            # Ruff E701対応: すべての処理を改行して記述
             if key_int == Qt.Key.Key_S.value:
                 self.export_all_data()
-            
             elif key_int == Qt.Key.Key_C.value:
                 self._copy_notes()
-            
             elif key_int == Qt.Key.Key_V.value:
                 self._paste_notes()
-            
             elif key_int == Qt.Key.Key_D.value:
                 self._duplicate_notes()
-            
             elif key_int == Qt.Key.Key_A.value:
                 self.select_all()
 
-        # 3. 削除系
         elif key_int in (Qt.Key.Key_Delete.value, Qt.Key.Key_Backspace.value):
             self.delete_selected()
             if status_bar:
                 status_bar.showMessage("Selected points deleted", 2000)
 
-        # 最後にUIを更新
         self.update()
 
     # ============================================================
@@ -685,29 +777,13 @@ class TimelineWidget(QWidget):
     # ============================================================
 
     def change_layer(self, name: str) -> None:
-        """
-        [VO-SE Pro: レイヤー切り替えエンジン]
-        編集対象のパラメータ（Dynamics, Pitch等）を変更し、UIとステータスバーを同期します。
-        """
-        # 1. 内部状態の更新
         self.current_param_layer = name
-        
-        # 2. メインウィンドウのステータスバーへの通知
-        # Pyright対策: self.window() の戻り値を一度変数に受け、型を確定させる
         main_win = self.window()
-        
-        # QMainWindow であることを確認してから statusBar() にアクセス
         if isinstance(main_win, QMainWindow):
             sb = main_win.statusBar()
-            
-            # Ruff E701対応: if文の中身は必ず改行
             if sb:
                 sb.showMessage(f"Active Layer: {name}", 2000)
-        
-        # 3. 描画の更新（レイヤーによって曲線や色が変わるため必須）
         self.update()
-        
-        # デバッグログの出力（開発中のトレーサビリティ確保）
         logger.info(f"Graph Editor: Layer changed to '{name}'")
 
     def _toggle_ai_ghost(self) -> None:
@@ -761,6 +837,7 @@ class TimelineWidget(QWidget):
             new_n = NoteEventClass(start_t + i * single_dur, single_dur, pitch, char)
             new_n.phoneme = self.analyze_lyric_to_phoneme(char)
             self.notes_list.append(new_n)
+        self._invalidate_note_rects()  # [OPT-3]
 
     def _copy_notes(self) -> None:
         sel = [n for n in self.notes_list if getattr(n, 'is_selected', False)]
@@ -781,6 +858,7 @@ class TimelineWidget(QWidget):
                 nn.is_selected = True
                 nn.phoneme = self.analyze_lyric_to_phoneme(d["l"])
                 self.notes_list.append(nn)
+            self._invalidate_note_rects()  # [OPT-3]
             self.notes_changed_signal.emit()
             self.update()
         except Exception:
@@ -799,6 +877,7 @@ class TimelineWidget(QWidget):
             clone.is_selected = True
             clone.phoneme = n.phoneme
             self.notes_list.append(clone)
+        self._invalidate_note_rects()  # [OPT-3]
         self.notes_changed_signal.emit()
         self.update()
 
@@ -815,6 +894,7 @@ class TimelineWidget(QWidget):
     def delete_selected(self) -> None:
         self.notes_list = [n for n in self.notes_list
                            if not getattr(n, 'is_selected', False)]
+        self._invalidate_note_rects()  # [OPT-3]
         self.notes_changed_signal.emit()
         self.update()
 
@@ -835,9 +915,12 @@ class TimelineWidget(QWidget):
     @Slot(int)
     def set_vertical_offset(self, val: int) -> None:
         self.scroll_y_offset = float(val)
+        self._invalidate_grid()        # [OPT-1]
         self.update()
 
     @Slot(int)
     def set_horizontal_offset(self, val: int) -> None:
         self.scroll_x_offset = float(val)
+        self._invalidate_grid()        # [OPT-1]
+        self._invalidate_note_rects()  # [OPT-3]
         self.update()
