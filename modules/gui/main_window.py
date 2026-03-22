@@ -165,6 +165,7 @@ except ImportError:
         # モード切り替え（Pitch, Gender等）
         def set_mode(self, mode: str) -> None:
             pass
+    GraphEditorWidget = cast(Any, _GraphEditorWidgetFallback)
 
 # ==========================================================================
 # 2. C++連携データ変換関数
@@ -698,6 +699,7 @@ except ImportError:
         def scan_utau_voices(self): pass
         def install_voice_from_zip(self, path): return "NewVoice"
         def get_character_color(self, path): return "#4A90E2"
+    VoiceManager = cast(Any, _VoiceManagerFallback)
 
 try:
     import importlib
@@ -1159,9 +1161,9 @@ class MainWindow(QMainWindow):
 
         self.vol_slider = None
         self.vol_label = None
-        self.timeline_widget: Optional['TimelineT'] = None
-        self.graph_editor_widget: Optional['GraphEditorT'] = None
-        self.voice_manager: Optional['VoiceManagerT'] = None
+        self.timeline_widget = cast(Any, None)
+        self.graph_editor_widget = cast(Any, None)
+        self.voice_manager = cast(Any, None) 
 
         self.status_label = QLabel("")
         self.voice_grid = QGridLayout()
@@ -1354,7 +1356,7 @@ class MainWindow(QMainWindow):
 
         # ボイスマネージャー
         VoiceManager = safe_import("modules.backend.voice_manager", "VoiceManager", MockVoiceManager)
-        self.voice_manager = VoiceManager(self.dynamics_ai)
+        self.voice_manager = cast(Any, VoiceManager(self.dynamics_ai))
 
         # オーディオ・プレイヤー系
         AudioPlayer = safe_import("modules.audio.player", "AudioPlayer", MockAudioPlayer)
