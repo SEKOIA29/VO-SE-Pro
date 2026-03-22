@@ -61,13 +61,12 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 try:
-    # 代表の指定通り、絶対パスで統一
-    from modules.gui.timeline_widget import TimelineWidget
-    from modules.gui.graph_editor_widget import GraphEditorWidget
-    from modules.gui.keyboard_sidebar_widget import KeyboardSidebarWidget
-    from modules.core_manager import vose_manager, CNoteEvent
-    from modules.audio.voice_manager import VoiceManager
-    from modules.gui.aural_engine import AuralAIEngine
+    from modules.gui.timeline_widget import TimelineWidget # type: ignore[assignment]
+    from modules.gui.graph_editor_widget import GraphEditorWidget # type: ignore[assignment]
+    from modules.gui.keyboard_sidebar_widget import KeyboardSidebarWidget # type: ignore[assignment]
+    from modules.core_manager import vose_manager, CNoteEvent # type: ignore[assignment]
+    from modules.audio.voice_manager import VoiceManager # type: ignore[assignment]
+    from modules.gui.aural_engine import AuralAIEngine # type: ignore[assignment]
 except ImportError as e:
     print(f"⚠️ Absolute import failed, falling back to relative: {e}")
     # フォールバック（相対インポート）
@@ -127,7 +126,7 @@ try:
 except ImportError:
     # Actions (Pyright) および開発環境でのインポート失敗対策。
     # main_window.py から呼び出される全ての属性・メソッドを網羅。
-    class GraphEditorWidget(QWidget):
+    class _GraphEditorWidgetFallback(QWidget):
         pitch_data_updated = Signal(list)
         
         def __init__(self, parent: Optional[QWidget] = None): 
@@ -687,7 +686,7 @@ except ImportError:
 try:
     from .voice_manager import VoiceManager # type: ignore
 except ImportError:
-    class VoiceManager:
+    class _VoiceManagerFallback:
         def __init__(self, ai):
             self.voices: Dict[str, Dict] = {}
             self.internal_voice_dir = "voice_banks"
