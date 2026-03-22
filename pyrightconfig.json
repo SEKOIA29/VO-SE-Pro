@@ -1,12 +1,17 @@
 {
   "include": ["."],
+  "exclude": ["**/__pycache__", ".venv"],
+  "venvPath": ".", 
+  "venv": ".venv",
   "reportMissingImports": "warning",
   "reportMissingModuleSource": "none",
   "pythonVersion": "3.11",
   "typeCheckingMode": "basic",
+  "extraPaths": ["."],
   "executionEnvironments": [
     {
-      "root": "."
+      "root": ".",
+      "extraPaths": ["."]
     }
   ]
 }
