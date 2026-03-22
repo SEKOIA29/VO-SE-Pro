@@ -68,6 +68,7 @@ try:
     from modules.gui.timeline_widget import TimelineWidget
     from modules.gui.graph_editor_widget import GraphEditorWidget
     from modules.gui.keyboard_sidebar_widget import KeyboardSidebarWidget
+    from modules.core_manager import vose_manager, CNoteEvent
     from modules.audio.voice_manager import VoiceManager
     from modules.gui.aural_engine import AuralAIEngine
     # from modules.backend.audio_player import AudioPlayer # 実装済みなら有効化
@@ -1287,107 +1288,80 @@ class MainWindow(QMainWindow):
         self.current_voice_id = "NONE"
 
     def _init_engines(self, engine, ai):
-        """エンジン類の実体化ロジック（省略なし完全版）"""
+        """
+        [VO-SE Pro: Core Integration Complete Edition]
+        全てのエンジンとマネージャーを初期化します。
+        DLLやモジュールが欠落していても、Mockオブジェクトにより起動を阻止しません。
+        """
+        from modules.core_manager import vose_manager
 
-        # --- 1. VoSeEngine の初期化 ---
-        if not self.vo_se_engine:
+        # --- 1. VOSE Core Engine (C++ DLL) の統合 ---
+        # 旧 VoseEngine() を廃止し、シングルトンから取得します
+        self.vose_core = vose_manager.get_lib()
+        
+        if not self.vose_core:
+            # DLLが読み込めない場合のセーフティネット
+            class MockCore:
+                def __getattr__(self, name):
+                    return lambda *args, **kwargs: None
+            self.vose_core = MockCore()
+            print("⚠️ VOSE Core DLL is missing. Running in Mock mode.")
+        else:
+            self.statusBar().showMessage("VOSE Core Engine: Online", 3000)
+
+        # --- 2. モジュール・ロード用ヘルパー ---
+        def safe_import(module_path, class_name, fallback_class):
             try:
                 import importlib
-                VoSeEngine = importlib.import_module("modules.backend.vo_se_engine").VoSeEngine  # type: ignore[attr-defined]
-                self.vo_se_engine = VoSeEngine()
-            except Exception:
-                class MockEngine:
-                    def __init__(self):
-                        self.lib = None
-                        self.current_time_playback = 0.0
-                    def set_active_character(self, name): pass
-                    def synthesize(self, *args, **kwargs): pass
-                    def play(self, *args, **kwargs): pass
-                    def stop_playback(self, *args, **kwargs): pass
-                    def export_to_wav(self, *args, **kwargs): pass
-                    def set_voice_library(self, *args, **kwargs): pass
-                    def set_oto_data(self, *args, **kwargs): pass
-                    def prepare_cache(self, *args, **kwargs): pass
-                    def close(self, *args, **kwargs): pass
-                    def vose_free_buffer(self, *args, **kwargs): pass
-                    def vose_set_formant(self, *args, **kwargs): pass
-                    def play_audio(self, *args, **kwargs): pass
-                    def get_current_time(self, *args, **kwargs): pass
-                    def seek_time(self, *args, **kwargs): pass
-                    def preview_single_note(self, *args, **kwargs): pass
-                    def enable_realtime_monitor(self, *args, **kwargs): pass
-                    def render(self, *args, **kwargs): pass
-                    def play_result(self, *args, **kwargs): pass
-                    def set_tempo(self, *args, **kwargs): pass
-                    def synthesize_track(self, *args, **kwargs): pass
-                    def update_notes_data(self, *args, **kwargs): pass
-                    def play_realtime_note(self, *args, **kwargs): pass
-                    def stop_realtime_note(self, *args, **kwargs): pass
-                self.vo_se_engine = MockEngine()
+                mod = importlib.import_module(module_path)
+                return getattr(mod, class_name)
+            except (ImportError, AttributeError) as e:
+                print(f"Engine Load Warning: {module_path}.{class_name} not found. ({e})")
+                return fallback_class
 
-        # --- 2. その他エンジン・マネージャー類の初期化 ---
-        # フォールバッククラスを先に定義（importが失敗してもNameErrorにならない）
-        class _MockDynamicsAI:
-            def generate_emotional_pitch(self, f0): return f0
+        # --- 3. Mockクラスの定義（実体がない場合の身代わり） ---
+        class MockDynamicsAI:
+            def generate_emotional_pitch(self, f0, strength=0.8): return f0
+            def get_baked_pitch(self, nid, f0, s=0.8): return f0
 
-        class _MockVoiceManager:
-            def __init__(self, ai):
-                self.voices = {}
+        class MockVoiceManager:
+            def __init__(self, ai=None): self.voices = {}
             def get_current_voice_path(self): return ""
             def scan_utau_voices(self): pass
             def get_character_color(self, path): return "#4A90E2"
 
-        class _MockIntonationAnalyzer:
-            def analyze(self, text): return []
-            def parse_trace_to_notes(self, trace): return []
-            def analyze_to_pro_events(self, text): return []
+        class MockAudioPlayer:
+            def __init__(self, volume=0.8): self.vol = volume
+            def play_file(self, path): print(f"Mock Play: {path}")
+            def stop(self): pass
 
-        class _MockAudioPlayer:
-            def __init__(self, volume=0.8): pass
-            def play_file(self, path): pass
-
-        class _MockAudioOutput:
-            def setVolume(self, v): pass
-
-        DynamicsAIEngine = _MockDynamicsAI
-        VoiceManager = _MockVoiceManager
-        IntonationAnalyzer = _MockIntonationAnalyzer
-        AudioPlayer = _MockAudioPlayer
-        AudioOutput = _MockAudioOutput
-
-        # 実物が読み込めれば上書きする
-        try:
-            import importlib
-            DynamicsAIEngine = importlib.import_module("modules.utils.dynamics_ai").DynamicsAIEngine  # type: ignore[attr-defined]
-            VoiceManager = importlib.import_module("modules.backend.voice_manager").VoiceManager  # type: ignore[attr-defined]
-            IntonationAnalyzer = importlib.import_module("modules.talk.talk_manager").IntonationAnalyzer  # type: ignore[attr-defined]
-            AudioPlayer = importlib.import_module("modules.audio.player").AudioPlayer  # type: ignore[attr-defined]
-            AudioOutput = importlib.import_module("modules.audio.output").AudioOutput  # type: ignore[attr-defined]
-        except Exception as e:
-            print(f"Engine Load Warning (using mock): {e}")
-
-        # ここでは必ずクラスが存在することが保証されている
+        # --- 4. 実体化プロセスの実行 ---
+        # AIエンジン
+        DynamicsAIEngine = safe_import("modules.utils.dynamics_ai", "DynamicsAIEngine", MockDynamicsAI)
         self.dynamics_ai = ai if ai else DynamicsAIEngine()
+
+        # ボイスマネージャー
+        VoiceManager = safe_import("modules.backend.voice_manager", "VoiceManager", MockVoiceManager)
         self.voice_manager = VoiceManager(self.dynamics_ai)
-        self.analyzer = IntonationAnalyzer()
+
+        # オーディオ・プレイヤー系
+        AudioPlayer = safe_import("modules.audio.player", "AudioPlayer", MockAudioPlayer)
+        self.audio_player = AudioPlayer(volume=getattr(self, 'volume', 0.8))
+
+        # トーク解析系（Talk機能用）
+        IntonationAnalyzer = safe_import("modules.talk.talk_manager", "IntonationAnalyzer", lambda: None)
+        self.analyzer = IntonationAnalyzer() if IntonationAnalyzer else None
         self.text_analyzer = self.analyzer
-        self.audio_player = AudioPlayer(volume=self.volume)
-        self.audio_output = AudioOutput()
 
-        # --- 3. パートナー枠の初期化 ---
-        
-        # ==============================================================================
-        # --- ここで辞書を定義 ---
+        # --- 5. プロジェクト・パートナー枠の定義 ---
+        # 代表の指定通り、ここでID管理を確定させます
         self.confirmed_partners = {
-            1: "UNDER RECRUITMENT",       # ID-01に反映
-            2: "UNDER RECRUITMENT",       # ID-02に反映
-            3: "UNDER RECRUITMENT",       # ID-03に反映
-            # 未決定のIDは書かなくてOK（自動的に UNDER RECRUITMENT にならけど一応書いとく）
+            1: "UNDER RECRUITMENT", # ID-01
+            2: "UNDER RECRUITMENT", # ID-02
+            3: "UNDER RECRUITMENT", # ID-03
         }
-
-        #self.confirmed_partners = {} # これだけで10枠すべてが「UNDER RECRUITMENT」になります
-       
-        # ==============================================================================
+        
+        print("✅ Startup Sequence: All engines initialized.")
         
 
     def execute_render(self):
