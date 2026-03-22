@@ -604,37 +604,86 @@ class TimelineWidget(QWidget):
                     color: QColor, alpha: int, width: int) -> None:
         if not data:
             return
-        c = QColor(color)
-        c.setAlpha(alpha)
-        p.setPen(QPen(c, width, Qt.PenStyle.SolidLine,
-                      Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            
         vw = self.width()
+        
+        # 1. グロー（発光）エフェクト用の太く薄いペン
+        glow_color = QColor(color)
+        glow_color.setAlpha(int(alpha * 0.3))  # 透明度を下げてぼんやり光らせる
+        glow_pen = QPen(glow_color, width * 3, Qt.PenStyle.SolidLine,
+                        Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+
+        # 2. 芯となるメインのペン
+        core_color = QColor(color)
+        core_color.setAlpha(alpha)
+        core_pen = QPen(core_color, width, Qt.PenStyle.SolidLine,
+                        Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+
         prev: Optional[QPointF] = None
         for t in sorted(data):
             x = self.seconds_to_beats(t) * self.pixels_per_beat - self.scroll_x_offset
+            
             # [OPT-2] 可視範囲外はprevだけ更新してスキップ
             if x > vw + 10:
                 break
+                
             y = self.height() - (data[t] * self.height() * 0.4) - 20
             curr = QPointF(x, y)
+            
             if prev and abs(curr.x() - prev.x()) < 500 and x > -10:
+                # 重ね塗りでネオンのような発光を表現
+                p.setPen(glow_pen)
                 p.drawLine(prev, curr)
+                p.setPen(core_pen)
+                p.drawLine(prev, curr)
+                
             prev = curr
 
     def _draw_selection_rect(self, p: QPainter) -> None:
-        if self.edit_mode == "select_box":
-            p.setPen(QPen(Qt.GlobalColor.white, 1, Qt.PenStyle.DashLine))
-            p.setBrush(QBrush(QColor(255, 255, 255, 40)))
+        if self.edit_mode == "select_box" and self.selection_rect.isValid():
+            # Apple風の洗練された選択エリア（システムブルーの透過）
+            base_blue = QColor(10, 132, 255)
+            
+            # 枠線（少し明るく）
+            p.setPen(QPen(base_blue.lighter(120), 1.5, Qt.PenStyle.DashLine))
+            
+            # 塗りつぶし（極めて薄く）
+            bg_color = QColor(base_blue)
+            bg_color.setAlpha(30)
+            p.setBrush(QBrush(bg_color))
+            
             p.drawRect(self.selection_rect)
 
     def _draw_playhead(self, p: QPainter) -> None:
         cx = int(self.seconds_to_beats(self._current_playback_time)
                  * self.pixels_per_beat - self.scroll_x_offset)
-        p.setPen(QPen(QColor(255, 45, 85), 2))
+                 
+        # 画面外なら描画をスキップして負荷削減
+        if cx < -10 or cx > self.width() + 10:
+            return
+
+        head_color = QColor(255, 45, 85) # ビビッドなレッド（アクセントカラー）
+
+        # 1. 線の発光エフェクト（太い半透明）
+        p.setPen(QPen(QColor(255, 45, 85, 80), 3))
         p.drawLine(cx, 0, cx, self.height())
 
+        # 2. 中心のソリッドな線
+        p.setPen(QPen(head_color, 1.5))
+        p.drawLine(cx, 0, cx, self.height())
+
+        # 3. プレイヘッドの「頭（逆三角形）」を描画
+        p.setBrush(QBrush(head_color))
+        p.setPen(Qt.PenStyle.NoPen)
+        from PySide6.QtCore import QPoint
+        p.drawPolygon([
+            QPoint(cx - 7, 0),   # 左上
+            QPoint(cx + 7, 0),   # 右上
+            QPoint(cx, 10)       # 下の尖った部分
+        ])
+
     # ============================================================
-    # マウス・ホイールイベント
+    # マウス・ホイールイベント    
     # ============================================================
 
     def wheelEvent(self, event: QWheelEvent) -> None:
