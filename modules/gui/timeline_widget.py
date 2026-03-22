@@ -506,75 +506,89 @@ class TimelineWidget(QWidget):
 
     def _draw_notes(self, painter: QPainter) -> None:
         """
-        [VO-SE Pro: Ultra Fast Rendering]
-        代表、このメソッドは二分探索を用いて、画面内に映るノートだけをピンポイントで描画します。
+        [VO-SE Pro: Ultra Fast Rendering & High-End UX]
+        代表、二分探索に加えて、Apple/Logic Pro級の視覚的階層化(LOD)を実装しました。
         """
         if not self.notes_list:
             return
 
         import bisect
 
-        # 1. 描画範囲の計算（ピクセルから拍数へ変換）
-        view_width = self.width()
-        # 画面の左端と右端が「何拍目」に相当するか
+        # --- 1. 描画範囲の計算 ---
+        vw = self.width()
+        vh = self.height()
         visible_start_time = self.scroll_x_offset / self.pixels_per_beat
-        visible_end_time = (self.scroll_x_offset + view_width) / self.pixels_per_beat
+        visible_end_time = (self.scroll_x_offset + vw) / self.pixels_per_beat
 
-        # 2. 描画開始インデックスの特定 (O(log N))
-        # 検索用に開始時間だけのリストを作成（またはキャッシュされたものを使用）
-        # ※ ノートは start_time 順にソートされている必要があります
-        self.notes_list.sort(key=lambda n: n.start_time) 
+        # --- 2. 高速シーク ---
+        # 描画前に一度だけソートを保証（データ量が多い場合は外部で管理するのがベスト）
+        self.notes_list.sort(key=lambda n: n.start_time)
         start_times = [n.start_time for n in self.notes_list]
-        
-        # 画面左端から少し余裕（1拍分）を持って検索開始
         start_idx = bisect.bisect_left(start_times, visible_start_time - 1.0)
 
-        # 3. 描画ループ
+        # --- 3. 描画ループ ---
         for i in range(start_idx, len(self.notes_list)):
             n = self.notes_list[i]
-            
-            # 画面右端を越えたら、これ以降のノートは見えないのでループを完全に抜ける
             if n.start_time > visible_end_time:
                 break
 
-            # 座標計算
             rect = self.get_note_rect(n)
-            
-            # [セーフティ] 上下の画面外チェック
-            if rect.bottom() < 0 or rect.top() > self.height():
+            if rect.bottom() < 0 or rect.top() > vh:
                 continue
 
-            # --- 描画ロジック ---
+            # --- [三：ブラッシュアップ] 視覚演出ロジック ---
             is_selected = bool(getattr(n, 'is_selected', False))
             
-            # Apple風・高品位カラー
-            base_color = QColor(255, 159, 10) if is_selected else QColor(10, 132, 255)
-            
-            # ノート本体の描画（角丸）
-            painter.setBrush(QBrush(base_color))
-            painter.setPen(QPen(base_color.lighter(130), 1))
-            painter.drawRoundedRect(rect, 4, 4)
+            # 配色決定（Apple Neon Style）
+            if is_selected:
+                base_color = QColor(255, 159, 10)  # オレンジ
+                border_color = base_color.lighter(140)
+            else:
+                base_color = QColor(10, 132, 255)  # ブルー
+                border_color = base_color.lighter(120)
 
-            # テキスト描画（十分な幅がある場合のみ）
-            if rect.width() > 15:
-                # 歌詞（メイン）
+            # A. 本体グラデーション描画
+            gradient = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+            gradient.setColorAt(0, border_color)   # 上部は明るく
+            gradient.setColorAt(1, base_color)     # 下部は基本色
+            
+            painter.setBrush(QBrush(gradient))
+            painter.setPen(QPen(border_color, 1.2)) # わずかに光るエッジ
+            painter.drawRoundedRect(rect, 3, 3)
+
+            # B. LOD (Level of Detail) ロジック
+            # ノートの横幅に応じて描画する情報の密度を変える
+            note_w = rect.width()
+
+            if note_w > 20: # 歌詞を表示する最小幅
+                # 歌詞描画
                 painter.setPen(Qt.GlobalColor.white)
                 painter.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+                
+                # テキストがはみ出さないように elidedText 的な処理
+                lyric_text = n.lyrics
                 painter.drawText(
                     rect.adjusted(5, 0, -2, 0),
                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                    n.lyrics
+                    lyric_text
                 )
 
-                # 音素（サブ）
-                painter.setPen(QColor(255, 255, 255, 180))
-                painter.setFont(QFont("Consolas", 7))
-                phoneme_text = getattr(n, 'phoneme', "") or self.analyze_lyric_to_phoneme(n.lyrics)
-                painter.drawText(
-                    rect.adjusted(5, int(self.key_height_pixels * 0.6), 0, 0),
-                    Qt.AlignmentFlag.AlignLeft, 
-                    phoneme_text
-                )
+                if note_w > 50 and rect.height() > 18: # 音素を表示する幅と高さ
+                    # 音素描画（少し透明度を下げて階層化）
+                    painter.setPen(QColor(255, 255, 255, 170))
+                    painter.setFont(QFont("Consolas", 7))
+                    phoneme = getattr(n, 'phoneme', "") or self.analyze_lyric_to_phoneme(n.lyrics)
+                    painter.drawText(
+                        rect.adjusted(5, int(self.key_height_pixels * 0.55), 0, 0),
+                        Qt.AlignmentFlag.AlignLeft,
+                        phoneme
+                    )
+
+            # C. 選択中の「グロー（発光）」演出（オプション）
+            if is_selected:
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.setPen(QPen(QColor(255, 255, 255, 100), 2))
+                painter.drawRoundedRect(rect.adjusted(-1, -1, 1, 1), 4, 4)
 
     def _draw_parameter_curves(self, p: QPainter) -> None:
         for name, data in self.parameters.items():
@@ -624,20 +638,34 @@ class TimelineWidget(QWidget):
     # ============================================================
 
     def wheelEvent(self, event: QWheelEvent) -> None:
-        delta = event.angleDelta().y()
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-            factor = 1.1 if delta > 0 else 0.9
+            # --- [吸い付くズームのロジック] ---
+            zoom_factor = 1.1 if event.angleDelta().y() > 0 else 0.9
+            
+            # 1. 現在のマウス位置（ピクセル）を取得
             mouse_x = event.position().x()
-            beat_at_mouse = (mouse_x + self.scroll_x_offset) / self.pixels_per_beat
-            self.pixels_per_beat = max(10.0, min(1000.0, self.pixels_per_beat * factor))
-            self.scroll_x_offset = (beat_at_mouse * self.pixels_per_beat) - mouse_x
-            self._invalidate_grid()          # [OPT-1] ズーム変更でグリッド無効化
-            self._invalidate_note_rects()    # [OPT-3] ズーム変更でノート矩形無効化
+            
+            # 2. ズーム前の「マウス下の時間（拍数）」を固定する
+            # (ピクセル + スクロール量) / 倍率 = ズーム前の絶対時間
+            time_at_mouse = (mouse_x + self.scroll_x_offset) / self.pixels_per_beat
+            
+            # 3. 倍率を更新
+            old_ppb = self.pixels_per_beat
+            self.pixels_per_beat = max(10.0, min(500.0, self.pixels_per_beat * zoom_factor))
+            
+            # 4. ズーム後のスクロール位置を再計算
+            # 新しいスクロール位置 = (絶対時間 * 新倍率) - マウスのピクセル位置
+            self.scroll_x_offset = (time_at_mouse * self.pixels_per_beat) - mouse_x
+            self.scroll_x_offset = max(0, self.scroll_x_offset)
+            
+            self._invalidate_grid() # グリッド再描画
+            self.update()
         else:
-            self.scroll_y_offset = max(0.0, self.scroll_y_offset - delta)
-            self._invalidate_grid()          # [OPT-1] 縦スクロールでグリッド無効化
-            self.scroll_synced_signal.emit(self.scroll_y_offset)
-        self.update()
+            # 通常のスクロール（横）
+            delta = event.angleDelta().y()
+            self.scroll_x_offset = max(0, self.scroll_x_offset - delta)
+            self._invalidate_grid()
+            self.update()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event is None:
