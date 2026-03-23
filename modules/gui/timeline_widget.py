@@ -177,10 +177,7 @@ class TimelineWidget(QWidget):
         beats = (x_px + self.scroll_x_offset) / self.pixels_per_beat
         return self.beats_to_seconds(beats)
 
-    def init_voice_engine(self) -> None:
-        """[Fix] 未定義エラー回避用のスタブ。CoreManager側で初期化される想定"""
-        logger.info("Voice engine initialized via TimelineWidget stub.")
-
+    
     # ============================================================
     # [OPT-1] グリッドキャッシュ管理
     # ============================================================
