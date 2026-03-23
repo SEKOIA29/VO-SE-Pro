@@ -48,9 +48,12 @@ from PySide6.QtMultimedia import QMediaPlayer
 # 4. 型チェック時のみのインポート (reportAssignmentType エラーを根本解決)
 # ==========================================================================
 if TYPE_CHECKING:
-    # 代表、ここで 'as' を使って別名を定義するのが Pyright エラーを消す秘訣です
-    pass
-    # 既存の importlib 等でロードするクラスも型だけ定義
+    # 実行時には無視され、型チェック時にのみ参照される
+    try:
+        from modules.core_manager import CoreManager
+    except ImportError:
+        # Pyrightがパスを見失っている場合、Anyで逃がして警告を黙らせる
+        CoreManager = Any # type: ignore
 
 # ==========================================================================
 # 5. 自作モジュール (実際の読み込み)
