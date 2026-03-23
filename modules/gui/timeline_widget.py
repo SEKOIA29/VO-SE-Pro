@@ -16,7 +16,6 @@ from PySide6.QtGui import (QPainter, QPen, QBrush, QColor, QFont, QAction, QCont
 
 logger = logging.getLogger(__name__)
 
-
 # ============================================================
 # 1. データモデル
 # ============================================================
