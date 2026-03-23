@@ -166,6 +166,16 @@ class TimelineWidget(QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMouseTracking(True)
 
+  　def time_to_x(self, t_seconds: float) -> float:
+        """秒単位の時間を現在のスクロール・ズーム状態に応じたX座標に変換"""
+        beats = self.seconds_to_beats(t_seconds)
+        return beats * self.pixels_per_beat - self.scroll_x_offset
+
+    def x_to_time(self, x_px: float) -> float:
+        """X座標を秒単位の時間に変換（逆変換）"""
+        beats = (x_px + self.scroll_x_offset) / self.pixels_per_beat
+        return self.beats_to_seconds(beats)
+
     # ============================================================
     # [OPT-1] グリッドキャッシュ管理
     # ============================================================
