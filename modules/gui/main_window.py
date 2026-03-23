@@ -1307,7 +1307,6 @@ class MainWindow(QMainWindow):
         全てのエンジンとマネージャーを初期化します。
         DLLやモジュールが欠落していても、Mockオブジェクトにより起動を阻止しません。
         """
-        from modules.core_manager import CoreManager # type: ignore
         # --- 1. VOSE Core Engine (C++ DLL) の統合 ---
         # 旧 VoseEngine() を廃止し、シングルトンから取得します
         self.vose_core = vose_manager.get_lib()
