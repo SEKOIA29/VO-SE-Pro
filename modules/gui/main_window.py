@@ -50,7 +50,7 @@ from PySide6.QtMultimedia import QMediaPlayer
 if TYPE_CHECKING:
     # 実行時には無視され、型チェック時にのみ参照される
     try:
-        from modules.core_manager import CoreManager
+        from modules.core_manager import CoreManager # type: ignore
     except ImportError:
         # Pyrightがパスを見失っている場合、Anyで逃がして警告を黙らせる
         CoreManager = Any # type: ignore
@@ -1307,8 +1307,7 @@ class MainWindow(QMainWindow):
         全てのエンジンとマネージャーを初期化します。
         DLLやモジュールが欠落していても、Mockオブジェクトにより起動を阻止しません。
         """
-        from modules.core_manager import vose_manager
-
+        from modules.core_manager import CoreManager # type: ignore
         # --- 1. VOSE Core Engine (C++ DLL) の統合 ---
         # 旧 VoseEngine() を廃止し、シングルトンから取得します
         self.vose_core = vose_manager.get_lib()
