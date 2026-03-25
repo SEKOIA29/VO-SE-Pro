@@ -67,38 +67,34 @@ jobs:
           mkdir bin -Force
           cl.exe /O2 /LD /Fe:bin/vose_core.dll src/vose_core.cpp /I include /link /LIBPATH:lib world.lib
 
+   
       - name: 🛠️ Build VOSE Core (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          # 1. 出力先ディレクトリの作成
           mkdir -p bin
-          
-          # 2. WORLDのビルド (src/world に移動して実行)
-          # ここで -I. と -I.. を指定することで、あらゆるインクルード形式に対応させます
           cd src/world
-          
+
           echo "🔨 Compiling WORLD source files..."
-          
-          # CPPファイルのコンパイル (存在する場合のみ)
+
           for f in *.cpp; do
             [ -e "$f" ] || continue
+            if [ "$f" = "audioio.cpp" ]; then
+              echo "  Skipping $f (audio I/O device — not needed)"
+              continue
+            fi
             echo "  Compiling $f..."
             clang++ -O3 -c -std=c++17 -stdlib=libc++ -mmacosx-version-min=11.0 -I. -I.. "$f"
           done
-          
-          # Cファイルのコンパイル (存在する場合のみ)
+
           for f in *.c; do
             [ -e "$f" ] || continue
             echo "  Compiling $f..."
             clang -O3 -c -mmacosx-version-min=11.0 -I. -I.. "$f"
           done
-          
+
           cd ../..
 
-          # 3. メインの vose_core と全オブジェクトファイルを結合
-          # WORLDの全オブジェクトファイルを強制的にリンク対象に含めます
           echo "🔗 Linking all objects into libvose_core.dylib..."
-          
           clang++ -O3 -dynamiclib -std=c++17 -stdlib=libc++ \
             -mmacosx-version-min=11.0 \
             -I./src \
@@ -110,7 +106,6 @@ jobs:
 
           echo "✅ Build Complete: bin/libvose_core.dylib"
           ls -l bin/libvose_core.dylib
-
 
 
       - name: Verify pkg_resources for PyInstaller hook
