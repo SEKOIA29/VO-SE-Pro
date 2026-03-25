@@ -46,6 +46,11 @@ jobs:
         # ルールコードをすべて大文字 (E, F, E501, E401) に修正
         run: ruff check . --select E,F --ignore E501,E401 --fix --exit-zero
 
+      - name: 🎙️ Generate Voice Data Header
+        run: |
+          # pack_voice.py を実行して src/voice_data.h を生成
+          python modules/tools/pack_voice.py
+
       - name: Auto Commit Fixes
         if: matrix.os == 'windows-latest'
         uses: stefanzweifel/git-auto-commit-action@v5
