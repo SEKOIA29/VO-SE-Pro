@@ -83,13 +83,17 @@ jobs:
               continue
             fi
             echo "  Compiling $f..."
-            clang++ -O3 -c -std=c++17 -stdlib=libc++ -mmacosx-version-min=11.0 -I. -I.. "$f"
+            clang++ -O3 -c -std=c++17 -stdlib=libc++ -mmacosx-version-min=11.0 \
+              -I. -I.. -I../../include \
+              "$f"
           done
 
           for f in *.c; do
             [ -e "$f" ] || continue
             echo "  Compiling $f..."
-            clang -O3 -c -mmacosx-version-min=11.0 -I. -I.. "$f"
+            clang -O3 -c -mmacosx-version-min=11.0 \
+              -I. -I.. -I../../include \
+              "$f"
           done
 
           cd ../..
