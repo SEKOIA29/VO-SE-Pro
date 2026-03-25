@@ -70,17 +70,17 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           mkdir -p bin
-          
-          # -std=c++17: 規格を明示
-          # -stdlib=libc++: macOSの標準ライブラリを使用
-          # -mmacosx-version-min=11.0: これを指定しないと filesystem が使えない場合があります
+          # 代表、ここが最終形態です。
+          # src/world/*.cpp と src/world/*.c を両方スキャンして、
+          # 一つのダイナミックライブラリに統合します。
           clang++ -O3 -dynamiclib -std=c++17 -stdlib=libc++ \
             -mmacosx-version-min=11.0 \
             -I./src \
             -I./include \
             -o bin/libvose_core.dylib \
             src/vose_core.cpp \
-            -L./lib -lworld
+            src/world/*.cpp \
+            src/world/*.c
 
 
 
