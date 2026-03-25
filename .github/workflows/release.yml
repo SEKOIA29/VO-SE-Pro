@@ -69,26 +69,35 @@ jobs:
       - name: 🛠️ Build VOSE Core (macOS)
         if: matrix.os == 'macos-latest'
         run: |
+          # 1. 出力先ディレクトリの作成
           mkdir -p bin
           
-          # 1. WORLDのソースがある階層へ移動
+          # 2. WORLDのビルド (src/world に移動して実行)
+          # ここで -I. と -I.. を指定することで、あらゆるインクルード形式に対応させます
           cd src/world
           
-          # 2. オブジェクトファイルを生成
-          # -I. (カレント) と -I.. (親ディレクトリ) を追加することで、
-          # "#include <world/xxx.h>" と "#include "./xxx.h"" の両方に対応させます。
+          echo "🔨 Compiling WORLD source files..."
           
-          if ls *.cpp 1> /dev/null 2>&1; then
-            clang++ -O3 -c -std=c++17 -stdlib=libc++ -mmacosx-version-min=11.0 -I. -I.. *.cpp
-          fi
+          # CPPファイルのコンパイル (存在する場合のみ)
+          for f in *.cpp; do
+            [ -e "$f" ] || continue
+            echo "  Compiling $f..."
+            clang++ -O3 -c -std=c++17 -stdlib=libc++ -mmacosx-version-min=11.0 -I. -I.. "$f"
+          done
           
-          if ls *.c 1> /dev/null 2>&1; then
-            clang -O3 -c -mmacosx-version-min=11.0 -I. -I.. *.c
-          fi
+          # Cファイルのコンパイル (存在する場合のみ)
+          for f in *.c; do
+            [ -e "$f" ] || continue
+            echo "  Compiling $f..."
+            clang -O3 -c -mmacosx-version-min=11.0 -I. -I.. "$f"
+          done
           
           cd ../..
 
-          # 3. vose_core.cpp と結合して dylib を作成
+          # 3. メインの vose_core と全オブジェクトファイルを結合
+          # WORLDの全オブジェクトファイルを強制的にリンク対象に含めます
+          echo "🔗 Linking all objects into libvose_core.dylib..."
+          
           clang++ -O3 -dynamiclib -std=c++17 -stdlib=libc++ \
             -mmacosx-version-min=11.0 \
             -I./src \
@@ -97,6 +106,9 @@ jobs:
             -o bin/libvose_core.dylib \
             src/vose_core.cpp \
             src/world/*.o
+
+          echo "✅ Build Complete: bin/libvose_core.dylib"
+          ls -l bin/libvose_core.dylib
 
 
 
