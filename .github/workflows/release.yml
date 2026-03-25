@@ -71,13 +71,24 @@ jobs:
         run: |
           mkdir -p bin
           
-          # 1. まず WORLD のオブジェクトファイルをその場でビルド
-          # 各ファイルのディレクトリに移動してコンパイルすることで、"./" の参照エラーを防ぎます
+          # 1. src/world に移動
           cd src/world
-          clang++ -O3 -c -std=c++17 -stdlib=libc++ -mmacosx-version-min=11.0 *.cpp *.c
+          
+          # 2. ファイルが存在する場合のみコンパイルを実行する（エラー回避の鉄板処理）
+          # .cpp ファイルをコンパイル
+          if ls *.cpp 1> /dev/null 2>&1; then
+            clang++ -O3 -c -std=c++17 -stdlib=libc++ -mmacosx-version-min=11.0 *.cpp
+          fi
+          
+          # .c ファイルをコンパイル（存在しなくてもエラーにならない）
+          if ls *.c 1> /dev/null 2>&1; then
+            clang -O3 -c -mmacosx-version-min=11.0 *.c
+          fi
+          
           cd ../..
 
-          # 2. メインの vose_core と、先ほど作った WORLD のオブジェクトファイルを結合
+          # 3. 生成されたすべてのオブジェクトファイルを結合して dylib を作成
+          # リンク時は clang++ を使い、C++の標準ライブラリを紐付けます
           clang++ -O3 -dynamiclib -std=c++17 -stdlib=libc++ \
             -mmacosx-version-min=11.0 \
             -I./src \
