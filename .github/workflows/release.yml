@@ -70,7 +70,10 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           mkdir -p bin
-          # 代表、ここが重要です：規格をC++17に固定し、ライブラリを明示します
+          
+          # -std=c++17: 規格を明示
+          # -stdlib=libc++: macOSの標準ライブラリを使用
+          # -mmacosx-version-min=11.0: これを指定しないと filesystem が使えない場合があります
           clang++ -O3 -dynamiclib -std=c++17 -stdlib=libc++ \
             -mmacosx-version-min=11.0 \
             -I./src \
