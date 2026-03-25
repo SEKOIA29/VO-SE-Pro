@@ -46,6 +46,9 @@ jobs:
         # ルールコードをすべて大文字 (E, F, E501, E401) に修正
         run: ruff check . --select E,F --ignore E501,E401 --fix --exit-zero
 
+      - name: 🔍 audioio.h を探す
+        if: matrix.os == 'macos-latest'
+        run: find . -name "audioio.h" | sort
 
       - name: 🎙️ Generate Voice Data Header
         run: |
