@@ -49,7 +49,7 @@ jobs:
       - name: 🎙️ Generate Voice Data Header
         run: |
           # pack_voice.py を実行して src/voice_data.h を生成
-          python modules/tools/pack_voice.py
+          python modules/tools/pack_all_voices.py
 
       - name: Auto Commit Fixes
         if: matrix.os == 'windows-latest'
