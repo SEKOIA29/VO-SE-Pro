@@ -71,20 +71,21 @@ jobs:
         run: |
           mkdir -p bin
           
-          # 代表、ここがポイントです：
-          # 1. findコマンドで .cpp と .c ファイルをすべて列挙して変数に入れます
-          SOURCE_FILES=$(find src/world -name "*.cpp" -o -name "*.c")
-          echo "Found source files: $SOURCE_FILES"
-          
-          # 2. -x c や -x c++ を指定せず、コンパイラに拡張子で判断させます
-          # 警告を消すために、コンパイラへの入力を整理します
+          # 1. まず WORLD のオブジェクトファイルをその場でビルド
+          # 各ファイルのディレクトリに移動してコンパイルすることで、"./" の参照エラーを防ぎます
+          cd src/world
+          clang++ -O3 -c -std=c++17 -stdlib=libc++ -mmacosx-version-min=11.0 *.cpp *.c
+          cd ../..
+
+          # 2. メインの vose_core と、先ほど作った WORLD のオブジェクトファイルを結合
           clang++ -O3 -dynamiclib -std=c++17 -stdlib=libc++ \
             -mmacosx-version-min=11.0 \
             -I./src \
             -I./include \
+            -I./src/world \
             -o bin/libvose_core.dylib \
             src/vose_core.cpp \
-            $SOURCE_FILES
+            src/world/*.o
 
 
 
