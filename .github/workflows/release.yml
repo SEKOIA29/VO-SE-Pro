@@ -54,6 +54,20 @@ jobs:
           commit_user_name: github-actions[bot]
           commit_user_email: github-actions[bot]@users.noreply.github.com
 
+      - name: 🛠️ Build VOSE Core (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          # MSVC(cl.exe)を使用してビルド
+          mkdir bin -Force
+          cl.exe /O2 /LD /Fe:bin/vose_core.dll src/vose_core.cpp /I include /link /LIBPATH:lib world.lib
+
+      - name: 🛠️ Build VOSE Core (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          # clang++を使用してビルド
+          mkdir -p bin
+          clang++ -O3 -dynamiclib -o bin/libvose_core.dylib src/vose_core.cpp -I include -L lib -lworld
+
 
 
 
