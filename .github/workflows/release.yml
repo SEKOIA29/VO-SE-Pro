@@ -69,10 +69,15 @@ jobs:
       - name: 🛠️ Build VOSE Core (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          # clang++を使用してビルド
           mkdir -p bin
-          clang++ -O3 -dynamiclib -o bin/libvose_core.dylib src/vose_core.cpp -I include -L lib -lworld
-
+          # 代表、ここが重要です：規格をC++17に固定し、ライブラリを明示します
+          clang++ -O3 -dynamiclib -std=c++17 -stdlib=libc++ \
+            -mmacosx-version-min=11.0 \
+            -I./src \
+            -I./include \
+            -o bin/libvose_core.dylib \
+            src/vose_core.cpp \
+            -L./lib -lworld
 
 
 
