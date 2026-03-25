@@ -46,16 +46,16 @@ jobs:
         # ルールコードをすべて大文字 (E, F, E501, E401) に修正
         run: ruff check . --select E,F --ignore E501,E401 --fix --exit-zero
 
-      - name: 🔍 Debug: Find pack script
+      - name:  Debug: Find pack script
         run: |
-        echo "=== リポジトリ構造 ==="
-        find . -name "*.py" | grep -i "pack\|voice" | sort
-       echo ""
-       echo "=== modules/tools の中身 ==="
-       ls -la modules/tools/ 2>/dev/null || echo "modules/tools が存在しません"
-       echo ""
-       echo "=== modules の中身 ==="
-       ls -la modules/ 2>/dev/null || echo "modules が存在しません"
+          echo "=== リポジトリ構造 ==="
+          find . -name "*.py" | grep -i "pack\|voice" | sort
+          echo ""
+          echo "=== modules/tools の中身 ==="
+          ls -la modules/tools/ 2>/dev/null || echo "modules/tools が存在しません"
+          echo ""
+          echo "=== modules の中身 ==="
+          ls -la modules/ 2>/dev/null || echo "modules が存在しません"
 
       - name: 🎙️ Generate Voice Data Header
         run: |
