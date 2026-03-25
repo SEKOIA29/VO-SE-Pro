@@ -71,24 +71,24 @@ jobs:
         run: |
           mkdir -p bin
           
-          # 1. src/world に移動
+          # 1. WORLDのソースがある階層へ移動
           cd src/world
           
-          # 2. ファイルが存在する場合のみコンパイルを実行する（エラー回避の鉄板処理）
-          # .cpp ファイルをコンパイル
+          # 2. オブジェクトファイルを生成
+          # -I. (カレント) と -I.. (親ディレクトリ) を追加することで、
+          # "#include <world/xxx.h>" と "#include "./xxx.h"" の両方に対応させます。
+          
           if ls *.cpp 1> /dev/null 2>&1; then
-            clang++ -O3 -c -std=c++17 -stdlib=libc++ -mmacosx-version-min=11.0 *.cpp
+            clang++ -O3 -c -std=c++17 -stdlib=libc++ -mmacosx-version-min=11.0 -I. -I.. *.cpp
           fi
           
-          # .c ファイルをコンパイル（存在しなくてもエラーにならない）
           if ls *.c 1> /dev/null 2>&1; then
-            clang -O3 -c -mmacosx-version-min=11.0 *.c
+            clang -O3 -c -mmacosx-version-min=11.0 -I. -I.. *.c
           fi
           
           cd ../..
 
-          # 3. 生成されたすべてのオブジェクトファイルを結合して dylib を作成
-          # リンク時は clang++ を使い、C++の標準ライブラリを紐付けます
+          # 3. vose_core.cpp と結合して dylib を作成
           clang++ -O3 -dynamiclib -std=c++17 -stdlib=libc++ \
             -mmacosx-version-min=11.0 \
             -I./src \
