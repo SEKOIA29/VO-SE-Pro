@@ -81,10 +81,6 @@ jobs:
 
           for f in *.cpp; do
             [ -e "$f" ] || continue
-            if [ "$f" = "audioio.cpp" ]; then
-              echo "  Skipping $f (audio I/O device — not needed)"
-              continue
-            fi
             echo "  Compiling $f..."
             clang++ -O3 -c -std=c++17 -stdlib=libc++ -mmacosx-version-min=11.0 \
               -I. -I.. -I../../include \
