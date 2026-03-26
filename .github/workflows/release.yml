@@ -225,17 +225,6 @@ jobs:
             exit 1
           fi
 
-      - name: Build C++ Engine
-        shell: bash
-        run: |
-          mkdir -p bin
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            g++ -std=c++17 -shared -fPIC -o bin/libvo_se.dll src/vose_core.cpp src/world/*.cpp \
-              -I. -Isrc -Iinclude -Iinclude/world -O2 -static-libgcc -static-libstdc++
-          else
-            clang++ -std=c++17 -shared -fPIC -o bin/libvo_se.dylib src/vose_core.cpp src/world/*.cpp \
-              -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup -O3 -w
-          fi
 
       - name: Package App
         shell: bash
@@ -251,7 +240,7 @@ jobs:
               --hidden-import=modules.gui.main_window \
               --hidden-import=backports \
               --hidden-import=backports.tarfile \
-              --add-data "bin/libvo_se.dll;bin" \
+              --add-data "bin/vose_core.dll;bin"
               --add-data "assets;assets" \
               --add-data "modules;modules" \
               --name "VO-SE_PRO_Win" main.py
@@ -267,7 +256,7 @@ jobs:
               --hidden-import=modules.gui.main_window \
               --hidden-import=backports \
               --hidden-import=backports.tarfile \
-              --add-data "bin/libvo_se.dylib:bin" \
+              --add-data "bin/libvose_core.dylib:bin"
               --add-data "assets:assets" \
               --add-data "modules:modules" \
               --name "VO-SE_PRO_Mac" main.py
