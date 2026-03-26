@@ -66,15 +66,16 @@ jobs:
       - name: 🛠️ Setup MSVC
         if: matrix.os == 'windows-latest'
         uses: ilammy/msvc-dev-cmd@v1
-
       - name: 🛠️ Build VOSE Core (Windows)
         if: matrix.os == 'windows-latest'
         shell: cmd
         run: |
           if not exist bin mkdir bin
           copy include\world\*.h src\world\
-          cl.exe /O2 /LD /Fe:bin\vose_core.dll src\vose_core.cpp ^
-            /I include /I src /I src\world ^
+          cl.exe /std:c++17 /EHsc /O2 /LD /D_USE_MATH_DEFINES ^
+            /Fe:bin\vose_core.dll ^
+            src\vose_core.cpp ^
+            /I src /I include /I src\world ^
             /link
 
    
