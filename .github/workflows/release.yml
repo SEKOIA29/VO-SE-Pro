@@ -231,7 +231,6 @@ jobs:
         run: |
           rm -rf dist build dist_out
           mkdir dist_out
-
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             pyinstaller --noconsole --onefile --clean \
               --paths . \
@@ -240,13 +239,11 @@ jobs:
               --hidden-import=modules.gui.main_window \
               --hidden-import=backports \
               --hidden-import=backports.tarfile \
-              --add-data "bin/vose_core.dll;bin"
+              --add-data "bin/vose_core.dll;bin" \
               --add-data "assets;assets" \
               --add-data "modules;modules" \
               --name "VO-SE_PRO_Win" main.py
-
             cp dist/VO-SE_PRO_Win.exe dist_out/
-
           else
             pyinstaller --noconsole --windowed --clean \
               --paths . \
@@ -256,20 +253,15 @@ jobs:
               --hidden-import=modules.gui.main_window \
               --hidden-import=backports \
               --hidden-import=backports.tarfile \
-              --add-data "bin/libvose_core.dylib:bin"
+              --add-data "bin/libvose_core.dylib:bin" \
               --add-data "assets:assets" \
               --add-data "modules:modules" \
               --name "VO-SE_PRO_Mac" main.py
-
             chmod +x dist/VO-SE_PRO_Mac.app/Contents/MacOS/VO-SE_PRO_Mac
-
-            # ── ② 配布用DMG（初回DL向け）──
             hdiutil create -volname "VO-SE Pro" \
               -srcfolder dist/VO-SE_PRO_Mac.app \
               -ov -format UDZO \
               dist_out/VO-SE_PRO_Mac.dmg
-
-            # ── ② 自動アップデート用ZIP（_update サフィックスで区別）──
             cd dist && zip -ry ../dist_out/VO-SE_PRO_Mac_update.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
