@@ -277,21 +277,6 @@ jobs:
             cd dist && zip -ry ../dist_out/VO-SE_PRO_Mac_update.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
-      - name: 🍏 Create DMG
-        if: matrix.os == 'macos-latest'
-        run: |
-          # create-dmg というツールを使って見栄えの良いDMGを作成
-          brew install create-dmg
-          create-dmg \
-            --volname "VO-SE Pro Installer" \
-            --window-pos 200 120 \
-            --window-size 600 400 \
-            --icon-size 100 \
-            --icon "VO-SE.app" 175 120 \
-            --hide-extension "VO-SE.app" \
-            --app-drop-link 425 120 \
-            "dist_out/VO-SE-Pro-macOS.dmg" \
-            "dist/VO-SE.app"
 
       - name: 🍎 Verify and Fix macOS Library Linkage (Complete & Final)
         if: matrix.os == 'macos-latest'
