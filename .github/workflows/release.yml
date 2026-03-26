@@ -75,6 +75,11 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           mkdir -p bin
+          
+          # include/world のヘッダーを src/world にコピー
+          # (audioio.cpp が "./audioio.h" で参照するため)
+          cp include/world/*.h src/world/
+
           cd src/world
 
           echo "🔨 Compiling WORLD source files..."
