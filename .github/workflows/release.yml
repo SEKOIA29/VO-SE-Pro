@@ -62,13 +62,20 @@ jobs:
           commit_message: "style: ruff auto-fix unused imports"
           commit_user_name: github-actions[bot]
           commit_user_email: github-actions[bot]@users.noreply.github.com
+          
+      - name: 🛠️ Setup MSVC
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: 🛠️ Build VOSE Core (Windows)
         if: matrix.os == 'windows-latest'
+        shell: cmd
         run: |
-          # MSVC(cl.exe)を使用してビルド
-          mkdir bin -Force
-          cl.exe /O2 /LD /Fe:bin/vose_core.dll src/vose_core.cpp /I include /link /LIBPATH:lib world.lib
+          if not exist bin mkdir bin
+          copy include\world\*.h src\world\
+          cl.exe /O2 /LD /Fe:bin\vose_core.dll src\vose_core.cpp ^
+            /I include /I src /I src\world ^
+            /link
 
    
       - name: 🛠️ Build VOSE Core (macOS)
