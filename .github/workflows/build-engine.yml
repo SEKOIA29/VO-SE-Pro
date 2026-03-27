@@ -47,22 +47,38 @@ jobs:
         run: |
           echo "=== bin/ の中身 ==="
           ls -la bin/ 2>/dev/null || echo "bin/ が存在しません"
+      - name: "🔧 Setup MSVC (Windows only)"
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: "🏗️ [Step 6] Compile Engine"
         shell: bash
         run: |
-          # include/world のヘッダーを src/world にコピー（audioio.cpp が ./audioio.h で参照するため）
           cp include/world/*.h src/world/
 
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # MSVCを使用（ilammy/msvc-dev-cmd で cl.exe をセットアップ済み）
-            cmd /c "cl.exe /std:c++17 /EHsc /O2 /LD /D_USE_MATH_DEFINES \
+            # WORLDソースを先にコンパイル
+            cmd //c "cl.exe /std:c++17 /EHsc /O2 /D_USE_MATH_DEFINES \
+              /I src /I include /I src\\world /c \
+              src\\world\\cheaptrick.cpp \
+              src\\world\\common.cpp \
+              src\\world\\d4c.cpp \
+              src\\world\\dio.cpp \
+              src\\world\\fft.cpp \
+              src\\world\\harvest.cpp \
+              src\\world\\matlabfunctions.cpp \
+              src\\world\\stonemask.cpp \
+              src\\world\\synthesis.cpp \
+              src\\world\\audioio.cpp"
+
+            # vose_core.cpp + WORLDオブジェクトをDLLにリンク
+            cmd //c "cl.exe /std:c++17 /EHsc /O2 /LD /D_USE_MATH_DEFINES \
               /Fe:bin\\vose_core.dll \
-              src\\vose_core.cpp \
+              src\\vose_core.cpp *.obj \
               /I src /I include /I src\\world \
               /link"
+
           else
-            # WORLDをオブジェクトファイルとして個別コンパイル（audioio.cpp含む）
             cd src/world
             for f in *.cpp; do
               [ -e "$f" ] || continue
@@ -78,6 +94,10 @@ jobs:
               src/vose_core.cpp \
               src/world/*.o
           fi
+
+      - name: "🔍 Verify DLL/dylib"
+        shell: bash
+        run: ls -la bin/
       - name: "📦 [Step 7] Package Integrated Executable (PyInstaller)"
         shell: bash
         run: |
