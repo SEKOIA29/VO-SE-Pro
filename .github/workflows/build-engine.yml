@@ -42,6 +42,12 @@ jobs:
       - name: "🎙️ [Step 5] Pack Official Voice Data"
         run: python modules/tools/pack_all_voices.py
 
+      - name: "🔍 Verify bin contents"
+        shell: bash
+        run: |
+          echo "=== bin/ の中身 ==="
+          ls -la bin/ 2>/dev/null || echo "bin/ が存在しません"
+
       - name: "🏗️ [Step 6] Compile Engine"
         shell: bash
         run: |
