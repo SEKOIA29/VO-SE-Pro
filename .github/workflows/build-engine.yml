@@ -40,19 +40,38 @@ jobs:
         run: mkdir -p bin src assets dist_out
 
       - name: "🎙️ [Step 5] Pack Official Voice Data"
-        run: python modules/tools/pack_voice.py 
+        run: python modules/tools/pack_all_voices.py
 
       - name: "🏗️ [Step 6] Compile Engine"
         shell: bash
         run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            g++ -std=c++17 -O3 -shared -fPIC -o bin/vose_core.dll src/vose_core.cpp src/world/*.cpp \
-              -I. -Isrc -Iinclude -Iinclude/world -static-libgcc -static-libstdc++
-          else
-            clang++ -std=c++17 -O3 -shared -fPIC -o bin/vose_core.dylib src/vose_core.cpp src/world/*.cpp \
-              -I. -Isrc -Iinclude -Iinclude/world -undefined dynamic_lookup
-          fi
+          # include/world のヘッダーを src/world にコピー（audioio.cpp が ./audioio.h で参照するため）
+          cp include/world/*.h src/world/
 
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # MSVCを使用（ilammy/msvc-dev-cmd で cl.exe をセットアップ済み）
+            cmd /c "cl.exe /std:c++17 /EHsc /O2 /LD /D_USE_MATH_DEFINES \
+              /Fe:bin\\vose_core.dll \
+              src\\vose_core.cpp \
+              /I src /I include /I src\\world \
+              /link"
+          else
+            # WORLDをオブジェクトファイルとして個別コンパイル（audioio.cpp含む）
+            cd src/world
+            for f in *.cpp; do
+              [ -e "$f" ] || continue
+              clang++ -O3 -c -std=c++17 -stdlib=libc++ -mmacosx-version-min=11.0 \
+                -I. -I.. -I../../include "$f"
+            done
+            cd ../..
+
+            clang++ -O3 -dynamiclib -std=c++17 -stdlib=libc++ \
+              -mmacosx-version-min=11.0 \
+              -I./src -I./include -I./src/world \
+              -o bin/vose_core.dylib \
+              src/vose_core.cpp \
+              src/world/*.o
+          fi
       - name: "📦 [Step 7] Package Integrated Executable (PyInstaller)"
         shell: bash
         run: |
