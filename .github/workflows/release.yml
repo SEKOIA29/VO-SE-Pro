@@ -63,21 +63,29 @@ jobs:
           commit_user_name: github-actions[bot]
           commit_user_email: github-actions[bot]@users.noreply.github.com
           
-      - name: 🛠️ Setup MSVC
+  
+      - name: 🛠️ Setup MSVC (Windows)
         if: matrix.os == 'windows-latest'
         uses: ilammy/msvc-dev-cmd@v1
+
       - name: 🛠️ Build VOSE Core (Windows)
         if: matrix.os == 'windows-latest'
         shell: cmd
         run: |
           if not exist bin mkdir bin
           copy include\world\*.h src\world\
+
+          :: WORLDのソースを先にコンパイルしてオブジェクトファイルを作る
+          cl.exe /std:c++17 /EHsc /O2 /D_USE_MATH_DEFINES ^
+            /I src /I include /I src\world ^
+            /c src\world\*.cpp
+
+          :: vose_core.cpp と WORLDのオブジェクトをまとめてDLLにリンク
           cl.exe /std:c++17 /EHsc /O2 /LD /D_USE_MATH_DEFINES ^
             /Fe:bin\vose_core.dll ^
-            src\vose_core.cpp ^
+            src\vose_core.cpp *.obj ^
             /I src /I include /I src\world ^
             /link
-
    
       - name: 🛠️ Build VOSE Core (macOS)
         if: matrix.os == 'macos-latest'
