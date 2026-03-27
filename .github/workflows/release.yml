@@ -299,7 +299,7 @@ jobs:
               "root_dir = os.path.abspath(os.getcwd())" \
               "bin_dir = os.path.join(root_dir, 'bin')" \
               "src_dir = os.path.join(root_dir, 'src')" \
-              "dll_path = os.path.join(bin_dir, 'libvo_se.dll')" \
+              "dll_path = os.path.join(bin_dir, 'vose_core.dll')" \
               "os.environ['PATH'] = bin_dir + os.pathsep + os.environ.get('PATH', '')" \
               "if hasattr(os, 'add_dll_directory'): os.add_dll_directory(bin_dir)" \
               "try:" \
@@ -318,7 +318,7 @@ jobs:
               "import os, ctypes, sys" \
               "root_dir = os.path.abspath(os.getcwd())" \
               "src_dir = os.path.join(root_dir, 'src')" \
-              "dylib_path = os.path.join(root_dir, 'bin', 'libvo_se.dylib')" \
+              "dylib_path = os.path.join(root_dir, 'bin', 'libvose_core.dylib')" \
               "try:" \
               "    lib = ctypes.CDLL(dylib_path)" \
               "    print('SUCCESS: Dylib Loaded')" \
