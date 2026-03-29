@@ -5,7 +5,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
-#include <iomanip>    // std::setw, std::setfill 用
+#include <iomanip>    
 #include <shared_mutex> // std::shared_mutex 用
 #include <random>
 #include <sstream>
