@@ -31,6 +31,7 @@ import pyopenjtalk
 import sounddevice as sd
 import soundfile as sf
 from PySide6.QtCore import QObject, Signal
+from modules.ffi import CNoteEvent, as_c_double_array
 
 
 # ══════════════════════════════════════════════════════════════
@@ -211,20 +212,7 @@ def generate_talk_events(
 # 4. C++ 構造体バインディング
 # ══════════════════════════════════════════════════════════════
 
-class NoteEvent(ctypes.Structure):
-    _fields_ = [
-        ("wav_path",           ctypes.c_char_p),
-        ("pitch_length",       ctypes.c_int),
-        ("pitch_curve",        ctypes.POINTER(ctypes.c_double)),
-        ("gender_curve",       ctypes.POINTER(ctypes.c_double)),
-        ("tension_curve",      ctypes.POINTER(ctypes.c_double)),
-        ("breath_curve",       ctypes.POINTER(ctypes.c_double)),
-        ("offset_ms",          ctypes.c_double),
-        ("consonant_ms",       ctypes.c_double),
-        ("cutoff_ms",          ctypes.c_double),
-        ("pre_utterance_ms",   ctypes.c_double),
-        ("overlap_ms",         ctypes.c_double),
-    ]
+
 
 
 class VoseRendererBridge:
@@ -238,7 +226,7 @@ class VoseRendererBridge:
             self.lib.init_official_engine.argtypes = []
             self.lib.init_official_engine.restype = None
             self.lib.execute_render.argtypes = [
-                ctypes.POINTER(NoteEvent),
+                ctypes.POINTER(CNoteEvent),
                 ctypes.c_int,
                 ctypes.c_char_p,
             ]
@@ -259,15 +247,24 @@ class VoseRendererBridge:
             return False
 
         note_count = len(notes_data)
-        NotesArray = NoteEvent * note_count
+        NotesArray = CNoteEvent * note_count
         c_notes = NotesArray()
         keep_alive: list[Any] = []
 
         for i, data in enumerate(notes_data):
-            p_arr = (ctypes.c_double * len(data["pitch"]))(*data["pitch"])
-            g_arr = (ctypes.c_double * len(data["gender"]))(*data["gender"])
-            t_arr = (ctypes.c_double * len(data["tension"]))(*data["tension"])
-            b_arr = (ctypes.c_double * len(data["breath"]))(*data["breath"])
+            pitch = data.get("pitch", [])
+            gender = data.get("gender", [])
+            tension = data.get("tension", [])
+            breath = data.get("breath", [])
+
+            if not (len(pitch) == len(gender) == len(tension) == len(breath)):
+                print("❌ Curve length mismatch detected — aborting")
+                return False
+
+            p_arr = as_c_double_array(pitch)
+            g_arr = as_c_double_array(gender)
+            t_arr = as_c_double_array(tension)
+            b_arr = as_c_double_array(breath)
             keep_alive.extend([p_arr, g_arr, t_arr, b_arr])
 
             wav_path: str = data.get("wav_path", "")
@@ -275,17 +272,13 @@ class VoseRendererBridge:
                 print(f"❌ WAV not found at render time: '{wav_path}' — aborting")
                 return False
 
-            c_notes[i].wav_path         = wav_path.encode("utf-8")
-            c_notes[i].pitch_length     = len(data["pitch"])
-            c_notes[i].pitch_curve      = p_arr
-            c_notes[i].gender_curve     = g_arr
-            c_notes[i].tension_curve    = t_arr
-            c_notes[i].breath_curve     = b_arr
-            c_notes[i].offset_ms        = data.get("offset",        0.0)
-            c_notes[i].consonant_ms     = data.get("consonant",     0.0)
-            c_notes[i].cutoff_ms        = data.get("cutoff",        0.0)
-            c_notes[i].pre_utterance_ms = data.get("pre_utterance", 0.0)
-            c_notes[i].overlap_ms       = data.get("overlap",       0.0)
+            c_notes[i].wav_path = wav_path.encode("utf-8")
+            c_notes[i].pitch_length = len(pitch)
+            c_notes[i].pitch_curve = p_arr
+            c_notes[i].gender_curve = g_arr
+            c_notes[i].tension_curve = t_arr
+            c_notes[i].breath_curve = b_arr
+
 
         try:
             self.lib.execute_render(c_notes, note_count, output_path.encode("utf-8"))
