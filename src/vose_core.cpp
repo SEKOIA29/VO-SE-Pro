@@ -73,6 +73,7 @@ static std::shared_mutex g_oto_db_mutex;
 extern "C" void set_oto_data(const OtoEntry* entries, int count) {
     std::unique_lock<std::shared_mutex> lock(g_oto_db_mutex);
     g_oto_db.clear();
+    if (!entries || count <= 0) return;
     for (int i = 0; i < count; ++i)
         g_oto_db[entries[i].alias] = entries[i];
 }
