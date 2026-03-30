@@ -21,5 +21,11 @@ def as_c_double_array(values: Iterable[float]) -> ctypes.Array[ctypes.c_double]:
     seq = tuple(float(v) for v in values)
     return (ctypes.c_double * len(seq))(*seq)
 
+def validate_note_event_layout():
+    """CNoteEvent のレイアウト検証（必要に応じて実装）"""
+    # 例: print(f"CNoteEvent size: {ctypes.sizeof(CNoteEvent)}")
+    pass
 
-__all__ = ["CNoteEvent", "as_c_double_array"]
+
+
+__all__ = ["CNoteEvent", "as_c_double_array", "validate_note_event_layout"]
