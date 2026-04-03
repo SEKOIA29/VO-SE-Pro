@@ -50,7 +50,7 @@ from PySide6.QtMultimedia import QMediaPlayer
 if TYPE_CHECKING:
     # 実行時には無視され、型チェック時にのみ参照される
     try:
-        from modules.core_manager import CoreManager # type: ignore
+        from modules.gui.core_manager import VoseCoreManager as CoreManager # type: ignore
     except ImportError:
         # Pyrightがパスを見失っている場合、Anyで逃がして警告を黙らせる
         CoreManager = Any # type: ignore
@@ -67,7 +67,7 @@ try:
     from modules.gui.timeline_widget import TimelineWidget # type: ignore[assignment]
     from modules.gui.graph_editor_widget import GraphEditorWidget # type: ignore[assignment]
     from modules.gui.keyboard_sidebar_widget import KeyboardSidebarWidget # type: ignore[assignment]
-    from modules.core_manager import vose_manager, CNoteEvent # type: ignore[assignment]
+    from modules.gui.core_manager import vose_manager, CNoteEvent # type: ignore[assignment]
     from modules.audio.voice_manager import VoiceManager # type: ignore[assignment]
     from modules.gui.aural_engine import AuralAIEngine # type: ignore[assignment]
 except ImportError as e:
