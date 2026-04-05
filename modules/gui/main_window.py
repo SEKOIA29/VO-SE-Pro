@@ -79,6 +79,8 @@ except ImportError as e:
     from .graph_editor_widget import GraphEditorWidget
     from .keyboard_sidebar_widget import KeyboardSidebarWidget
     from .aural_engine import AuralAIEngine
+    from .core_manager import vose_manager, CNoteEvent
+    from ..audio.voice_manager import VoiceManager
 
 # ==========================================================================
 # 6. グローバル設定
