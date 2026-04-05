@@ -20,9 +20,11 @@ from typing import Any, List, Dict, Optional, TYPE_CHECKING, cast
 # ==========================================================================
 # 2. 数値計算・信号処理 (Numerical Processing)
 # ==========================================================================
+import importlib
+import importlib.util
 import numpy as np
-import mido
-import onnxruntime as ort # type: ignore
+mido = importlib.import_module("mido") if importlib.util.find_spec("mido") else None
+ort = importlib.import_module("onnxruntime") if importlib.util.find_spec("onnxruntime") else None
 
 # ==========================================================================
 # 3. GUIライブラリ (PySide6 )
@@ -2772,6 +2774,10 @@ class MainWindow(QMainWindow):
         """診断されたプロバイダーを使用してAIモデルをロードする"""
         import os
         model_path = "models/aural_dynamics.onnx"
+
+        if ort is None:
+            self.log_startup("Aural AI disabled: onnxruntime is not installed.")
+            return
     
         if not os.path.exists(model_path):
             self.statusBar().showMessage("Error: Aural AI model not found.")
@@ -4863,6 +4869,8 @@ class MainWindow(QMainWindow):
     def load_midi_file_from_path(self, filepath: str):
         """MIDI読み込み（自動歌詞変換機能付き）"""
         try:
+            if mido is None:
+                raise RuntimeError("MIDI import requires 'mido'. Please install dependencies first.")
             from ..data.data_models import NoteEvent
 
             mid = mido.MidiFile(filepath)
