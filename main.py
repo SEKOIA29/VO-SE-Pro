@@ -174,6 +174,22 @@ def _check_runtime_requirements():
 
 # --- [4] メイン実行処理 ---
 def main():
+    missing = _check_runtime_requirements()
+    if missing:
+        print("[Fatal] 起動に必要な依存関係が不足しています。")
+        for item in missing:
+            print(f"  - {item}")
+        print("requirements.txt と OS 依存ライブラリをインストールして再実行してください。")
+        sys.exit(1)
+
+    QtWidgets = importlib.import_module("PySide6.QtWidgets")
+    QtGui = importlib.import_module("PySide6.QtGui")
+    MainWindow = importlib.import_module("modules.gui.main_window").MainWindow
+
+    QApplication = QtWidgets.QApplication
+    QMessageBox = QtWidgets.QMessageBox
+    QIcon = QtGui.QIcon
+
     app = QApplication(sys.argv)
     
     icon_path = get_resource_path(os.path.join("assets", "icon.png"))
