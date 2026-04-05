@@ -15,7 +15,6 @@ VO-SE Cut Studio — コアエンジン統合モジュール
   [FIX-4] _tts_with_voice(): ndarray 単体の戻り値にも対応。
   [FIX-5] speak(): tmp_path を try の前に None 初期化 → finally で None チェック。
 """
-
 from __future__ import annotations
 
 import os
