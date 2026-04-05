@@ -2,15 +2,11 @@ import sys
 import os
 import platform
 import ctypes
-import pyopenjtalk
-import numpy as np
 import json
 
-# GUIライブラリをPySide6に統一
-from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtGui import QIcon
-
-from modules.gui.main_window import MainWindow
+import importlib
+import ctypes.util
+from importlib.util import find_spec
 
 # --- [1] リソースパス解決関数 (PyInstaller対応) ---
 def get_resource_path(relative_path):
@@ -110,6 +106,7 @@ class VoSeEngine:
         """【読み上げ用】音韻解析"""
         print(f"\n--- 読み上げ解析実行: '{text}' ---")
         try:
+            pyopenjtalk = importlib.import_module("pyopenjtalk")
             labels = pyopenjtalk.extract_fullcontext(text)
             return labels
         except Exception as e:
@@ -121,6 +118,7 @@ class VoSeEngine:
         notes: [{'pitch': 60, 'duration': 1.0}, ...] のようなリストを想定
         """
         print("--- 歌唱ピッチ解析実行 ---")
+        np = importlib.import_module("numpy")
         # サンプリングレートやフレーム数に基づいたピッチカーブの生成ロジック
         # ここで生成した配列を process_with_c に渡します
         f0_curve = np.full(1000, 440.0, dtype=np.float32) # テスト用の固定ピッチ
@@ -134,6 +132,7 @@ class VoSeEngine:
             return data_array
             
         try:
+            np = importlib.import_module("numpy")
             # 波形データの準備
             wav_float = np.ascontiguousarray(data_array, dtype=np.float32)
             wav_ptr = wav_float.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
@@ -153,6 +152,25 @@ class VoSeEngine:
         except Exception as e:
             print(f"C-Process error: {e}")
             return data_array
+
+def _check_runtime_requirements():
+    """
+    起動前に実行環境をチェックし、足りない要件をユーザーへ明示する。
+    """
+    missing = []
+
+    # Pythonモジュール要件
+    for module_name in ("numpy", "pyopenjtalk", "PySide6"):
+        if find_spec(module_name) is None:
+            missing.append(f"Python package: {module_name}")
+
+    # Linux向けシステム依存（PySide6が必要とするOpenGL）
+    if platform.system() == "Linux":
+        if ctypes.util.find_library("GL") is None:
+            missing.append("System library: libGL.so.1")
+
+    return missing
+
 
 # --- [4] メイン実行処理 ---
 def main():
