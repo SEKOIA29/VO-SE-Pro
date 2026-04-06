@@ -182,9 +182,22 @@ def main():
         print("requirements.txt と OS 依存ライブラリをインストールして再実行してください。")
         sys.exit(1)
 
-    QtWidgets = importlib.import_module("PySide6.QtWidgets")
-    QtGui = importlib.import_module("PySide6.QtGui")
-    MainWindow = importlib.import_module("modules.gui.main_window").MainWindow
+    try:
+        QtWidgets = importlib.import_module("PySide6.QtWidgets")
+        QtGui = importlib.import_module("PySide6.QtGui")
+    except Exception as e:
+        print(f"[Fatal] GUI モジュールの読み込みに失敗しました: {e}")
+        sys.exit(1)
+
+    try:
+        MainWindow = importlib.import_module("modules.gui.main_window").MainWindow
+    except Exception as e:
+        print(f"[Fatal] メインウィンドウの読み込みに失敗しました: {e}")
+        if hasattr(sys, "stderr"):
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
+
 
     QApplication = QtWidgets.QApplication
     QMessageBox = QtWidgets.QMessageBox
