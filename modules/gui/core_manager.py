@@ -11,6 +11,8 @@ class VoseCoreManager:
 
     _instance: Optional["VoseCoreManager"] = None
     lib: Optional[ctypes.CDLL] = None
+    _initialized: bool
+    _disabled_reason: Optional[str]
 
     def __new__(cls):
         if cls._instance is None:
@@ -31,7 +33,7 @@ class VoseCoreManager:
         ]
 
     def _init_engine(self):
-                if self._initialized:
+        if self._initialized:
             return
 
         disable_native = os.getenv("VOSE_DISABLE_NATIVE_CORE", "").lower() in {"1", "true", "yes", "on"}
