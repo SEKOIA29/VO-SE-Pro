@@ -218,7 +218,15 @@ def main():
     config = config_handler.load_config()
     engine = VoSeEngine()
 
-    window = MainWindow()
+    try:
+        window = MainWindow()
+    except Exception as e:
+        QMessageBox.critical(None, "起動エラー", f"メイン画面の初期化でエラーが発生しました。\n{e}")
+        if hasattr(sys, "stderr"):
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
+        
     window.vo_se_engine = engine
     window.config = config
     
