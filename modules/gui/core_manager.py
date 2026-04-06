@@ -15,7 +15,8 @@ class VoseCoreManager:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(VoseCoreManager, cls).__new__(cls)
-            cls._instance._init_engine()
+            cls._instance._initialized = False
+            cls._instance._disabled_reason = None
         return cls._instance
 
     def _candidate_paths(self) -> list[str]:
@@ -30,6 +31,16 @@ class VoseCoreManager:
         ]
 
     def _init_engine(self):
+                if self._initialized:
+            return
+
+        disable_native = os.getenv("VOSE_DISABLE_NATIVE_CORE", "").lower() in {"1", "true", "yes", "on"}
+        if disable_native:
+            self._disabled_reason = "VOSE_DISABLE_NATIVE_CORE is enabled"
+            self._initialized = True
+            self.lib = None
+            print(f"⚠️ VOSE Core disabled: {self._disabled_reason}")
+            return
         for path in self._candidate_paths():
             if not os.path.exists(path):
                 continue
@@ -38,11 +49,14 @@ class VoseCoreManager:
                 self.lib = ctypes.CDLL(path)
                 self._setup_prototypes()
                 print(f"✅ VOSE Core Engine Loaded: {path}")
+                self._initialized = True
                 return
             except Exception as e:
                 print(f"❌ Load Error: {path} ({e})")
 
         print("⚠️ Warning: VOSE Core DLL not found. Engine is offline.")
+        self.lib = None
+        self._initialized = True
 
     def _setup_prototypes(self):
         if not self.lib:
@@ -66,6 +80,8 @@ class VoseCoreManager:
             self.lib.synthesize_by_name.restype = ctypes.POINTER(ctypes.c_float)
 
     def get_lib(self):
+        if not self._initialized:
+        self._init_engine()
         return self.lib
 
 
