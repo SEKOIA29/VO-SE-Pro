@@ -48,17 +48,17 @@ class VoseCoreManager:
             try:
                 self.lib = ctypes.CDLL(path)
                 self._setup_prototypes()
-                print(f"✅ VOSE Core Engine Loaded: {path}")
+                print(f"[OK] VOSE Core Engine Loaded: {path}")
                 self._initialized = True
                 return
             except Exception as e:
-                print(f"❌ Load Error: {path} ({e})")
+                print(f"[Error] Load Error: {path} ({e})")
 
-        print("⚠️ Warning: VOSE Core DLL not found. Engine is offline.")
+        print("[Warning] VOSE Core DLL not found. Engine is offline.")
         self.lib = None
         self._initialized = True
 
-    def _setup_prototypes(self):
+    def _setup_prototypes(self) -> None:
         if not self.lib:
             return
 
@@ -79,10 +79,12 @@ class VoseCoreManager:
             self.lib.synthesize_by_name.argtypes = [ctypes.c_char_p, ctypes.c_float]
             self.lib.synthesize_by_name.restype = ctypes.POINTER(ctypes.c_float)
 
-    def get_lib(self):
+    def get_lib(self) -> Optional[ctypes.CDLL]:
         if not self._initialized:
-        self._init_engine()
+            self._init_engine()
         return self.lib
 
 
 vose_manager = VoseCoreManager()
+
+__all__ = ["VoseCoreManager", "vose_manager", "CNoteEvent"]
