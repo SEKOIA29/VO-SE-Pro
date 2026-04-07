@@ -5,7 +5,6 @@ import ctypes
 import json
 
 import importlib
-import ctypes.util
 from importlib.util import find_spec
 
 # --- [1] リソースパス解決関数 (PyInstaller対応) ---
@@ -164,10 +163,6 @@ def _check_runtime_requirements():
         if find_spec(module_name) is None:
             missing.append(f"Python package: {module_name}")
 
-    # Linux向けシステム依存（PySide6が必要とするOpenGL）
-    if platform.system() == "Linux":
-        if ctypes.util.find_library("GL") is None:
-            missing.append("System library: libGL.so.1")
 
     return missing
 
@@ -181,6 +176,12 @@ def main():
             print(f"  - {item}")
         print("requirements.txt と OS 依存ライブラリをインストールして再実行してください。")
         sys.exit(1)
+
+    # Linuxヘッドレス環境（DISPLAYなし）では offscreen を既定にして起動を継続
+    if platform.system() == "Linux":
+        if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+            os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+            print("[Info] Linux headless mode detected. QT_QPA_PLATFORM=offscreen を使用します。")
 
     try:
         QtWidgets = importlib.import_module("PySide6.QtWidgets")
