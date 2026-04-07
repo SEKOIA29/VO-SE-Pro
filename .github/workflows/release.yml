@@ -282,11 +282,11 @@ jobs:
           set +e
           APP_BIN=$(find dist -name "VO-SE_PRO_Mac" -type f | grep "\.app/Contents/MacOS/VO-SE_PRO_Mac" | head -n 1)
           chmod +x "$APP_BIN"
-          find dist -name "libvo_se.dylib" -type f | while read -r DYLIB_BIN; do
+          find dist -name "libvose_core.dylib" -type f | while read -r DYLIB_BIN; do
             chmod 755 "$DYLIB_BIN"
             LIB_NAME=$(basename "$DYLIB_BIN")
             install_name_tool -id "$LIB_NAME" "$DYLIB_BIN" 2>&1 || true
-            OLD_REF=$(otool -L "$APP_BIN" | grep "libvo_se" | awk '{print $1}')
+            OLD_REF=$(otool -L "$APP_BIN" | grep "libvose_core" | awk '{print $1}')
             if [ -n "$OLD_REF" ]; then
               install_name_tool -change "$OLD_REF" "@executable_path/../Frameworks/bin/$LIB_NAME" "$APP_BIN" 2>&1 || true
               install_name_tool -change "$OLD_REF" "@loader_path/bin/$LIB_NAME" "$APP_BIN" 2>&1 || true
