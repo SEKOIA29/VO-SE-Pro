@@ -56,7 +56,7 @@ class VoSeEngine:
         OSに応じたライブラリ（DLL/dylib）を最適なパスからロードします。
         型チェックエラー（_MEIPASS）を回避し、Mac実機構造に対応した完全版です。
         """
-        lib_name = "libvo_se.dll" if self.os_name == "Windows" else "libvo_se.dylib"
+        lib_name = "vose_core.dll" if self.os_name == "Windows" else "libvose_core.dylib"
         
         # 1. 基本的なリソースパス
         dll_path = get_resource_path(os.path.join("bin", lib_name))
@@ -209,7 +209,7 @@ def main():
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
     
-    lib_name = "libvo_se.dll" if platform.system() == "Windows" else "libvo_se.dylib"
+    lib_name = "vose_core.dll" if platform.system() == "Windows" else "libvose_core.dylib"
     dll_path = get_resource_path(os.path.join("bin", lib_name))
     if not os.path.exists(dll_path):
         QMessageBox.warning(None, "準備不足", f"DLLが見つかりません。一部機能が制限されます。\n場所: {dll_path}")
