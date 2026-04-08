@@ -5,7 +5,10 @@ import sys
 import logging
 import json
 import numpy as np
-import onnxruntime as ort
+try:
+    import onnxruntime as ort
+except Exception:
+    ort = None
 from concurrent.futures import ThreadPoolExecutor
 from PySide6.QtCore import QObject, Signal
 
@@ -106,6 +109,9 @@ class AIManager(QObject):
     def init_model(self) -> bool:
         """ハードウェアを自動検知してモデルと辞書を初期化"""
         try:
+            if ort is None:
+                self.error.emit("onnxruntime is not installed")
+                return False
             # 1. 音素辞書の読み込み
             if os.path.exists(self.dict_path):
                 with open(self.dict_path, 'r', encoding='utf-8') as f:
