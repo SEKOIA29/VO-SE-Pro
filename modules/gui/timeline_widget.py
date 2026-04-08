@@ -183,6 +183,52 @@ class TimelineWidget(QWidget):
                         "note_number": int(getattr(n, "note_number", 60)),
                         "lyrics": str(getattr(n, "lyrics", "la")),
                     })
+    
+            QApplication.clipboard().setText(json.dumps(payload, ensure_ascii=False))
+        except Exception:
+            # CI/環境差異でも落とさない
+            pass
+
+    def paste_notes_from_clipboard(self) -> None:
+        """MainWindow互換: クリップボードJSONをノートとして追加。"""
+        try:
+            from PySide6.QtWidgets import QApplication
+            import json
+
+            text = QApplication.clipboard().text().strip()
+            if not text:
+                return
+
+            data = json.loads(text)
+            if not isinstance(data, list):
+                return
+
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                note = type("Note", (), {})()
+                note.start_time = float(item.get("start_time", 0.0))
+                note.duration = float(item.get("duration", 0.5))
+                note.note_number = int(item.get("note_number", 60))
+                note.lyrics = str(item.get("lyrics", "la"))
+                note.is_selected = False
+                self.notes_list.append(note)
+
+            self.notes_changed_signal.emit()
+            self.update()
+        except Exception:
+            pass
+
+    def delete_selected_notes(self) -> None:
+        """MainWindow互換: 選択ノート削除。"""
+        try:
+            before = len(self.notes_list)
+            self.notes_list = [n for n in self.notes_list if not getattr(n, "is_selected", False)]
+            if len(self.notes_list) != before:
+                self.notes_changed_signal.emit()
+                self.update()
+        except Exception:
+            pass
 
     # --- 座標変換メソッド  ---
     def time_to_x(self, t_seconds: float) -> float:
