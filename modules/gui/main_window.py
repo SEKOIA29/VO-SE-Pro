@@ -31,7 +31,8 @@ ort = importlib.import_module("onnxruntime") if importlib.util.find_spec("onnxru
 # ==========================================================================
 from PySide6.QtCore import (
     Qt, Signal, Slot, QThread, QTimer,
-    QObject, QRunnable, QThreadPool
+    QObject, QRunnable, QThreadPool, Slot
+
 )
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSlider,
