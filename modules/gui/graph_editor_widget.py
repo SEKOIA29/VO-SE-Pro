@@ -47,6 +47,43 @@ class GraphEditorWidget(QWidget):
 
         logger.info("GraphEditorWidget initialized successfully.")
 
+        # --- Compatibility methods (called from MainWindow) ---
+    def set_horizontal_offset(self, offset: int) -> None:
+        """タイムラインの水平スクロールと同期。"""
+        try:
+            self.scroll_x_offset = float(offset)
+            self.update()
+        except Exception:
+            pass
+
+    def set_vertical_offset(self, offset: int) -> None:
+        """現状のGraphEditorでは未使用だが互換のため保持。"""
+        # 縦スクロール同期が必要になった時の拡張ポイント
+        _ = offset
+
+    def sync_with_notes(self, notes: list) -> None:
+        """MainWindow互換: ノート変更時の同期フック。"""
+        # 現時点ではグラフ側で直接ノート保持していないため no-op
+        _ = notes
+        self.update()
+
+    def get_value_at_time(self, events: list, t: float) -> float:
+        """MainWindow互換: 指定時刻のパラメータ値を返す。"""
+        if not events:
+            return 0.0
+        try:
+            # eventsはtime昇順前提。直前値を返す簡易実装
+            last_val = float(getattr(events[0], "value", 0.0))
+            for ev in events:
+                ev_t = float(getattr(ev, "time", 0.0))
+                ev_v = float(getattr(ev, "value", last_val))
+                if ev_t > t:
+                    break
+                last_val = ev_v
+            return last_val
+        except Exception:
+            return 0.0
+
     @Slot(str)
     def set_mode(self, mode: str):
         if mode in self.all_parameters:
