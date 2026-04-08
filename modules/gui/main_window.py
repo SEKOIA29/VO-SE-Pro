@@ -2146,7 +2146,8 @@ class MainWindow(QMainWindow):
             self.active_provider = "CPUExecutionProvider"
 
         # 3. 診断結果をUIに反映
-        self.device_status_label.setText(f" [ {self.active_device} ] ")
+        if self.device_status_label is not None:
+            self.device_status_label.setText(f" [ {self.active_device} ] ")
         self.statusBar().showMessage(f"Engine Ready: {self.active_device}", 5000)
         
         #アップデート確認
