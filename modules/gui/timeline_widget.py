@@ -164,6 +164,25 @@ class TimelineWidget(QWidget):
         self.setMinimumSize(400, 200)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMouseTracking(True)
+      
+    def copy_selected_notes_to_clipboard(self) -> None:
+        """MainWindow互換: 選択ノートをJSONでクリップボードへ。"""
+        try:
+            from PySide6.QtWidgets import QApplication
+            import json
+
+            selected = [n for n in self.notes_list if getattr(n, "is_selected", False)]
+            payload = []
+            for n in selected:
+                if hasattr(n, "to_dict"):
+                    payload.append(n.to_dict())
+                else:
+                    payload.append({
+                        "start_time": float(getattr(n, "start_time", 0.0)),
+                        "duration": float(getattr(n, "duration", 0.0)),
+                        "note_number": int(getattr(n, "note_number", 60)),
+                        "lyrics": str(getattr(n, "lyrics", "la")),
+                    })
 
     # --- 座標変換メソッド  ---
     def time_to_x(self, t_seconds: float) -> float:
