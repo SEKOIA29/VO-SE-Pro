@@ -105,8 +105,8 @@ jobs:
         shell: bash
         run: |
           export PYTHONIOENCODING=utf-8
-          # macOS は headless でも動くよう offscreen
-          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+          # CIではLinux/macOSともにoffscreenを使う
+          if [ "${{ matrix.os }}" != "windows-latest" ]; then
             export QT_QPA_PLATFORM=offscreen
           fi
 
