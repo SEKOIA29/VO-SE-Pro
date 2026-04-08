@@ -1650,7 +1650,7 @@ class MainWindow(QMainWindow):
 
         # 下段：グラフエディタ
         self.graph_editor_widget = GraphEditorWidget()
-        self.graph_editor_widget.pitch_data_updated.connect(self.on_pitch_data_updated)
+        self.graph_editor_widget.parameters_changed.connect(self.on_graph_parameters_changed)
         timeline_splitter.addWidget(self.graph_editor_widget)
 
         # 初期比率（タイムライン7：グラフ3）
