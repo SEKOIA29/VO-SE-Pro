@@ -5669,6 +5669,11 @@ class MainWindow(QMainWindow):
             render_thread = threading.Thread(target=rendering_task, daemon=True)
             render_thread.start()
 
+    @Slot(dict)
+    def on_graph_parameters_changed(self, all_parameters: dict):
+        # GraphEditorWidget は {"Pitch": [...], "Gender": [...], ...} を送る
+        self.pitch_data = all_parameters.get("Pitch", [])
+
     @Slot(list)
     def on_pitch_data_updated(self, new_pitch_events: list):
         self.pitch_data = new_pitch_events
