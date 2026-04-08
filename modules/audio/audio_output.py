@@ -1,7 +1,12 @@
 # audio_output.py
 
-import sounddevice as sd
 import platform
+
+try:
+    import sounddevice as sd
+except Exception:  # 依存がない環境でも UI 初期化を継続する
+    sd = None
+
 
 class AudioOutput:
     def __init__(self, sample_rate=44100, block_size=256):
@@ -16,6 +21,9 @@ class AudioOutput:
 
     def _initialize_device(self):
         """OSごとの最適なオーディオドライバを自動選択"""
+        if sd is None:
+            print("VO-SE: sounddevice が未導入のため、オーディオ出力は無効化されます。")
+            return
         if platform.system() == "Windows":
             best_idx = self._get_best_device_for_windows()
             if best_idx is not None:
@@ -29,6 +37,8 @@ class AudioOutput:
 
     def _get_best_device_for_windows(self):
         """Windows環境で低遅延なドライバ(ASIO > WASAPI)を優先的に探す"""
+        if sd is None:
+            return None
         devices = sd.query_devices()
         
         # 1. ASIO (DAWなどで使われる最強の低遅延ドライバ)
@@ -44,7 +54,9 @@ class AudioOutput:
         return None
 
     def start(self, engine_callback=None):
-        """ストリームを開始し、再生フラグを立てる"""
+        """ストリームを開始し、再生フラグを立てる""" 
+        if sd is None:
+            raise RuntimeError("sounddevice is not available")
         self.engine_callback = engine_callback
         if self.stream is None:
             self.stream = sd.OutputStream(
