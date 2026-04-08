@@ -99,6 +99,64 @@ jobs:
           commit_message: "style: ruff auto-fix unused imports"
           commit_user_name: github-actions[bot]
           commit_user_email: github-actions[bot]@users.noreply.github.com
+
+      - name: 🔍 Startup Smoke Test (GUI init + show)
+        shell: bash
+        run: |
+          export PYTHONIOENCODING=utf-8
+          # macOS は headless でも動くよう offscreen
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            export QT_QPA_PLATFORM=offscreen
+          fi
+
+          cat > ui_smoke_test.py << 'PY'
+          import os
+          import sys
+          import ctypes
+
+          root_dir = os.path.abspath(os.getcwd())
+          src_dir = os.path.join(root_dir, "src")
+          bin_dir = os.path.join(root_dir, "bin")
+          sys.path.extend([root_dir, src_dir])
+
+          # --- Native library load check ---
+          if sys.platform.startswith("win"):
+              dll_path = os.path.join(bin_dir, "vose_core.dll")
+              os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+              if hasattr(os, "add_dll_directory"):
+                  os.add_dll_directory(bin_dir)
+              try:
+                  ctypes.CDLL(dll_path, winmode=0)
+                  print("SUCCESS: DLL loaded")
+              except Exception as e:
+                  print(f"DLL Error: {e}")
+                  raise
+          elif sys.platform == "darwin":
+              dylib_path = os.path.join(bin_dir, "libvose_core.dylib")
+              try:
+                  ctypes.CDLL(dylib_path)
+                  print("SUCCESS: dylib loaded")
+              except Exception as e:
+                  print(f"Dylib Error: {e}")
+                  raise
+
+          # --- GUI init/show test ---
+          from PySide6.QtWidgets import QApplication
+          from PySide6.QtCore import QTimer
+          from modules.gui.main_window import MainWindow
+
+          app = QApplication(sys.argv)
+          w = MainWindow()
+          w.show()
+          print("SUCCESS: MainWindow shown")
+
+          # 2秒後に自動終了（CIでハングしないように）
+          QTimer.singleShot(2000, app.quit)
+          rc = app.exec()
+          print(f"SUCCESS: app exited rc={rc}")
+          PY
+
+          python ui_smoke_test.py
           
   
       - name: 🛠️ Setup MSVC (Windows)
