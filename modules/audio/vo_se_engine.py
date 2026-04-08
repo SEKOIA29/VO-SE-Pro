@@ -5,9 +5,18 @@ import ctypes
 import os
 import platform
 import numpy as np
-import sounddevice as sd
-import soundfile as sf
-import chardet
+try:
+    import sounddevice as sd
+except Exception:
+    sd = None
+try:
+    import soundfile as sf
+except Exception:
+    sf = None
+try:
+    import chardet
+except Exception:
+    chardet = None
 
 # ==========================================================================
 # 1. C言語互換構造体（パラメーターを1つも漏らさずC++へ）
@@ -49,12 +58,16 @@ class VO_SE_Engine:
 
     def get_audio_devices(self):
         """接続されているオーディオ入出力デバイスのリストを返す"""
+        if sd is None:
+            return []
         devices = sd.query_devices()
         output_devices = [d['name'] for d in devices if d['max_output_channels'] > 0]
         return output_devices
 
     def set_output_device(self, device_name):
         """指定されたデバイスを出力先に設定する"""
+        if sd is None:
+            raise RuntimeError("sounddevice is not available")
         sd.default.device = [None, device_name]  # [入力, 出力]
         print(f"🔈 Output set to: {device_name}")
 
@@ -63,6 +76,9 @@ class VO_SE_Engine:
         オーディオデバイスを設定する。
         """
         try:
+            if sd is None:
+                print("Audio backend is unavailable: sounddevice not installed.")
+                return
             if device_name:
                 sd.default.device[1] = device_name  # 出力デバイスを指定
             device_info = sd.query_devices(sd.default.device[1])
@@ -118,6 +134,8 @@ class VO_SE_Engine:
         try:
             with open(file_path, 'rb') as f:
                 raw = f.read()
+                if chardet is None:
+                    return raw.decode("cp932", errors='ignore')
                 det = chardet.detect(raw)
                 enc = det['encoding'] if det['confidence'] > 0.7 else 'cp932'
                 safe_enc = enc if isinstance(enc, str) else "cp932"
@@ -201,9 +219,14 @@ class VO_SE_Engine:
     
     # --- 再生制御 ---
     def play(self, filepath):
+        if sd is None or sf is None:
+            print("Audio playback is unavailable: sounddevice/soundfile not installed.")
+            return
         if filepath and os.path.exists(filepath):
             data, fs = sf.read(filepath)
             sd.play(data, fs)
 
     def stop(self):
+        if sd is None:
+            return
         sd.stop()
