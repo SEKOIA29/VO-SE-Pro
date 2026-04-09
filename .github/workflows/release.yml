@@ -455,9 +455,13 @@ jobs:
           merge-multiple: true
           path: dist_out
 
-      - name: Show release files
-        run: ls -la dist_out
+      - name: Ensure dist_out exists
+        run: mkdir -p dist_out
 
+      - name: Show release files
+        run: |
+          mkdir -p dist_out
+          ls -la dist_out || true
       # ── ③ タグが v* の時だけ正式リリース、それ以外は pre-release ──
       - name: Upload Release
         uses: softprops/action-gh-release@v2
