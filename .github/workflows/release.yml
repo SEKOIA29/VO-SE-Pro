@@ -104,6 +104,7 @@ jobs:
         shell: bash
         run: |
           export PYTHONIOENCODING=utf-8
+          export VOSE_SKIP_UPDATE_CHECK=1
           # CIではLinux/macOSともにoffscreenを使う
           if [ "${{ matrix.os }}" != "windows-latest" ]; then
             export QT_QPA_PLATFORM=offscreen
