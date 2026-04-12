@@ -2150,8 +2150,12 @@ class MainWindow(QMainWindow):
             self.device_status_label.setText(f" [ {self.active_device} ] ")
         self.statusBar().showMessage(f"Engine Ready: {self.active_device}", 5000)
         
-        #アップデート確認
-        QTimer.singleShot(3000, self._check_for_updates)
+        # アップデート確認（CI/スモークテストでは環境変数で無効化可能）
+        skip_update_check = os.environ.get("VOSE_SKIP_UPDATE_CHECK", "").lower() in {
+            "1", "true", "yes", "on"
+        }
+        if not skip_update_check:
+            QTimer.singleShot(3000, self._check_for_updates)
 
     def log_startup(self, message):
         """標準出力へのログ記録）""" 
