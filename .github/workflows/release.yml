@@ -72,8 +72,9 @@ jobs:
           pip install PySide6 numpy pyopenjtalk
 
       - name: Startup smoke import
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: |
-          export QT_QPA_PLATFORM=offscreen
           python - << 'PY'
           import main
           missing = main._check_runtime_requirements()
