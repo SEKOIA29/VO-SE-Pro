@@ -30,7 +30,7 @@ ort = importlib.import_module("onnxruntime") if importlib.util.find_spec("onnxru
 # 3. GUIライブラリ (PySide6 )
 # ==========================================================================
 from PySide6.QtCore import (
-    Qt, Signal, Slot, QThread, QTimer,
+    Qt, Signal, QThread, QTimer,
     QObject, QRunnable, QThreadPool, Slot
 
 )
