@@ -415,7 +415,7 @@ jobs:
           name: VO-SE-PRO-Package-${{ matrix.os }}
           path: dist_out/
 
- smoke-linux:
+  smoke-linux:
     name: Linux GUI dependency smoke test
     runs-on: ubuntu-latest
     steps:
