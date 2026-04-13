@@ -34,9 +34,10 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_MEDIA_BACKEND: ffmpeg
         run: |
-          export QT_QPA_PLATFORM=offscreen
-          export QT_MEDIA_BACKEND=ffmpeg
           python -m pip install --upgrade pip wheel
           python -m pip uninstall -y pkg_resources || true
           python -m pip install "setuptools>=70,<81" "pyinstaller==6.13.0"
