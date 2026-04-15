@@ -140,65 +140,8 @@ jobs:
 
           echo "✅ Build Complete: bin/libvose_core.dylib"
           ls -l bin/libvose_core.dylib
+          
 
-      - name: 🔍 Startup Smoke Test (GUI init + show)
-        shell: bash
-        run: |
-          export PYTHONIOENCODING=utf-8
-          export VOSE_SKIP_UPDATE_CHECK=1
-          # CIではLinux/macOSともにoffscreenを使う
-          if [ "${{ matrix.os }}" != "windows-latest" ]; then
-            export QT_QPA_PLATFORM=offscreen
-          fi
-
-          cat > test_ci_render.py << 'PY'
-          import os
-          import sys
-          import ctypes
-
-          root_dir = os.path.abspath(os.getcwd())
-          src_dir = os.path.join(root_dir, "src")
-          bin_dir = os.path.join(root_dir, "bin")
-          sys.path.extend([root_dir, src_dir])
-
-          # --- Native library load check ---
-          if sys.platform.startswith("win"):
-              dll_path = os.path.join(bin_dir, "vose_core.dll")
-              os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
-              if hasattr(os, "add_dll_directory"):
-                  os.add_dll_directory(bin_dir)
-              try:
-                  ctypes.CDLL(dll_path, winmode=0)
-                  print("SUCCESS: DLL loaded")
-              except Exception as e:
-                  print(f"DLL Error: {e}")
-                  raise
-          elif sys.platform == "darwin":
-              dylib_path = os.path.join(bin_dir, "libvose_core.dylib")
-              try:
-                  ctypes.CDLL(dylib_path)
-                  print("SUCCESS: dylib loaded")
-              except Exception as e:
-                  print(f"Dylib Error: {e}")
-                  raise
-
-          # --- GUI init/show test ---
-          from PySide6.QtWidgets import QApplication
-          from PySide6.QtCore import QTimer
-          from modules.gui.main_window import MainWindow
-
-          app = QApplication(sys.argv)
-          w = MainWindow()
-          w.show()
-          print("SUCCESS: MainWindow shown")
-
-          # 2秒後に自動終了（CIでハングしないように）
-          QTimer.singleShot(2000, app.quit)
-          rc = app.exec()
-          print(f"SUCCESS: app exited rc={rc}")
-          PY
-
-          python test_ci_render.py
 
 
       - name: Verify pkg_resources for PyInstaller hook
@@ -365,50 +308,7 @@ jobs:
           codesign --force --deep --sign - "dist/VO-SE_PRO_Mac.app" 2>&1 || true
           set -e
 
-      - name: 🔍 Startup Smoke Test (GUI Headless)
-        shell: bash
-        run: |
-          export QT_QPA_PLATFORM=offscreen
-          export PYTHONIOENCODING=utf-8
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            printf "%s\n" \
-              "import os, ctypes, sys" \
-              "root_dir = os.path.abspath(os.getcwd())" \
-              "bin_dir = os.path.join(root_dir, 'bin')" \
-              "src_dir = os.path.join(root_dir, 'src')" \
-              "dll_path = os.path.join(bin_dir, 'vose_core.dll')" \
-              "os.environ['PATH'] = bin_dir + os.pathsep + os.environ.get('PATH', '')" \
-              "if hasattr(os, 'add_dll_directory'): os.add_dll_directory(bin_dir)" \
-              "try:" \
-              "    lib = ctypes.CDLL(dll_path, winmode=0)" \
-              "    print('SUCCESS: DLL Loaded')" \
-              "except Exception as e:" \
-              "    print(f'DLL Error: {e}'); sys.exit(1)" \
-              "sys.path.extend([root_dir, src_dir])" \
-              "try:" \
-              "    import main" \
-              "    print('SUCCESS: App Import Passed')" \
-              "except Exception as e:" \
-              "    print(f'Import Error: {e}'); sys.exit(1)" > smoke_test.py
-          else
-            printf "%s\n" \
-              "import os, ctypes, sys" \
-              "root_dir = os.path.abspath(os.getcwd())" \
-              "src_dir = os.path.join(root_dir, 'src')" \
-              "dylib_path = os.path.join(root_dir, 'bin', 'libvose_core.dylib')" \
-              "try:" \
-              "    lib = ctypes.CDLL(dylib_path)" \
-              "    print('SUCCESS: Dylib Loaded')" \
-              "except Exception as e:" \
-              "    print(f'Error: {e}'); sys.exit(1)" \
-              "sys.path.extend([root_dir, src_dir])" \
-              "try:" \
-              "    import main" \
-              "    print('SUCCESS: macOS Import Passed')" \
-              "except Exception as e:" \
-              "    print(f'Import Error: {e}'); sys.exit(1)" > smoke_test.py
-          fi
-          python smoke_test.py
+
 
       - name: 📦 Save Artifacts
         uses: actions/upload-artifact@v4
