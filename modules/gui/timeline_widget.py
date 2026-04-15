@@ -206,17 +206,25 @@ class TimelineWidget(QWidget):
             for item in data:
                 if not isinstance(item, dict):
                     continue
-                note = type("Note", (), {})()
-                note.start_time = float(item.get("start_time", 0.0))
-                note.duration = float(item.get("duration", 0.5))
-                note.note_number = int(item.get("note_number", 60))
-                note.lyrics = str(item.get("lyrics", "la"))
+                
+                # --- 修正ポイント: 定義済みの NoteEventClass (Fallback含む) を使用 ---
+                # これにより start_time などの属性が静的解析でも正しく認識されます
+                note = NoteEventClass(
+                    start_time=float(item.get("start_time", 0.0)),
+                    duration=float(item.get("duration", 0.5)),
+                    note_number=int(item.get("note_number", 60)),
+                    lyrics=str(item.get("lyrics", "la"))
+                )
                 note.is_selected = False
+                # -----------------------------------------------------------
+                
                 self.notes_list.append(note)
 
+            self._invalidate_note_rects()  # [OPT-3] ノートが増えたのでキャッシュを無効化
             self.notes_changed_signal.emit()
             self.update()
         except Exception:
+            # CI環境や例外時にプロセスを落とさないためのガード
             pass
 
     def delete_selected_notes(self) -> None:
