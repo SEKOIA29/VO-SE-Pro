@@ -14,6 +14,9 @@ VO-SE Cut Studio — コアエンジン統合モジュール
   [FIX-3] TalkManager.synthesize(): float32 → int16 変換クリップ修正。
   [FIX-4] _tts_with_voice(): ndarray 単体の戻り値にも対応。
   [FIX-5] speak(): tmp_path を try の前に None 初期化 → finally で None チェック。
+  [FIX-6] _tts_default(): pyopenjtalk.tts() の例外を確実にキャッチ。
+  [FIX-7] synthesize(): 全サンプルが 0 の場合の max() 処理を安全化。
+  [FIX-8] VoseRendererBridge.__init__(): hasattr で存在確認してからシグネチャ設定。
 """
 from __future__ import annotations
 
@@ -211,9 +214,6 @@ def generate_talk_events(
 # 4. C++ 構造体バインディング
 # ══════════════════════════════════════════════════════════════
 
-
-
-
 class VoseRendererBridge:
     def __init__(self, dll_path: str) -> None:
         try:
@@ -221,6 +221,12 @@ class VoseRendererBridge:
                 self.lib = ctypes.CDLL(dll_path, mode=ctypes.RTLD_GLOBAL)
             else:
                 self.lib = ctypes.CDLL(dll_path)
+
+            # [FIX-8] シンボルの存在を hasattr で確認してからシグネチャを設定する
+            if not hasattr(self.lib, "init_official_engine"):
+                raise AttributeError("init_official_engine not found in DLL")
+            if not hasattr(self.lib, "execute_render"):
+                raise AttributeError("execute_render not found in DLL")
 
             self.lib.init_official_engine.argtypes = []
             self.lib.init_official_engine.restype = None
@@ -277,7 +283,6 @@ class VoseRendererBridge:
             c_notes[i].gender_curve = g_arr
             c_notes[i].tension_curve = t_arr
             c_notes[i].breath_curve = b_arr
-
 
         try:
             self.lib.execute_render(c_notes, note_count, output_path.encode("utf-8"))
@@ -369,9 +374,13 @@ class TalkManager(QObject):
                 return False, "音声データの生成に失敗しました。"
 
             x_arr = np.asarray(x)
+
+            # [FIX-7] 全サンプルが 0 / 空配列の場合でも安全に処理する
             if x_arr.dtype in (np.float32, np.float64):
-                if np.abs(x_arr).max() <= 1.0:
+                abs_max = np.abs(x_arr).max() if x_arr.size > 0 else 0.0
+                if abs_max <= 1.0:
                     x_arr = x_arr * 32767.0
+
             x_int16 = np.clip(x_arr, -32768, 32767).astype(np.int16)
             sf.write(output_path, x_int16, sr)
 
@@ -404,11 +413,16 @@ class TalkManager(QObject):
 
     @staticmethod
     def _tts_default(text: str, options: dict[str, Any]) -> tuple[np.ndarray | None, int]:
-        result = pyopenjtalk.tts(text, **options)
-        if result is None:
+        # [FIX-6] pyopenjtalk.tts() の例外を確実にキャッチしてクラッシュを防ぐ
+        try:
+            result = pyopenjtalk.tts(text, **options)
+            if result is None:
+                return None, 48000
+            if isinstance(result, tuple) and len(result) >= 2:
+                return result[0], int(result[1])
+            if isinstance(result, np.ndarray):
+                return result, 48000
             return None, 48000
-        if isinstance(result, tuple) and len(result) >= 2:
-            return result[0], int(result[1])
-        if isinstance(result, np.ndarray):
-            return result, 48000
-        return None, 48000
+        except Exception as e:
+            print(f"[Error] pyopenjtalk.tts() failed: {e}\n{traceback.format_exc()}")
+            return None, 48000
