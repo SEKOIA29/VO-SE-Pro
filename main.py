@@ -127,7 +127,8 @@ class VoSeEngine:
         """
         【共通処理】波形データとピッチデータをC++エンジンに送り込みます。
         """
-        if not self.c_engine:
+        if not self.c_engine or not hasattr(self.c_engine, 'process_voice'):
+            print("[Warning] C-Engine not available, skipping processing")
             return data_array
             
         try:
