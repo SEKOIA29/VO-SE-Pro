@@ -1,4 +1,4 @@
-#main.py
+# main.py
 import sys
 import os
 import platform
@@ -8,6 +8,7 @@ import json
 import importlib
 from importlib.util import find_spec
 
+
 # --- [1] リソースパス解決関数 (PyInstaller対応) ---
 def get_resource_path(relative_path):
     if getattr(sys, 'frozen', False):
@@ -15,6 +16,7 @@ def get_resource_path(relative_path):
     else:
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
+
 
 # --- [2] 設定管理クラス (ConfigHandler) ---
 class ConfigHandler:
@@ -34,7 +36,7 @@ class ConfigHandler:
         try:
             with open(self.config_path, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:  # E722 修正: bare except を Exception に変更
+        except Exception:
             return self.default_config
 
     def save_config(self, config_dict):
@@ -43,6 +45,7 @@ class ConfigHandler:
                 json.dump(config_dict, f, indent=4, ensure_ascii=False)
         except Exception as e:
             print(f"Config save error: {e}")
+
 
 # --- [3] エンジンクラス (VoSeEngine) ---
 class VoSeEngine:
@@ -57,10 +60,10 @@ class VoSeEngine:
         型チェックエラー（_MEIPASS）を回避し、Mac実機構造に対応した完全版です。
         """
         lib_name = "vose_core.dll" if self.os_name == "Windows" else "libvose_core.dylib"
-        
+
         # 1. 基本的なリソースパス
         dll_path = get_resource_path(os.path.join("bin", lib_name))
-        
+
         # 2. Mac特有のフォールバック処理
         if self.os_name == "Darwin":
             if not os.path.exists(dll_path):
@@ -76,31 +79,33 @@ class VoSeEngine:
         if os.path.exists(dll_path):
             try:
                 abs_dll_path = os.path.abspath(dll_path)
-                
+
                 if self.os_name == "Windows":
                     self.c_engine = ctypes.CDLL(abs_dll_path)
                 else:
-                    self.c_engine = ctypes.CDLL(abs_dll_path, mode=10) # RTLD_GLOBAL
-                
+                    self.c_engine = ctypes.CDLL(abs_dll_path, mode=10)  # RTLD_GLOBAL
+
                 # --- C関数の型定義 (歌唱・読み上げの両方に対応) ---
                 if hasattr(self.c_engine, 'process_voice'):
-                    # process_voice(float* wav_data, int length, float* f0_data) 
-                    # 歌唱用にピッチ配列(f0)も渡せるように定義を拡張
                     self.c_engine.process_voice.argtypes = [
-                        ctypes.POINTER(ctypes.c_float), 
+                        ctypes.POINTER(ctypes.c_float),
                         ctypes.c_int,
                         ctypes.POINTER(ctypes.c_float)
                     ]
                     self.c_engine.process_voice.restype = None
-                
+
                 print(f"[Success] C-Engine loaded: {abs_dll_path}")
             except Exception as e:
                 print(f"[Error] Failed to load C-Engine: {e}")
                 if hasattr(sys, 'stderr'):
                     import traceback
                     traceback.print_exc()
+                self.c_engine = None  # 失敗時は明示的に None を保証
         else:
+            # [FIX-1] 警告のみで続行せず、理由を明記したうえで None を確定する
+            # main() 側で QMessageBox.warning を表示するため、ここでは print のみ
             print(f"[Warning] C-Engine file not found at: {dll_path}")
+            self.c_engine = None  # 明示的に None を保証（後続クラッシュ防止）
 
     def analyze_intonation(self, text):
         """【読み上げ用】音韻解析"""
@@ -119,9 +124,7 @@ class VoSeEngine:
         """
         print("--- 歌唱ピッチ解析実行 ---")
         np = importlib.import_module("numpy")
-        # サンプリングレートやフレーム数に基づいたピッチカーブの生成ロジック
-        # ここで生成した配列を process_with_c に渡します
-        f0_curve = np.full(1000, 440.0, dtype=np.float32) # テスト用の固定ピッチ
+        f0_curve = np.full(1000, 440.0, dtype=np.float32)  # テスト用の固定ピッチ
         return f0_curve
 
     def process_with_c(self, data_array, f0_array=None):
@@ -131,28 +134,33 @@ class VoSeEngine:
         if not self.c_engine or not hasattr(self.c_engine, 'process_voice'):
             print("[Warning] C-Engine not available, skipping processing")
             return data_array
-            
+
         try:
             np = importlib.import_module("numpy")
+
             # 波形データの準備
             wav_float = np.ascontiguousarray(data_array, dtype=np.float32)
             wav_ptr = wav_float.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
             length = len(wav_float)
 
-            # ピッチデータ（F0）の準備（歌唱モード時のみ使用）
+            # [FIX-2] f0_float を明示的に保持し、GCによるダングリングポインタを防ぐ
+            f0_float = None
             f0_ptr = None
             if f0_array is not None:
                 f0_float = np.ascontiguousarray(f0_array, dtype=np.float32)
                 f0_ptr = f0_float.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-            
+
             # C++エンジンの呼び出し
-            # 第3引数にピッチ情報を渡すことで、歌声の高さが制御されます
+            # wav_float・f0_float はこのスコープを抜けるまで生存が保証される
             self.c_engine.process_voice(wav_ptr, length, f0_ptr)
-            
+
+            # [FIX-3] wav_float を返すことで GC による早期解放を防ぐ
             return wav_float
+
         except Exception as e:
             print(f"C-Process error: {e}")
             return data_array
+
 
 def _check_runtime_requirements():
     """
@@ -160,11 +168,9 @@ def _check_runtime_requirements():
     """
     missing = []
 
-    # Pythonモジュール要件
     for module_name in ("numpy", "pyopenjtalk", "PySide6"):
         if find_spec(module_name) is None:
             missing.append(f"Python package: {module_name}")
-
 
     return missing
 
@@ -201,21 +207,28 @@ def main():
             traceback.print_exc()
         sys.exit(1)
 
-
     QApplication = QtWidgets.QApplication
     QMessageBox = QtWidgets.QMessageBox
     QIcon = QtGui.QIcon
 
     app = QApplication(sys.argv)
-    
+
     icon_path = get_resource_path(os.path.join("assets", "icon.png"))
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
-    
+
+    # [FIX-1] DLL未検出時は warning ダイアログで明示。エラーではなく warning に留め、
+    #         アプリは起動継続（合成・歌唱機能のみ無効化）とする。
     lib_name = "vose_core.dll" if platform.system() == "Windows" else "libvose_core.dylib"
     dll_path = get_resource_path(os.path.join("bin", lib_name))
     if not os.path.exists(dll_path):
-        QMessageBox.warning(None, "準備不足", f"DLLが見つかりません。一部機能が制限されます。\n場所: {dll_path}")
+        QMessageBox.warning(
+            None,
+            "コアエンジン未検出",
+            f"VO-SE Core Engine が見つかりません。\n"
+            f"音声合成・歌声合成機能は利用できません。\n\n"
+            f"期待されるパス:\n{dll_path}"
+        )
 
     config_handler = ConfigHandler()
     config = config_handler.load_config()
@@ -229,15 +242,16 @@ def main():
             import traceback
             traceback.print_exc()
         sys.exit(1)
-        
+
     window.vo_se_engine = engine
     window.config = config
-    
+
     window.show()
-    
+
     result = app.exec()
     config_handler.save_config(config)
     sys.exit(result)
+
 
 if __name__ == "__main__":
     main()
