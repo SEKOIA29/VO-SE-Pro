@@ -1,4 +1,3 @@
-#core_manager.py
 import ctypes
 import os
 import platform
@@ -25,7 +24,6 @@ class VoseCoreManager:
     def _candidate_paths(self) -> list[str]:
         system = platform.system()
         lib_name = "vose_core.dll" if system == "Windows" else "libvose_core.dylib"
-
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
         return [
             os.path.join(repo_root, "bin", lib_name),
@@ -44,10 +42,11 @@ class VoseCoreManager:
             self.lib = None
             print(f"⚠️ VOSE Core disabled: {self._disabled_reason}")
             return
+
+        load_errors: list[str] = []
         for path in self._candidate_paths():
             if not os.path.exists(path):
                 continue
-
             try:
                 self.lib = ctypes.CDLL(path)
                 self._setup_prototypes()
@@ -55,9 +54,15 @@ class VoseCoreManager:
                 self._initialized = True
                 return
             except Exception as e:
+                load_errors.append(f"  {path}: {e}")
                 print(f"[Error] Load Error: {path} ({e})")
 
-        print("[Warning] VOSE Core DLL not found. Engine is offline.")
+        # [FIX-1] DLL未検出時は理由を記録し、後から get_lib() で参照できるようにする
+        reason = "DLL not found in any candidate path"
+        if load_errors:
+            reason = "DLL found but failed to load:\n" + "\n".join(load_errors)
+        self._disabled_reason = reason
+        print(f"[Warning] VOSE Core DLL not found. Engine is offline.\n  Reason: {reason}")
         self.lib = None
         self._initialized = True
 
@@ -67,27 +72,50 @@ class VoseCoreManager:
 
         validate_note_event_layout()
 
-        self.lib.execute_render.argtypes = [
-            ctypes.POINTER(CNoteEvent),
-            ctypes.c_int,
-            ctypes.c_char_p,
-        ]
-        self.lib.execute_render.restype = None
+        # [FIX-2] 各シンボルの存在確認を try/except で確実に行う
+        try:
+            self.lib.execute_render.argtypes = [
+                ctypes.POINTER(CNoteEvent),
+                ctypes.c_int,
+                ctypes.c_char_p,
+            ]
+            self.lib.execute_render.restype = None
+        except AttributeError:
+            print("[Warning] execute_render not found in DLL — skipping prototype setup")
 
-        if hasattr(self.lib, "init_official_engine"):
+        try:
             self.lib.init_official_engine.argtypes = []
             self.lib.init_official_engine.restype = None
+        except AttributeError:
+            pass  # オプションのシンボルなので警告不要
 
-        if hasattr(self.lib, "synthesize_by_name"):
+        try:
             self.lib.synthesize_by_name.argtypes = [ctypes.c_char_p, ctypes.c_float]
             self.lib.synthesize_by_name.restype = ctypes.POINTER(ctypes.c_float)
+        except AttributeError:
+            pass  # オプションのシンボルなので警告不要
 
     def get_lib(self) -> Optional[ctypes.CDLL]:
         if not self._initialized:
             self._init_engine()
+
+        # [FIX-3] None の理由をログに残し、呼び出し側のデバッグを助ける
+        if self.lib is None:
+            reason = self._disabled_reason or "unknown reason"
+            print(f"[Warning] VOSE Core Engine is not available ({reason}).")
+
         return self.lib
+
+    def is_available(self) -> bool:
+        """エンジンが利用可能かどうかを返す。get_lib() の None チェックの代替。"""
+        if not self._initialized:
+            self._init_engine()
+        return self.lib is not None
+
+    def disabled_reason(self) -> Optional[str]:
+        """エンジンが無効になっている理由を返す（デバッグ用）。"""
+        return self._disabled_reason
 
 
 vose_manager = VoseCoreManager()
-
 __all__ = ["VoseCoreManager", "vose_manager", "CNoteEvent"]
