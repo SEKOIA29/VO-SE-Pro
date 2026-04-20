@@ -73,6 +73,7 @@ try:
     from modules.gui.core_manager import vose_manager, CNoteEvent # type: ignore[assignment]
     from modules.audio.voice_manager import VoiceManager # type: ignore[assignment]
     from modules.gui.aural_engine import AuralAIEngine # type: ignore[assignment]
+    from modules.data.licensing import LicenseManager # type: ignore[assignment]
 except ImportError as e:
     print(f"⚠️ Absolute import failed, falling back to relative: {e}")
     # フォールバック（相対インポート）
@@ -124,6 +125,23 @@ except ImportError:
         @staticmethod
         def from_dict(d):
             return PitchEvent(d.get('time', 0.0), d.get('pitch', 0.0))
+
+
+
+# ==========================================================================
+# 1.  ProかFreeかの判定ロジック(仮) 
+# ==========================================================================
+
+def execute_export_pro_manager(self):
+    if LicenseManager.is_pro():
+        sr = 96000
+        bit = 32
+    else:
+        sr = 44100
+        bit = 16
+        # 代表の美学：制限しているのではなく「Free版の標準設定です」と見せる
+        print(f"Exporting in Standard Quality ({sr}Hz/{bit}bit)...")
+
 
 # ==========================================================================
 # 1. 外部モジュール読み込み & フォールバック定義
