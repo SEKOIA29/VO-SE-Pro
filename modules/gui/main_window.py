@@ -5953,6 +5953,8 @@ class MainWindow(QMainWindow):
         """
         タイムライン上の全ノートをスキャンし、非同期でレンダリングを開始する。
         """
+        from modules.data.licensing import LicenseManager # ライセンス管理をロード
+      
         # 1. 保存先の決定
         output_wav = os.path.join(os.getcwd(), "output", "render_result.wav")
         os.makedirs(os.path.dirname(output_wav), exist_ok=True)
@@ -5969,24 +5971,39 @@ class MainWindow(QMainWindow):
 
         # 3. 準備（ここは一瞬なのでメインスレッドでOK）
         try:
+            is_pro = LicenseManager.is_pro()
             self.statusBar().showMessage("レンダリング準備中...")
             note_count = len(raw_notes)
             # NoteEvent型が定義されている前提
             NotesArrayType = NoteEvent * note_count 
             c_notes = NotesArrayType()
             
-            for i, note_data in enumerate(raw_notes):
-                c_notes[i] = prepare_c_note_event(note_data)
+
 
             # --- 【ここから非同期化の修正】 ---
-            self.statusBar().showMessage("レンダリング中（バックグラウンド）...")
+            status_text = "レンダリング中 (Studio Master)..." if is_pro else "レンダリング中..."
+            self.statusBar().showMessage(status_text)
+
+            note_count = len(raw_notes)
+            NotesArrayType = NoteEvent * note_count 
+            c_notes = NotesArrayType()
+
+            for i, note_data in enumerate(raw_notes):
+                c_notes[i] = prepare_c_note_event(note_data)
+            
             # プログレスバーがあれば動かす
             if hasattr(self, "progress_bar"):
                 self.progress_bar.setRange(0, 0) # ぐるぐる回るモード
                 self.progress_bar.setVisible(True)
 
             # ワーカーの作成
-            worker = SynthesisWorker(self.vose_core, c_notes, note_count, output_wav)
+            worker = SynthesisWorker(
+                self.vose_core, 
+                c_notes, 
+                note_count, 
+                output_wav,
+                is_pro=is_pro #有料版かどうか
+            )
             
             # シグナルの接続
             worker.signals.finished.connect(self.on_render_success)
