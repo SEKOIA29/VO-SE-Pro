@@ -4698,7 +4698,7 @@ class MainWindow(QMainWindow):
         # ファイル名（拡張子なし）を返す
         return str(os.path.splitext(os.path.basename(zip_path))[0])
 
-@Slot()
+    @Slot()
     def on_export_button_clicked(self):
         """WAV書き出し（多重起動防止 & 高速化 & AIピッチ統合 & Proライセンス品質分岐版）"""
         from modules.data.licensing import LicenseManager
@@ -4796,7 +4796,7 @@ class MainWindow(QMainWindow):
             if status_bar:
                 status_bar.showMessage("エラー発生")
 
-    @Slot()
+
 
     @Slot()
     def save_file_dialog_and_save_midi(self):
