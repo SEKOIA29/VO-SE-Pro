@@ -4348,7 +4348,11 @@ class MainWindow(QMainWindow):
     @Slot()
     def on_render_button_clicked(self):
         """合成ボタンの最終接続"""
-        self.statusBar().showMessage("レンダリング中...")
+        from modules.data.licensing import LicenseManager # 追加
+        
+        is_pro = LicenseManager.is_pro()
+        status_msg = "レンダリング中 (Pro Mode)..." if is_pro else "レンダリング中..."
+        self.statusBar().showMessage(status_msg)
     
         # 1. データの準備
         song_data = self.prepare_rendering_data()
@@ -4357,9 +4361,15 @@ class MainWindow(QMainWindow):
             return
 
         # 2. C++エンジンでWAV生成
-        # vo_se_engine.py の render() を呼び出す
+        # Pro版なら高精度フラグをエンジンに渡すようにしておく
         output_filename = "preview_render.wav"
-        result_path = self.vo_se_engine.render(song_data, output_filename)
+        
+        # 代表、ここがポイントです。将来的に render() が is_pro 引数を受け取れるようにします。
+        result_path = self.vo_se_engine.render(
+            song_data, 
+            output_filename, 
+            is_pro=is_pro # フラグを渡す
+        )
 
         # 3. 再生
         if result_path and os.path.exists(result_path):
@@ -4367,6 +4377,29 @@ class MainWindow(QMainWindow):
             self.vo_se_engine.play_result(result_path)
         else:
             QMessageBox.critical(self, "エラー", "合成に失敗しました。DLLまたは音源パスを確認してください。")
+
+    @Slot()
+    def on_export_button_clicked(self):
+        """【新規追加】ファイル書き出しボタン（Pro版差別化の主戦場）"""
+        from modules.data.licensing import LicenseManager
+        
+        is_pro = LicenseManager.is_pro()
+        
+        # 保存先選択
+        file_path, _ = QFileDialog.getSaveFileName(self, "WAV書き出し", "", "WAV Files (*.wav)")
+        if not file_path: return
+
+        # 有料・無料のパラメータ決定
+        # 鍵マークは出さないが、statusBarで「さりげなく」今のモードを伝える
+        if is_pro:
+            sr, bit = 96000, 32
+            self.statusBar().showMessage("Studio Master Quality で書き出し中...")
+        else:
+            sr, bit = 44100, 16
+            self.statusBar().showMessage("Standard Quality で書き出し中...")
+
+        # エンジン側に品質パラメータを投げる
+        self.vo_se_engine.export(file_path, sample_rate=sr, bit_depth=bit, is_pro=is_pro)
 
     @Slot()
     def on_ai_button_clicked(self):
