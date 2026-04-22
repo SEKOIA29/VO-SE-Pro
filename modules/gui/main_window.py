@@ -510,35 +510,38 @@ class WorkerSignals(QObject):
     progress = Signal(int)
 
 class SynthesisWorker(QRunnable):
-    def __init__(self, vose_core, c_notes, note_count, output_path):
+    def __init__(self, vose_core, c_notes, note_count, output_path, is_pro=False):
         """
         [VO-SE Pro: Dedicated Synthesis Worker]
-        代表、このWorkerはレンダリングに必要な全ての材料を直接受け取り、
-        処理が終わるまで参照を保持（Keep-alive）します。
+        代表、引数に 'is_pro' を追加しました。
+        これでCIのエラー (reportCallIssue) は解消されます。
         """
         super().__init__()
         self.vose_core = vose_core
-        self.c_notes = c_notes       # ctypes構造体配列の参照を保持（重要）
+        self.c_notes = c_notes       # ctypes構造体配列の参照を保持
         self.note_count = note_count
         self.output_path = output_path
+        self.is_pro = is_pro         # ライセンス状態を保持
         self.signals = WorkerSignals()
 
     def run(self):
         try:
             # 代表、ここがバックグラウンドスレッドです。
-            # C++側の execute_render を直接呼び出します。
-            # 引数は (構造体ポインタ, ノート数, 出力パス) です。
+            # C++側の execute_render に 'モード' としてフラグを渡します。
+            # 0: Standard(無料), 1: Studio Master(有料)
+            mode_flag = 1 if self.is_pro else 0
+
             self.vose_core.execute_render(
                 self.c_notes, 
                 self.note_count, 
-                self.output_path.encode('utf-8')
+                self.output_path.encode('utf-8'),
+                mode_flag # 第4引数としてC++側へ伝達
             )
             
-            # 完了したら出力パスを添えてメインスレッドへ通知
+            # 完了通知
             self.signals.finished.emit(self.output_path)
             
         except Exception as e:
-            # 万が一のクラッシュも捕捉してエラー通知
             self.signals.error.emit(str(e))
 
 
