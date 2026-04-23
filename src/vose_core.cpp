@@ -691,7 +691,7 @@ DLLEXPORT void load_embedded_resource(const char* phoneme,
 //   キャッシュミス時だけ直列化される。通常はキャッシュヒットするので問題なし。
 // ============================================================
  
-// 第4引数に int mode_flag を追加しました
+
 DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* output_path, int mode_flag)
 {
     if (!notes || note_count <= 0 || !output_path) return;
