@@ -2670,37 +2670,38 @@ class MainWindow(QMainWindow):
         self.player = QMediaPlayer()
         self.audio_output = QAudioOutput()
     
-        # PySide6必須：プレイヤーに出力先を接続
         self.player.setAudioOutput(self.audio_output)
-    
-        # 音量設定（0.0 ~ 1.0）
         self.audio_output.setVolume(0.5)
-    
-        #    プレイヤーの状態監視を接続
         self.player.playbackStateChanged.connect(self.on_playback_state_changed)
 
         # --- 2. ボリュームコントロールUI ---
         vol_layout = QHBoxLayout()
     
         self.vol_label = QLabel("Volume: 50%")
-        self.vol_slider = QSlider(Qt.Orientation.Horizontal)  # ✅ 修正
-        self.vol_slider.setRange(0, 100)
-        if self.vol_slider is not None:
-            self.vol_slider.setValue(50)
+        
+        # ローカル変数として作成し、確実に初期化する
+        vol_slider = QSlider(Qt.Orientation.Horizontal)
+        vol_slider.setRange(0, 100)
+        vol_slider.setValue(50)
     
-        # ✅ 正しい列挙型アクセス
-        self.vol_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.vol_slider.setTickInterval(10)
+        # 列挙型アクセスの修正
+        vol_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        vol_slider.setTickInterval(10)
     
         # スライダー変更時の処理
-        self.vol_slider.valueChanged.connect(self.on_volume_changed)
+        vol_slider.valueChanged.connect(self.on_volume_changed)
     
+        # レイアウトへの追加（この時点では確実に QWidget です）
         vol_layout.addWidget(self.vol_label)
-        vol_layout.addWidget(self.vol_slider)
+        vol_layout.addWidget(vol_slider)
+        
+        # インスタンス変数に格納（最後に行うことで型安全を確保）
+        self.vol_slider = vol_slider
     
-        # メインレイアウトに追加（既存のレイアウトがある場合）
-        if hasattr(self, 'main_layout') and self.main_layout:
+        # メインレイアウトに追加
+        if hasattr(self, 'main_layout') and self.main_layout is not None:
             self.main_layout.addLayout(vol_layout)
+
 
     def get_current_playback_state(self) -> bool:
         """
