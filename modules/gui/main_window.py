@@ -5622,7 +5622,10 @@ class MainWindow(QMainWindow):
             elif hasattr(self, 'timeline') and self.timeline:
                 valid_tempo = self.timeline.tempo
                 
-            self.tempo_input.setText(str(valid_tempo))
+                    
+            if self.tempo_input:
+                self.tempo_input.setText(str(valid_tempo))
+
 
     @Slot(str)
     def set_current_parameter_layer(self, layer_name: str):
