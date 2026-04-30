@@ -230,7 +230,7 @@ class VoseRendererBridge:
             if platform.system() == "Windows" and hasattr(os, "add_dll_directory"):
                 # DLLのディレクトリを検索パスに明示的に追加
                 # これにより、libvo_se.dll が依存する他のDLL（bin内のもの）が見つかるようになります
-                self.dll_cookie = os.add_dll_directory(dll_dir)
+                self.dll_cookie = os.add_dll_directory(dll_dir) # type: ignore
 
             # 3. DLLロード試行
             if platform.system() == "Darwin":
