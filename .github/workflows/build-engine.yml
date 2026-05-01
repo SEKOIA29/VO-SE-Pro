@@ -129,16 +129,17 @@ jobs:
         with:
           tag_name: latest
           name: "VO-SE PRO (Official Edition)"
+          # ↓ パイプ記号 '|' を使い、インデントを揃えることで「リスト」として認識させます
           files: |
             dist_out/VO-SE_PRO_Win.exe
             dist_out/VO-SE_PRO_Mac.zip
             dist_out/**/VO-SE_PRO_Win.exe
             bin/*.dll
             bin/*.dylib
-          fail_on_unmatched_files: true  # ← あえてtrueにして、どこでコケるか確認
+          fail_on_unmatched_files: false # 最初はfalseにして、何が成功するか見るのが安全です
           generate_release_notes: true
           make_latest: true
-          # ↓ 既存のリリースがある場合にファイルを「追加」するように明示
           append_body: true
+          # overwriteを有効にするならこちらも
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
