@@ -54,12 +54,16 @@ jobs:
       - name: "🏗️ [Step 6] Compile Engine"
         shell: bash
         run: |
+          # ヘッダーファイルをソースと同じ場所に集約（インクルード解決を確実に）
           cp include/world/*.h src/world/
+          cp include/*.h src/
 
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # WORLDソースを先にコンパイル
-            cmd //c "cl.exe /std:c++17 /EHsc /O2 /D_USE_MATH_DEFINES \
-              /I src /I include /I src\\world /c \
+            # Windows (MSVC): vose_core と WORLD ソースをまとめて DLL にビルド
+            # /I でインクルードパスを多重に指定し、依存関係を解決
+            cmd //c "cl.exe /std:c++17 /EHsc /O2 /LD /D_USE_MATH_DEFINES \
+              /Fe:bin\\vose_core.dll \
+              src\\vose_core.cpp \
               src\\world\\cheaptrick.cpp \
               src\\world\\common.cpp \
               src\\world\\d4c.cpp \
@@ -69,16 +73,12 @@ jobs:
               src\\world\\matlabfunctions.cpp \
               src\\world\\stonemask.cpp \
               src\\world\\synthesis.cpp \
-              src\\world\\audioio.cpp"
-
-            # vose_core.cpp + WORLDオブジェクトをDLLにリンク
-            cmd //c "cl.exe /std:c++17 /EHsc /O2 /LD /D_USE_MATH_DEFINES \
-              /Fe:bin\\vose_core.dll \
-              src\\vose_core.cpp *.obj \
+              src\\world\\audioio.cpp \
               /I src /I include /I src\\world \
               /link"
 
           else
+            # macOS (Clang): 個別にコンパイルして dynamiclib としてリンク[cite: 30]
             cd src/world
             for f in *.cpp; do
               [ -e "$f" ] || continue
@@ -94,7 +94,7 @@ jobs:
               src/vose_core.cpp \
               src/world/*.o
           fi
-
+          
       - name: "🔍 Verify DLL/dylib"
         shell: bash
         run: ls -la bin/
