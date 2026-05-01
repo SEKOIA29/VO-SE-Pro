@@ -116,6 +116,14 @@ jobs:
             cd dist_out && zip -r VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
           fi
 
+      - name: "🔍 Debug: List files before release"
+        shell: bash
+        run: |
+          echo "--- dist_out content ---"
+          find dist_out -maxdepth 2
+          echo "--- bin content ---"
+          ls -R bin/
+
       - name: "🚀 [Step 8] Publish GitHub Release"
         uses: softprops/action-gh-release@v2
         with:
