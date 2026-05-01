@@ -126,7 +126,7 @@ jobs:
             dist_out/VO-SE_PRO_Mac.zip
             bin/vose_core.dll
             bin/vose_core.dylib
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: false # これにより片方のOSでファイルがなくてもエラーになりません
           generate_release_notes: true
           make_latest: true
         env:
