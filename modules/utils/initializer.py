@@ -22,7 +22,7 @@ class AppInitializer:
 
         # チェック対象リスト
         # 各プラットフォームに合わせたバイナリ名を判定
-        dll_ext = "libvo_se.dll" if sys.platform == "win32" else "libvo_se.dylib"
+        dll_ext = "vose_core.dll" if sys.platform == "win32" else "libvose_core.dylib"
         jtalk_bin = "open_jtalk.exe" if sys.platform == "win32" else "open_jtalk"
 
         required_files = [
