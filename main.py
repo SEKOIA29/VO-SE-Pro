@@ -246,7 +246,11 @@ def main():
     window.vo_se_engine = engine
     window.config = config
 
-    window.show()
+    # ステータスバーの状態を動的に更新（MainWindowにupdate_statusメソッドがあると仮定）
+    if engine.c_engine:
+        window.statusBar().showMessage("VO-SE Core Engine: Ready")
+    else:
+        window.statusBar().showMessage("VO-SE Core Engine: Not Found (Offline Mode)")
 
     result = app.exec()
     config_handler.save_config(config)
