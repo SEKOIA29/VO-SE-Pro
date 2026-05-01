@@ -121,13 +121,16 @@ jobs:
         with:
           tag_name: latest
           name: "VO-SE PRO (Official Edition)"
+          # ↓ パスを確実に通すため、ワイルドカードを使用するのも手です
           files: |
             dist_out/VO-SE_PRO_Win.exe
             dist_out/VO-SE_PRO_Mac.zip
-            bin/vose_core.dll
-            bin/vose_core.dylib
-          fail_on_unmatched_files: false # これにより片方のOSでファイルがなくてもエラーになりません
+            bin/*.dll
+            bin/*.dylib
+          fail_on_unmatched_files: false 
           generate_release_notes: true
           make_latest: true
+          # ↓ 既存のリリースがある場合にファイルを「追加」するように明示
+          append_body: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
