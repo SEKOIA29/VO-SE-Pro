@@ -121,13 +121,13 @@ jobs:
         with:
           tag_name: latest
           name: "VO-SE PRO (Official Edition)"
-          # ↓ パスを確実に通すため、ワイルドカードを使用するのも手です
           files: |
             dist_out/VO-SE_PRO_Win.exe
             dist_out/VO-SE_PRO_Mac.zip
+            dist_out/**/VO-SE_PRO_Win.exe
             bin/*.dll
             bin/*.dylib
-          fail_on_unmatched_files: false 
+          fail_on_unmatched_files: true  # ← あえてtrueにして、どこでコケるか確認
           generate_release_notes: true
           make_latest: true
           # ↓ 既存のリリースがある場合にファイルを「追加」するように明示
