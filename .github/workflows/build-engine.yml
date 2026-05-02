@@ -129,17 +129,15 @@ jobs:
         with:
           tag_name: latest
           name: "VO-SE PRO (Official Edition)"
-          # ↓ パイプ記号 '|' を使い、インデントを揃えることで「リスト」として認識させます
+          # 各OSで見つかるファイルだけを指定する
           files: |
-            dist_out/VO-SE_PRO_Win.exe
-            dist_out/VO-SE_PRO_Mac.zip
-            dist_out/**/VO-SE_PRO_Win.exe
-            bin/*.dll
-            bin/*.dylib
-          fail_on_unmatched_files: false # 最初はfalseにして、何が成功するか見るのが安全です
+            ${{ matrix.os == 'windows-latest' && 'dist_out/VO-SE_PRO_Win.exe' || '' }}
+            ${{ matrix.os == 'windows-latest' && 'bin/*.dll' || '' }}
+            ${{ matrix.os == 'macos-latest' && 'dist_out/VO-SE_PRO_Mac.zip' || '' }}
+            ${{ matrix.os == 'macos-latest' && 'bin/*.dylib' || '' }}
+          fail_on_unmatched_files: false
           generate_release_notes: true
           make_latest: true
           append_body: true
-          # overwriteを有効にするならこちらも
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
