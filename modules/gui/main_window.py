@@ -90,6 +90,32 @@ os.environ["OMP_NUM_THREADS"] = "1"
 
 
 
+# ==========================================================================
+# 7. GUIセットアップ
+# ==========================================================================
+def setup_scrolling(self):
+    """
+    v_scrollbarの値が変化した際、両方のウィジェットのオフセットを更新する
+    """
+    self.v_scrollbar.setRange(0, 127 * self.note_height - self.timeline_height)
+    
+    # シグナルとスロットの接続
+    self.v_scrollbar.valueChanged.connect(self.sync_vertical_scroll)
+
+def sync_vertical_scroll(self, value):
+    """
+    垂直スクロールバーの値をピアノロールとタイムラインに伝播させる
+    """
+    # 鍵盤の描画位置を更新
+    self.piano_roll_widget.set_vertical_offset(value)
+    # ノートエリアの描画位置を更新
+    self.timeline_widget.set_vertical_offset(value)
+    
+    # 再描画を強制
+    self.piano_roll_widget.update()
+    self.timeline_widget.update()
+
+
 try:
     from modules.data.data_models import NoteEvent  # type: ignore
 except ImportError:
