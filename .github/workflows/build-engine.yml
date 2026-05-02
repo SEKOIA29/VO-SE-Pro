@@ -124,6 +124,15 @@ jobs:
           echo "--- bin content ---"
           ls -R bin/
 
+      - name: "📦 Upload Artifacts for Workflow"
+        uses: actions/upload-artifact@v4
+        with:
+          name: VO-SE-Build-${{ matrix.os }}
+          path: |
+            dist_out/*
+            bin/*.dll
+            bin/*.dylib
+
       - name: "🚀 [Step 8] Publish GitHub Release"
         uses: softprops/action-gh-release@v2
         with:
