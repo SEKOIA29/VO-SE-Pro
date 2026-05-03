@@ -1528,7 +1528,74 @@ class MainWindow(QMainWindow):
 
         # 4. スタイルと初期状態の適用
         # hasattrによるチェックに加え、初期化済みフラグ等で安全に呼び出し
+        self.apply_apple_refined_style()
         self._apply_initial_styles()
+
+    def apply_apple_refined_style(self) -> None:
+        """AppleライクなミニマルUIテーマを全体へ適用。"""
+        self.setStyleSheet("""
+            QMainWindow {
+                background: #f5f5f7;
+                color: #1d1d1f;
+            }
+            QWidget {
+                background: #f5f5f7;
+                color: #1d1d1f;
+                font-family: "SF Pro Text", "Segoe UI", "Hiragino Kaku Gothic ProN";
+                font-size: 12px;
+            }
+            QToolBar {
+                background: rgba(255, 255, 255, 0.82);
+                border: 1px solid #e5e5ea;
+                spacing: 8px;
+                padding: 6px;
+            }
+            QLabel { color: #3a3a3c; }
+            QPushButton {
+                background: #ffffff;
+                color: #1d1d1f;
+                border: 1px solid #d2d2d7;
+                border-radius: 10px;
+                padding: 6px 14px;
+                font-weight: 600;
+            }
+            QPushButton:hover { background: #f2f2f7; }
+            QPushButton:pressed { background: #e5e5ea; }
+            QPushButton#PrimaryButton {
+                background: #0071e3;
+                color: #ffffff;
+                border: 1px solid #0071e3;
+            }
+            QPushButton#PrimaryButton:hover { background: #0a84ff; }
+            QPushButton#PrimaryButton:pressed { background: #0063cc; }
+            QLineEdit, QComboBox, QListWidget, QTextEdit, QPlainTextEdit {
+                background: #ffffff;
+                border: 1px solid #d2d2d7;
+                border-radius: 10px;
+                padding: 6px;
+            }
+            QLineEdit:focus, QComboBox:focus, QListWidget:focus {
+                border: 1px solid #0a84ff;
+            }
+            QSplitter::handle { background: #e5e5ea; }
+            QScrollBar:vertical, QScrollBar:horizontal {
+                background: transparent;
+                margin: 2px;
+            }
+            QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
+                background: #c7c7cc;
+                border-radius: 5px;
+                min-height: 28px;
+                min-width: 28px;
+            }
+            QScrollBar::add-line, QScrollBar::sub-line { width: 0px; height: 0px; }
+            QStatusBar {
+                background: #f2f2f7;
+                border-top: 1px solid #e5e5ea;
+                color: #6e6e73;
+            }
+        """)
+
 
     def _apply_initial_styles(self) -> None:
         """初期スタイル適用の安全な実行"""
@@ -1601,29 +1668,13 @@ class MainWindow(QMainWindow):
 
         # 3. WAVファイル読み込み（追加）
         self.open_wav_btn = QPushButton("OPEN WAV")
-        self.open_wav_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #333333;
-                color: white;
-                border: 1px solid #555555;
-                padding: 2px 10px;
-            }
-            QPushButton:hover { background-color: #444444; }
-        """)
+        self.open_wav_btn.setObjectName("SecondaryButton")
         self.open_wav_btn.clicked.connect(self.open_audio)
         self.toolbar.addWidget(self.open_wav_btn)
 
         # 4. Cエンジン・レンダリング（追加）
         self.render_btn = QPushButton("RENDER (C++ ENGINE)")
-        self.render_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #FF9F0A;
-                color: black;
-                font-weight: bold;
-                padding: 2px 10px;
-            }
-            QPushButton:hover { background-color: #FFB340; }
-        """)
+        self.render_btn.setObjectName("PrimaryButton")
         self.render_btn.clicked.connect(self.execute_render)
         self.toolbar.addWidget(self.render_btn)
 
