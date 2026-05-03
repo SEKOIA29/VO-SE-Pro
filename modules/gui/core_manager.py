@@ -23,11 +23,12 @@ class VoseCoreManager:
 
     def _library_name(self) -> str:
         system = platform.system()
-                if system == "Windows":
+        if system == "Windows":
             return "vose_core.dll"
         if system == "Darwin":
             return "libvose_core.dylib"
         return "libvose_core.so"
+
 
     def _candidate_paths(self) -> list[str]:
         lib_name = self._library_name()
