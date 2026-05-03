@@ -19,7 +19,7 @@ def test_engine():
     if not os.path.exists(engine_path):
         pytest.skip(f"Engine not found at {engine_path}")
 
-   try:
+    try:
         lib = ctypes.CDLL(engine_path)
     except OSError as exc:
         pytest.skip(f"Engine exists but is not loadable on this OS: {exc}")
