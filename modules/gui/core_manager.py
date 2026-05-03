@@ -21,9 +21,16 @@ class VoseCoreManager:
             cls._instance._disabled_reason = None
         return cls._instance
 
-    def _candidate_paths(self) -> list[str]:
+    def _library_name(self) -> str:
         system = platform.system()
-        lib_name = "vose_core.dll" if system == "Windows" else "libvose_core.dylib"
+                if system == "Windows":
+            return "vose_core.dll"
+        if system == "Darwin":
+            return "libvose_core.dylib"
+        return "libvose_core.so"
+
+    def _candidate_paths(self) -> list[str]:
+        lib_name = self._library_name()
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
         return [
             os.path.join(repo_root, "bin", lib_name),
