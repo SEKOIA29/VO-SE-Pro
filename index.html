@@ -1,209 +1,62 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="google-site-verification" content="google-site-verification: google4de805a3326b586d.html" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="VO-SE Pro: 既存の音声合成の『要塞』を崩す、次世代エンジン 'aural' 搭載。規約、重さ、コストからの解放。">
-    <meta name="keywords" content="VO-SE,VO-SE Pro, aural engine, 音声合成, UTAU, 歌声合成, 軽量, AI, NPU, DTM, UTAU対応, 無料, 完全無料, フリーソフト">
-    
-    <meta property="og:title" content="VO-SE Pro | 規約と、0.1秒の衝撃。">
-    <meta property="og:description" content="四天王を過去にする、圧倒的パフォーマンス。auralの純粋な「楽器」を、あなたの手に。">
-    <meta property="og:image" content="images/og-preview.jpg">
-    <meta name="twitter:card" content="summary_large_image">
-    <link rel="icon" href="images/favicon.png" type="image/png">
 
-    <title>VO-SE Pro | 顔、色々な。声、爆速。心、自由。</title>
+v1.3.0 | The Fortress Breaker
+規約と、 0.1秒の衝撃。
+声、爆速。顔、色々な。心、自由。
+VO-SE Proを無料入手 GitHub Repo
+WHY VO-SE?
+なぜ、自分のPCで声を出すために「許可」が必要なのか？ なぜ、最新のMacが音声合成ごときでファンを回すのか？ その疑問が、要塞を崩す唯一の矛「VO-SE Pro」を完成させた。
 
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
-    
-    <style>
-        html { scroll-behavior: smooth; }
-        body { background-color: #000; color: #fff; font-family: 'Inter', 'Noto Sans JP', sans-serif; overflow-x: hidden; }
-        .hero-gradient { background: radial-gradient(circle at center, #1a1a1a 0%, #000 100%); }
-        .accent-gradient { background: linear-gradient(135deg, #fff 0%, #888 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .red-accent-gradient { background: linear-gradient(135deg, #ff4d4d 0%, #a70000 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .card { background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
-        .card:hover { border-color: rgba(255, 255, 255, 0.3); background: rgba(255, 255, 255, 0.05); transform: translateY(-5px); }
-        .btn-main { background: #fff; color: #000; box-shadow: 0 0 30px rgba(255,255,255,0.2); transition: all 0.3s ease; }
-        .btn-main:hover { transform: scale(1.05); box-shadow: 0 0 50px rgba(255,255,255,0.4); }
-    </style>
+動作メモリ、
+わずか500MB。
+「スペックの奴隷」を辞めろ。
+ファイルサイズ約5.3MB※1,動作メモリわずか約500MB。  数学的アルゴリズムがCPUの限界を突破。  NPUを支配するaural engineなら、爆音のファンとはおさらば。  PCは熱くならず、あなたの魂だけが熱くなる。  4K編集の裏で、配信の裏で。VO-SEは誰の邪魔もせず、完璧に歌う。
+※1 VO-CE Pro本体のサイズのみです。必要ライブラリなどで1GB以上の空き容量が必要な場合があります。
+全UTAU音源に  対応。
+曲のカバーも一瞬で。
+ 曲の音声さえあれば自動で音階を解析、出力。  他がGPUを食い潰す間、VO-CEのNPUによる解析は一瞬。  VO-SEは全UTAU音源を「最新の楽器」へ昇華させる。  眠っている数千の資産を、戦場へ連れ戻せ。
+利用規約,
+なし。※2
+「規約の迷路」を焼き払え。
+VO-CEは商用利用、創作、どんな利用にも 一切の制限なし。※2。  動画を作るたびにライセンスを確認し、商用利用の壁に怯える。  そんなのは「創作」じゃない、ただの「事務作業」だ。  規定という名の要塞のない、この戦場で試されるのはあなたの腕と情熱だけ。
+※2 aural engineとVO-CE公式音源に限ります。UTAU音源などaural製ではない音源を使う場合はその規定に従ってください。
+公式音源
+ 
+公式音源提供者募集中！
+VO-CEには公式音源がまだありません。  そこで、今auralは公式音源提供者を募集しています。  興味のある方はこちらからDMにて連絡してください！
+インストール方法
 
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-XXXXXXXXXX');
-    </script>
-</head>
-<body class="antialiased">
 
-    <section class="h-screen flex flex-col justify-center items-center text-center px-6 hero-gradient relative">
-        <div class="absolute inset-0 bg-cover bg-center opacity-20 pointer-events-none" style="background-image: url('images/hero-bg.jpg');"></div>
-        <div class="absolute top-10 text-sm tracking-[0.3em] text-red-600 font-bold uppercase">v1.3.0 | The Fortress Breaker</div>
-        
-        <h1 class="text-6xl md:text-[10rem] font-black mb-8 accent-gradient tracking-tighter leading-[0.85]">
-            規約と、<br><span class="red-accent-gradient text-8xl md:text-[8rem]">0.1秒の衝撃。</span>
-        </h1>
-        <p class="text-gray-400 text-lg md:text-2xl mb-12 font-light tracking-widest">声、爆速。顔、色々な。心、自由。</p>
-        
-        <div class="flex flex-col md:flex-row gap-6 z-10">
-            <a href="#download" class="btn-main px-12 py-5 rounded-full font-bold text-xl">VO-SE Proを無料入手　</a>
-            <a href="https://github.com/sekoia29/VO-SE-Pro" target="_blank" class="border border-zinc-700 px-12 py-5 rounded-full font-bold text-xl hover:bg-zinc-900 transition-colors">GitHub Repo</a>
-        </div>
-    </section>
+ 
+①必要ライブラリのインストール
+以下のツールをすべて入れてください。
+※注 合計2GBほどの空き容量が必要な場合があります。
+	•	 
+	•	python(3.10〜3.11推奨)
+	•	visual-studio-codeやxcodeなどのc++とpythonのコンパイラ
+	•	 
+	•	以下ライブラリ すべてpipでインストールできます
+	•	 
+	•	NumPy
+	•	sounddevice
+	•	soundfile
+	•	pyopenjtalk
+	•	mido
+	•	chardet
+	•	pytest
+	•	Pyside6
+ 
+②インストールして実行
+下からインストールし、.exeや.zipを開いてファイルを出す 
+先ほどインストールしたVScodeなどでそのファイルを表示
+あとはmain.pyを実行するだけ!面倒な初期設定はありません。
+今すぐ、要塞の外へ。
+Windows
+EXE Installer
+Download for Win
+macOS
+disk image
+Download for Mac
 
-    <section class="py-32 bg-red-950/5 border-y border-red-900/10">
-        <div class="max-w-4xl mx-auto px-6 text-center">
-            <h2 class="text-4xl font-bold mb-10 red-accent-gradient tracking-tighter italic">WHY VO-SE?</h2>
-            <p class="text-xl md:text-2xl text-gray-300 leading-relaxed font-light">
-                なぜ、自分のPCで声を出すために「許可」が必要なのか？<br>
-                なぜ、最新のMacが音声合成ごときでファンを回すのか？<br>
-                <span class="text-white font-bold">その疑問が、要塞を崩す唯一の矛「VO-SE Pro」を完成させた。</span>
-            </p>
-        </div>
-    </section>
-
-    <section class="py-32 px-6 bg-black">
-        <div class="max-w-6xl mx-auto">
-            <div class="grid md:grid-cols-3 gap-16">
-                <div class="space-y-6">
-                    <div class="text-red-600 font-black text-7xl opacity-10">01</div>
-                    <h3 class="text-2xl font-bold">「規約の迷路」を<br>焼き払え。</h3>
-                    <p class="text-gray-400 leading-relaxed">動画を作るたびにライセンスを確認し、商用利用の壁に怯える。そんなのは「創作」じゃない、ただの「事務作業」だ。VO-SE Proに鎖はない。あなたの情熱だけがライセンスだ。</p>
-                </div>
-                <div class="space-y-6">
-                    <div class="text-red-600 font-black text-7xl opacity-10">02</div>
-                    <h3 class="text-2xl font-bold">「スペックの奴隷」を<br>辞めろ。</h3>
-                    <p class="text-gray-400 leading-relaxed">最新のMacを買ったのは、爆音のファンを聴くためか？ NPUを支配するaural engineは、システムの片隅で「涼しい顔」をしてプロの喉を鳴らす。PCは熱くならず、あなたの魂だけが熱くなる。</p>
-                </div>
-                <div class="space-y-6">
-                    <div class="text-red-600 font-black text-7xl opacity-10">03</div>
-                    <h3 class="text-2xl font-bold">「企業の囲い」を<br>飛び越えろ。</h3>
-                    <p class="text-gray-400 leading-relaxed">特定のキャラ、特定のプラットフォーム。要塞はあなたを閉じ込めるが、VO-SEは全UTAU音源を「最新の楽器」へ昇華させる。眠っている数千の資産を、今すぐ戦場へ連れ戻せ。</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <section class="py-32 px-6 max-w-7xl mx-auto">
-        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <div class="card p-10 rounded-3xl">
-                <h3 class="text-xs font-bold text-red-600 uppercase tracking-widest mb-4">Performance</h3>
-                <h2 class="text-3xl font-bold mb-4">NPUを、歌い飛ばせ。</h2>
-                <p class="text-gray-400">他がGPUを食いつぶす間、VO-SEはApple Neural Engineと各OSのNPUを支配。解析は一瞬だ。</p>
-            </div>
-            <div class="card p-10 rounded-3xl border-white/20 bg-gradient-to-b from-transparent to-zinc-900/50">
-                <h3 class="text-xs font-bold text-red-600 uppercase tracking-widest mb-4">Compatibility</h3>
-                <h2 class="text-3xl font-bold mb-4">低スペックへの救済。</h2>
-                <p class="text-gray-400">数学的アルゴリズムがCPUの限界を突破。旧世代のPCでも、aural engineなら聖歌を歌える。</p>
-            </div>
-            <div class="card p-10 rounded-3xl flex flex-col justify-end">
-                <h3 class="text-xs font-bold text-red-600 uppercase tracking-widest mb-4">Resource</h3>
-                <h2 class="text-3xl font-bold mb-4">500MBの静寂。</h2>
-                <p class="text-gray-400 text-sm">動作メモリわずか500MB。4K編集の裏で、配信の裏で。VO-SEは誰の邪魔もせず、完璧に歌う。</p>
-            </div>
-            <div class="card p-10 rounded-3xl">
-                <h2 class="text-3xl font-bold mb-4">設定？そんなものは無い.</h2>
-                <p class="text-gray-400 text-sm">音源ファイルの設定、プラグインの設定、そんなものはいりません。VO-SEは初期設定不要です。</p>
-            </div>
-            <div class="card p-10 rounded-3xl border-white/20">
-                <h2 class="text-3xl font-bold mb-4 leading-tight">投げる、即、歌う。</h2>
-                <p class="text-gray-400 text-sm">インストーラーを待つ時間は終わった。Zipを投げ込んだ瞬間、そこがあなたのスタジオになる。</p>
-            </div>
-            <div class="card p-10 rounded-3xl bg-white/5">
-                <h2 class="text-3xl font-bold mb-4">曲のカバーを一瞬で.</h2>
-                <p class="text-gray-400 text-sm">VO-SEは、曲の音声さえあれば自動で音階を解析、出力をしカバーが一段と楽になります。</p>
-            </div>
-        </div>
-    </section>
-
-    <section id="download" class="py-32 px-6 bg-zinc-900/30 border-t border-white/10">
-        <div class="max-w-4xl mx-auto text-center">
-            <h2 class="text-5xl font-black mb-12 accent-gradient text-white">今すぐ、要塞の外へ。</h2>
-
-            <div class="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto text-left">
-                <div class="card p-10 rounded-[2.5rem] bg-white/5 border-white/40 flex flex-col justify-between">
-                    <div>
-                        <div class="flex items-center gap-3 mb-6">
-                            <svg class="w-8 h-8 fill-white" viewBox="0 0 448 512"><path d="M0 93.7l183.6-25.3v177.4H0V93.7zm0 324.6l183.6 25.3V268.3H0v150zm203.8 28.1L448 480V268.3H203.8v178.1zm0-380.6v180.3H448V32L203.8 65.8z"/></svg>
-                            <h3 class="text-2xl font-bold">Windows</h3>
-                        </div>
-                        <p class="text-gray-500 text-sm mb-6 font-mono tracking-tighter">EXE Installer </p>
-                    </div>
-                    <a href="https://www.dropbox.com/scl/fi/fae6bem165wjpq0vdko28/VO-SE_PRO_Win.exe?rlkey=ld8kbvtgo1t599ezismt9b0vb&st=xq1k3kcp&dl=1" 
-                       class="block text-center bg-white text-black py-4 rounded-full font-bold hover:scale-105 transition-transform">
-                        Download for Win
-                    </a>
-                </div>
-
-                <div class="card p-10 rounded-[2.5rem] bg-white/5 border-zinc-700 flex flex-col justify-between">
-                    <div>
-                        <div class="flex items-center gap-3 mb-6">
-                            <svg class="w-8 h-8 fill-white" viewBox="0 0 384 512"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>
-                            <h3 class="text-2xl font-bold">macOS</h3>
-                        </div>
-                        <p class="text-gray-500 text-sm mb-6 font-mono tracking-tighter">disk image</p>
-                    </div>
-                    <a href="https://www.dropbox.com/scl/fi/yhg77dcmq2hi5rnil8kbb/VO-SE_PRO_Mac.zip?rlkey=oqhhk74rplj5g5wdug6av4aw8&st=absrnmip&dl=1" 
-                       class="block text-center border border-zinc-700 text-white py-4 rounded-full font-bold hover:bg-zinc-900 transition-colors">
-                        Download for Mac
-                    </a>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <footer class="py-40 text-center px-6 relative overflow-hidden">
-        <div class="absolute inset-0 bg-cover bg-center opacity-10 pointer-events-none" style="background-image: url('images/hero-bg.jpg');"></div>
-        <div class="relative z-10">
-            <blockquote class="text-3xl md:text-5xl font-black italic mb-16 leading-snug max-w-5xl mx-auto text-zinc-200">
-                「プロの喉を、すべての人へ。<br>あなたの情熱だけが、ライセンス。」
-            </blockquote>
-            <p class="text-zinc-700 text-[10px] tracking-[0.5em] uppercase">VO-SE Project 2026 | No Fortress, No Chains.</p>
-        </div>
-    </footer>
-
-    <script>
-        // 代表、この関数が「クリックの瞬間」を記録します。
-        function trackDownload(platform) {
-            // 現在の日時を取得
-            const now = new Date().toLocaleString('ja-JP');
-        
-            // 1. ローカルストレージ（ブラウザ）に記録（簡易的な自分用）
-            let count = localStorage.getItem('vose_dl_' + platform) || 0;
-            count = parseInt(count) + 1;
-            localStorage.setItem('vose_dl_' + platform, count);
-        
-            console.log(`[Aural Monitor] ${platform} download tracked. Total: ${count}`);
-
-            // 2. Google Analytics(GA4)を導入している場合、自動でイベントを送信
-            if (typeof gtag === 'function') {
-                gtag('event', 'download', {
-                    'event_category': 'software',
-                    'event_label': platform,
-                    'value': 1
-                });
-            }
-         }
-
-        // HTML上のボタンにイベントを紐付けます
-        document.addEventListener('DOMContentLoaded', () => {
-            // Windowsボタンの取得（セレクタで指定）
-            const winBtn = document.querySelector('a[href*="VO-SE_PRO_Win.exe"]');
-            if (winBtn) {
-                winBtn.addEventListener('click', () => trackDownload('Windows'));
-            }
-
-            // Macボタンの取得
-            const macBtn = document.querySelector('a[href*="VO-SE_PRO_Mac.zip"]');
-            if (macBtn) {
-                macBtn.addEventListener('click', () => trackDownload('macOS'));
-            }
-        });
-    </script>
-
-</body>
-</html>
+「プロの喉を、すべての人へ。
+あなたの情熱だけが、ライセンス。」
+VO-SE Project 2026 | No Fortress, No Chains.
