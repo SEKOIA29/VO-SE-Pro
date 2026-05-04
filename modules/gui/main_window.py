@@ -1569,10 +1569,15 @@ class MainWindow(QMainWindow):
             QPushButton#PrimaryButton:hover { background: #0a84ff; }
             QPushButton#PrimaryButton:pressed { background: #0063cc; }
                         QPushButton#SegmentLeft, QPushButton#SegmentMid, QPushButton#SegmentRight {
+                background: #2c2c2e;
+                color: #d1d1d6;
+                border: 1px solid #505055;
+                border-right-width: 0px;
                 border-radius: 0px;
-                min-width: 72px;
-                padding: 5px 10px;
+                min-width: 78px;
+                padding: 5px 11px;
             }
+            QPushButton#SegmentRight { border-right-width: 1px; }
             QPushButton#SegmentLeft {
                 border-top-left-radius: 9px;
                 border-bottom-left-radius: 9px;
@@ -1580,6 +1585,18 @@ class MainWindow(QMainWindow):
             QPushButton#SegmentRight {
                 border-top-right-radius: 9px;
                 border-bottom-right-radius: 9px;
+            }
+
+                        QPushButton#SegmentLeft:checked, QPushButton#SegmentMid:checked, QPushButton#SegmentRight:checked {
+                background: #f5f5f7;
+                color: #101012;
+                border-color: #d8d8de;
+            }
+            QPushButton#SegmentLeft:hover, QPushButton#SegmentMid:hover, QPushButton#SegmentRight:hover {
+                background: #38383d;
+            }
+            QPushButton#SegmentLeft:checked:hover, QPushButton#SegmentMid:checked:hover, QPushButton#SegmentRight:checked:hover {
+                background: #ffffff;
             }
             
             QLineEdit, QComboBox, QListWidget, QTextEdit, QPlainTextEdit {
@@ -1610,6 +1627,27 @@ class MainWindow(QMainWindow):
             }
         """)
 
+    def _refresh_transport_button_states(self) -> None:
+        """再生/停止/ループの視覚状態を現在の内部状態へ同期。"""
+        play_btn = cast(QPushButton, getattr(self, 'play_btn', None))
+        stop_btn = cast(QPushButton, getattr(self, 'stop_btn', None))
+        loop_btn = cast(QPushButton, getattr(self, 'loop_btn', None))
+
+        is_playing = bool(getattr(self, 'is_playing', False))
+        is_looping = bool(getattr(self, 'is_looping', False))
+
+        if play_btn is not None:
+            play_btn.setChecked(is_playing)
+            play_btn.setText("⏸ 停止" if is_playing else "▶ 再生")
+
+        if stop_btn is not None:
+            stop_btn.setChecked(False)
+
+        if loop_btn is not None:
+            loop_btn.setChecked(is_looping)
+            loop_btn.setText("↻ ループON" if is_looping else "↻ ループ")
+
+
 
     def _apply_initial_styles(self) -> None:
         """初期スタイル適用の安全な実行"""
@@ -1617,7 +1655,9 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'update_timeline_style'):
             # 代表が定義したタイムラインの視覚効果を適用
             self.update_timeline_style()
-        
+
+    
+        self._refresh_transport_button_states()
         # ステータスバーへの初期メッセージ
         if self.statusBar():
             self.statusBar().showMessage("Engine Initialized. Ready for production.")
@@ -1663,16 +1703,19 @@ class MainWindow(QMainWindow):
         # 1. 再生コントロール
         self.play_btn = QPushButton("▶ 再生")
         self.play_btn.setObjectName("SegmentLeft")
+        self.play_btn.setCheckable(True)
         self.play_btn.clicked.connect(self.on_play_pause_toggled)
         self.toolbar.addWidget(self.play_btn)
 
-                self.stop_btn = QPushButton("■ 停止")
+        self.stop_btn = QPushButton("■ 停止")
         self.stop_btn.setObjectName("SegmentMid")
+        elf.stop_btn.setCheckable(True)
         self.stop_btn.clicked.connect(self.stop_and_clear_playback)
         self.toolbar.addWidget(self.stop_btn)
 
         self.loop_btn = QPushButton("↻ ループ")
         self.loop_btn.setObjectName("SegmentRight")
+        self.loop_btn.setCheckable(True)
         self.loop_btn.clicked.connect(self.on_loop_button_toggled)
         self.loop_button = self.loop_btn
         self.toolbar.addWidget(self.loop_btn)
@@ -3983,6 +4026,7 @@ class MainWindow(QMainWindow):
             # UIの更新（Ruff対策で改行、Pyright対策で None チェック）
             if play_btn is not None:
                 play_btn.setText("▶ 再生")
+            self._refresh_transport_button_states()
             if status_lbl is not None: 
                 status_lbl.setText("停止しました")
                 
@@ -4029,6 +4073,7 @@ class MainWindow(QMainWindow):
             # UI表示の更新
             if play_btn is not None: 
                 play_btn.setText("■ 停止")
+            self._refresh_transport_button_states()
             if status_lbl is not None: 
                 status_lbl.setText(f"再生中: {start_time:.2f}s -")
 
@@ -4056,6 +4101,7 @@ class MainWindow(QMainWindow):
             
             if play_btn is not None:
                 play_btn.setText("▶ 再生")
+            self._refresh_transport_button_states()
 
     @Slot()
     def on_record_toggled(self):
@@ -4093,6 +4139,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'loop_button'):
             self.loop_button.setText("ループ: ON" if self.is_looping else "ループ: OFF")
 
+        self._refresh_transport_button_states()
         if hasattr(self, 'status_label'):
             if self.is_looping:
                 self.status_label.setText("選択範囲でのループ再生を有効にしました")
@@ -4205,6 +4252,8 @@ class MainWindow(QMainWindow):
         # Pyright の reportAttributeAccessIssue を防ぐため、確実に属性を更新
         self.is_playing: bool = False
         self.current_playback_time: float = 0.0
+        self.is_looping = False
+        self.is_looping_selection = False
         
         # 3. UI状態の更新 (メソッド不在エラーを回避)
         # 循環参照や動的なメソッド追加を考慮し、hasattr でチェック
@@ -4224,6 +4273,12 @@ class MainWindow(QMainWindow):
         g_widget = getattr(self, 'graph_editor_widget', None)
         if g_widget is not None and hasattr(g_widget, 'set_current_time'):
             g_widget.set_current_time(0.0)
+
+        stop_btn = cast(QPushButton, getattr(self, 'stop_btn', None))
+        if stop_btn is not None:
+            stop_btn.setChecked(True)
+            QTimer.singleShot(140, lambda: stop_btn.setChecked(False))
+        self._refresh_transport_button_states()
 
         # 6. ステータスバーへのリセット通知
         status_bar = self.statusBar()
