@@ -3579,7 +3579,7 @@ class MainWindow(QMainWindow):
         try:
             # DLLの読み込み試行
             pass
-        except Exception as e:
+        except Exception:
             print("⚠ Warning: VOSE core library not available")
 
     def open_about(self):
