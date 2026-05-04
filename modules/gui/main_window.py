@@ -1632,6 +1632,8 @@ class MainWindow(QMainWindow):
         play_btn = cast(QPushButton, getattr(self, 'play_btn', None))
         stop_btn = cast(QPushButton, getattr(self, 'stop_btn', None))
         loop_btn = cast(QPushButton, getattr(self, 'loop_btn', None))
+        play_button = cast(QPushButton, getattr(self, 'play_button', None))
+        loop_button = cast(QPushButton, getattr(self, 'loop_button', None))
 
         is_playing = bool(getattr(self, 'is_playing', False))
         is_looping = bool(getattr(self, 'is_looping', False))
@@ -1639,6 +1641,9 @@ class MainWindow(QMainWindow):
         if play_btn is not None:
             play_btn.setChecked(is_playing)
             play_btn.setText("⏸ 停止" if is_playing else "▶ 再生")
+        if play_button is not None:
+            play_button.setChecked(is_playing)
+            play_button.setText("⏸ 停止" if is_playing else "▶ 再生")
 
         if stop_btn is not None:
             stop_btn.setChecked(False)
@@ -1646,6 +1651,10 @@ class MainWindow(QMainWindow):
         if loop_btn is not None:
             loop_btn.setChecked(is_looping)
             loop_btn.setText("↻ ループON" if is_looping else "↻ ループ")
+        if loop_button is not None:
+            loop_button.setChecked(is_looping)
+            loop_button.setText("ループ: ON" if is_looping else "ループ: OFF")
+
 
 
 
@@ -1717,7 +1726,6 @@ class MainWindow(QMainWindow):
         self.loop_btn.setObjectName("SegmentRight")
         self.loop_btn.setCheckable(True)
         self.loop_btn.clicked.connect(self.on_loop_button_toggled)
-        self.loop_button = self.loop_btn
         self.toolbar.addWidget(self.loop_btn)
 
         self.toolbar.addSeparator()
@@ -1869,6 +1877,7 @@ class MainWindow(QMainWindow):
         panel_layout.addWidget(self.record_button)
         
         self.loop_button = QPushButton("ループ: OFF")
+        self.loop_button.setCheckable(True)
         self.loop_button.clicked.connect(self.on_loop_button_toggled)
         panel_layout.addWidget(self.loop_button)
         
