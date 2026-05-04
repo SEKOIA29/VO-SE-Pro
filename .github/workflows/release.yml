@@ -41,6 +41,7 @@ jobs:
           python -m pip install --upgrade pip wheel
           python -m pip uninstall -y pkg_resources || true
           python -m pip install "setuptools>=70,<81" "pyinstaller==6.13.0"
+          pip install pytest
           pip install PySide6 numpy sounddevice soundfile mido janome Pillow ruff pyright scipy onnxruntime chardet pykakasi backports.tarfile packaging
           pip install pyopenjtalk --only-binary :all: || pip install pyopenjtalk
 
