@@ -59,7 +59,12 @@ class VoSeEngine:
         OSに応じたライブラリ（DLL/dylib）を最適なパスからロードします。
         型チェックエラー（_MEIPASS）を回避し、Mac実機構造に対応した完全版です。
         """
-        lib_name = "vose_core.dll" if self.os_name == "Windows" else "libvose_core.dylib"
+        if self.os_name == "Windows":
+            lib_name = "vose_core.dll"
+        elif self.os_name == "Darwin":
+            lib_name = "libvose_core.dylib"
+        else:
+            lib_name = "libvose_core.so"
 
         # 1. 基本的なリソースパス
         dll_path = get_resource_path(os.path.join("bin", lib_name))
@@ -213,13 +218,20 @@ def main():
 
     app = QApplication(sys.argv)
 
-    icon_path = get_resource_path(os.path.join("assets", "icon.png"))
-    if os.path.exists(icon_path):
-        app.setWindowIcon(QIcon(icon_path))
-
+    for icon_rel in ("assets/icon.png", "assets/icon.icns", "assets/icon.ico"):
+        icon_path = get_resource_path(icon_rel)
+        if os.path.exists(icon_path):
+            app.setWindowIcon(QIcon(icon_path))
+            break
     # [FIX-1] DLL未検出時は warning ダイアログで明示。エラーではなく warning に留め、
     #         アプリは起動継続（合成・歌唱機能のみ無効化）とする。
-    lib_name = "vose_core.dll" if platform.system() == "Windows" else "libvose_core.dylib"
+    system = platform.system()
+    if system == "Windows":
+        lib_name = "vose_core.dll"
+    elif system == "Darwin":
+        lib_name = "libvose_core.dylib"
+    else:
+        lib_name = "libvose_core.
     dll_path = get_resource_path(os.path.join("bin", lib_name))
     if not os.path.exists(dll_path):
         QMessageBox.warning(
