@@ -3027,18 +3027,12 @@ class MainWindow(QMainWindow):
     #===========================================================
 
     def init_vose_engine(self):
-        """C++エンジンのロードと初期設定"""
-        import ctypes
-        import os
-        dll_path = os.path.join(os.getcwd(), "vose_core.dll")
-        if os.path.exists(dll_path):
-            self.engine_dll = ctypes.CDLL(dll_path)
-            # ここで C++関数の引数型を定義
-            # self.engine_dll.execute_render.argtypes = [ctypes.POINTER(NoteEvent), ctypes.c_int, ctypes.c_char_p]
-            # self.engine_dll.execute_render.restype = ctypes.c_int
+        """C++エンジンのロードと初期設定（OS横断・core_manager経由）"""
+        self.engine_dll = vose_manager.get_lib()
+        if self.engine_dll:
             print("✅ Engine Loaded Successfully.")
         else:
-            print("❌ Engine DLL not found!")
+            print("❌ Engine DLL not found or failed to load.")
 
     def generate_pitch_curve(self, note, prev_note=None):
         """
@@ -3561,25 +3555,11 @@ class MainWindow(QMainWindow):
     # 初期化メソッド
     #==========================================================================
 
-    def init_dll_engine(self):
-        """C言語レンダリングエンジンDLLの接続"""
-        import ctypes
-        import os
-        dll_path = os.path.join(os.path.dirname(__file__), "bin", "libvo_se.dll")
-        if os.path.exists(dll_path):
-            try:
-                self.lib = ctypes.CDLL(dll_path)
-                if hasattr(self.lib, 'execute_render'):
-                    self.lib.execute_render.argtypes = [
-                        ctypes.c_void_p, 
-                        ctypes.c_int,     
-                        ctypes.c_char_p,  
-                        ctypes.c_int      
-                    ]
-                print("✓ Engine DLL loaded successfully")
-            except Exception as e:
-                print(f"⚠ DLL load error: {e}")
-                self.lib = None
+    def init_dll_engine(self):        
+        """C言語レンダリングエンジンの接続（OS横断・core_manager経由）"""
+        self.lib = vose_manager.get_lib()
+        if self.lib is not None:
+            print("✓ Engine core loaded successfully")
         else:
             print("⚠ Warning: libvo_se.dll not found")
 
@@ -3600,7 +3580,7 @@ class MainWindow(QMainWindow):
             # DLLの読み込み試行
             pass
         except Exception as e:
-            print(f"Failed to load engine: {e}")
+            print("⚠ Warning: VOSE core library not available")
 
     def open_about(self):
         """About画面を表示"""
