@@ -1535,32 +1535,32 @@ class MainWindow(QMainWindow):
         """AppleライクなミニマルUIテーマを全体へ適用。"""
         self.setStyleSheet("""
             QMainWindow {
-                background: #f5f5f7;
-                color: #1d1d1f;
+                background: #1c1c1e;
+                color: #f5f5f7;
             }
             QWidget {
-                background: #f5f5f7;
-                color: #1d1d1f;
+                background: #1c1c1e;
+                color: #f5f5f7;
                 font-family: "SF Pro Text", "Segoe UI", "Hiragino Kaku Gothic ProN";
                 font-size: 12px;
             }
             QToolBar {
-                background: rgba(255, 255, 255, 0.82);
-                border: 1px solid #e5e5ea;
-                spacing: 8px;
-                padding: 6px;
+                background: rgba(44, 44, 46, 0.88);
+                border: 1px solid #3a3a3c;
+                spacing: 6px;
+                padding: 3px 6px;
             }
-            QLabel { color: #3a3a3c; }
+            QLabel { color: #c7c7cc; }
             QPushButton {
-                background: #ffffff;
-                color: #1d1d1f;
-                border: 1px solid #d2d2d7;
-                border-radius: 10px;
+                background: #2c2c2e;
+                color: #f5f5f7;
+                border: 1px solid #48484a;
+                border-radius: 9px;
                 padding: 6px 14px;
                 font-weight: 600;
             }
-            QPushButton:hover { background: #f2f2f7; }
-            QPushButton:pressed { background: #e5e5ea; }
+            QPushButton:hover { background: #3a3a3c; }
+            QPushButton:pressed { background: #48484a; }
             QPushButton#PrimaryButton {
                 background: #0071e3;
                 color: #ffffff;
@@ -1568,31 +1568,45 @@ class MainWindow(QMainWindow):
             }
             QPushButton#PrimaryButton:hover { background: #0a84ff; }
             QPushButton#PrimaryButton:pressed { background: #0063cc; }
+                        QPushButton#SegmentLeft, QPushButton#SegmentMid, QPushButton#SegmentRight {
+                border-radius: 0px;
+                min-width: 72px;
+                padding: 5px 10px;
+            }
+            QPushButton#SegmentLeft {
+                border-top-left-radius: 9px;
+                border-bottom-left-radius: 9px;
+            }
+            QPushButton#SegmentRight {
+                border-top-right-radius: 9px;
+                border-bottom-right-radius: 9px;
+            }
+            
             QLineEdit, QComboBox, QListWidget, QTextEdit, QPlainTextEdit {
-                background: #ffffff;
-                border: 1px solid #d2d2d7;
-                border-radius: 10px;
+                background: #2c2c2e;
+                border: 1px solid #48484a;
+                border-radius: 9px;
                 padding: 6px;
             }
             QLineEdit:focus, QComboBox:focus, QListWidget:focus {
                 border: 1px solid #0a84ff;
             }
-            QSplitter::handle { background: #e5e5ea; }
+            QSplitter::handle { background: #3a3a3c; }
             QScrollBar:vertical, QScrollBar:horizontal {
-                background: transparent;
+                background: #1c1c1e;
                 margin: 2px;
             }
             QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
-                background: #c7c7cc;
+                background: #636366;
                 border-radius: 5px;
                 min-height: 28px;
                 min-width: 28px;
             }
             QScrollBar::add-line, QScrollBar::sub-line { width: 0px; height: 0px; }
             QStatusBar {
-                background: #f2f2f7;
-                border-top: 1px solid #e5e5ea;
-                color: #6e6e73;
+                background: #2c2c2e;
+                border-top: 1px solid #3a3a3c;
+                color: #c7c7cc;
             }
         """)
 
@@ -1648,8 +1662,20 @@ class MainWindow(QMainWindow):
 
         # 1. 再生コントロール
         self.play_btn = QPushButton("▶ 再生")
+        self.play_btn.setObjectName("SegmentLeft")
         self.play_btn.clicked.connect(self.on_play_pause_toggled)
         self.toolbar.addWidget(self.play_btn)
+
+                self.stop_btn = QPushButton("■ 停止")
+        self.stop_btn.setObjectName("SegmentMid")
+        self.stop_btn.clicked.connect(self.stop_and_clear_playback)
+        self.toolbar.addWidget(self.stop_btn)
+
+        self.loop_btn = QPushButton("↻ ループ")
+        self.loop_btn.setObjectName("SegmentRight")
+        self.loop_btn.clicked.connect(self.on_loop_button_toggled)
+        self.loop_button = self.loop_btn
+        self.toolbar.addWidget(self.loop_btn)
 
         self.toolbar.addSeparator()
 
