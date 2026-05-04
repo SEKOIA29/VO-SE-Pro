@@ -1709,7 +1709,7 @@ class MainWindow(QMainWindow):
 
         self.stop_btn = QPushButton("■ 停止")
         self.stop_btn.setObjectName("SegmentMid")
-        elf.stop_btn.setCheckable(True)
+        self.stop_btn.setCheckable(True)
         self.stop_btn.clicked.connect(self.stop_and_clear_playback)
         self.toolbar.addWidget(self.stop_btn)
 
