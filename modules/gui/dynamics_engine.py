@@ -31,10 +31,12 @@ class DynamicsEngine:
         self.lib = None 
         system = platform.system()
         
-        if system == "Darwin":
+        if system == "Windows":
+            lib_name = "vose_core.dll"
+        elif system == "Darwin":
             lib_name = "libvose_core.dylib"
         else:
-            lib_name = "vose_core.dll"
+            lib_name = "libvose_core.so"
 
         if os.path.isdir(dll_path):
             full_path = os.path.join(dll_path, lib_name)
