@@ -267,6 +267,7 @@ jobs:
               --name "VO-SE_PRO_Win" main.py
             cp dist/VO-SE_PRO_Win.exe dist_out/
           else
+            echo "Building macOS app on runner: ${{ matrix.os }}"
             pyinstaller --noconsole --windowed --clean \
               --paths . \
               --paths modules \
