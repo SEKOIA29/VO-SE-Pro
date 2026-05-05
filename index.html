@@ -95,11 +95,13 @@ body {
 @keyframes fadeIn {
   from{
     filter: blur(6px);
+    scale: (0.8);
     opacity: 0;
   }
   to {
     opacity: 1;
     filter: blur(0px);
+    scale: (1.0);
   }
 }
 .char {
@@ -119,7 +121,7 @@ body {
     transform: translateY(0);
   }
 }
-    .anim-box.kiran {
+  .anim-box.kiran {
   opacity: 1;
   overflow: hidden;
   position: relative;
@@ -268,6 +270,54 @@ body {
   }
 }
 
+
+.dark{
+  background: #000;
+}
+
+.Shine{
+  padding: 10px 0;
+  margin: 0;
+  font-size: 128px;
+  font-weight: bold;
+  background-image: linear-gradient(
+    70deg,
+    #dc143c 45%, /* font color */
+    #FFF 50%,
+    #dc143c 55% /* font color */
+  );
+  background-size: 500% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: shine 5s infinite;
+}
+
+@keyframes shine {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+.anim-box.popup.is-animated {
+  animation: popup 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+ 
+@keyframes popup {
+  0% {
+    transform: translateY(40px) scale(0.8);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0) scale(1.0);
+  }
+  80%, 100% {
+    opacity: 1;
+  }
+}
+
     </style>
 
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
@@ -280,18 +330,18 @@ body {
 </head>
 <body class="antialiased">
     
-    <section class="h-screen flex flex-col justify-center items-center text-center px-6 hero-gradient relative js-animate fadein">
+    <section class="h-screen flex flex-col justify-center items-center text-center px-6 hero-gradient relative js-animate ">
         <div class="absolute inset-0 bg-cover bg-center opacity-20 pointer-events-none" style="background-image: url('images/hero-bg.jpg');"></div>
         <div class="absolute top-10 text-sm tracking-[0.3em] text-red-600 font-bold uppercase">v1.3.0 | The Fortress Breaker</div>
         
-       <h1 class="text-6xl md:text-[10rem] font-black mb-8 accent-gradient tracking-tighter leading-[0.85]">
-            規約と、<br><span class="red-accent-gradient text-8xl md:text-[8rem]">0.1秒の衝撃。</span>
+       <h1 class="text-6xl md:text-[10rem] font-black mb-8 accent-gradient tracking-tighter leading-[0.85] ">
+            規約と、<br><span class="red-accent-gradient text-8xl md:text-[8rem] Shine js-animate">0.1秒の衝撃。</span></span>
         </h1>
-        <p class="text-gray-400 text-lg md:text-2xl mb-12 font-light tracking-widest">声、爆速。顔、色々な。心、自由。</p>
+        <p class="text-gray-400 text-lg md:text-2xl mb-12 font-light tracking-widest  js-animate">声、爆速。顔、色々な。心、自由。</p>
         
         <div class="flex flex-col md:flex-row gap-6 z-10">
-            <a href="#download" class="btn-main px-12 py-5 rounded-full font-bold text-xl">VO-SE Proを無料入手</a>
-            <a href="https://github.com/sekoia29/VO-SE-Pro" target="_blank" class="border border-zinc-700 px-12 py-5 rounded-full font-bold text-xl hover:bg-zinc-900 transition-colors">GitHub Repo</a>
+            <a href="#download" class="btn-main px-12 py-5 rounded-full font-bold text-xl fadeinsentence js-animate">VO-SE Proを無料入手</a>
+            <a href="https://github.com/sekoia29/VO-SE-Pro" target="_blank" class="border border-zinc-700 px-12 py-5 rounded-full font-bold text-xl hover:bg-zinc-900 transition-colors fadeinsentence js-animate">GitHub Repo</a>
         </div>
     </section>
 
@@ -299,8 +349,8 @@ body {
         <div class="max-w-4xl mx-auto px-6 text-center">
             <h2 class="text-4xl font-bold mb-10 red-accent-gradient tracking-tighter italic">WHY VO-SE?</h2>
             <p class="text-xl md:text-2xl text-gray-300 leading-relaxed font-light">
-                なぜ、自分のPCで声を出すために「お金」が必要なのか？<br>
-                なぜ、最新のPCが音声合成ごときでファンを回すのか？<br>
+                なぜ、自分のPCで声を出すために「許可」が必要なのか？<br>
+                なぜ、最新のMacが音声合成ごときでファンを回すのか？<br>
                 <span class="text-white font-bold">その疑問が、要塞を崩す唯一の矛「VO-SE Pro」を完成させた。</span>
             </p>
         </div>
@@ -318,7 +368,7 @@ body {
           <p class="text-2xl max-w-4xl mx-auto px-6 text-center font-bold mb-4 text-gray-400 leading-relaxe js-animate fadeinsentence">
             <span class="text-white "><strong>ファイルサイズ約5.3MB<sup>※1</sup>,動作メモリわずか約500MB。</strong></span>
             <br>数学的アルゴリズムがCPUの限界を突破。
-            <br>CPUを支配するvo-se engineなら、爆音のファンとはおさらば。
+            <br>NPUを支配するaural engineなら、爆音のファンとはおさらば。
             <br>PCは熱くならず、あなたの魂だけが熱くなる。
             <br>4K編集の裏で、配信の裏で。VO-SEは誰の邪魔もせず、完璧に歌う。
           </p>
@@ -338,7 +388,7 @@ body {
           <h2 class="max-w-5xl mx-auto px-6 text-center text-5xl font-bold mb-4 js-split2">曲のカバーも一瞬で。</h2>
           <p class="text-2xl max-w-4xl mx-auto px-6 text-center font-bold mb-4 text-gray-400 leading-relaxe js-animate fadeinsentence">
             <br><span class = "text-white"><strong>曲の音声さえあれば自動で音階を解析、出力。</strong></span>
-            <br>他がGPUを食い潰す間、VO-SEによるレンダリングは一瞬。
+            <br>他がGPUを食い潰す間、VO-CEのNPUによる解析は一瞬。
             <br>VO-SEは全UTAU音源を「最新の楽器」へ昇華させる。
             <br>眠っている数千の資産を、戦場へ連れ戻せ。
           </p>
@@ -354,7 +404,7 @@ body {
             </div>
             <div class="text-2xl font-bold text-gray-400 leading-relaxed">
               <p class = "text-center js-animate fadeinsentence">
-                VO-SEは商用利用、創作、どんな利用にも<strong> <span class="text-white">一切の制限なし。</span></strong><sup>※2</sup>。
+                VO-CEは商用利用、創作、どんな利用にも<strong> <span class="text-white">一切の制限なし。</span></strong><sup>※2</sup>。
                 <br>動画を作るたびにライセンスを確認し、商用利用の壁に怯える。
                 <br>そんなのは「創作」じゃない、ただの「事務作業」だ。
                 <br>規定という名の要塞のない、この戦場で試されるのはあなたの腕と情熱だけ。
@@ -362,7 +412,7 @@ body {
             </div>
             <div class="text-1xl font-bold leading-relaxed text-center text-gray-400 js-animate fadeinsentence">
               <div>
-                <span>※2 aural engineとVO-SE公式音源に限ります。UTAU音源などaural製ではない音源を使う場合はその規定に従ってください。あと政治批判は例外なしで厳禁です</span>
+                <span>※2 aural engineとVO-CE公式音源に限ります。UTAU音源などaural製ではない音源を使う場合はその規定に従ってください。</span>
               </div>
             </div>
             
@@ -375,7 +425,7 @@ body {
       <p>&nbsp;</p> 
       <div class="card p-10 rounded-3xl">
                 <h2 class="text-3xl font-bold mb-4">公式音源提供者募集中！</h2>
-                <p class="text-gray-400 text-sm">VO-SEには公式音源がまだありません。
+                <p class="text-gray-400 text-sm">VO-CEには公式音源がまだありません。
                 <br> そこで、今auralは公式音源提供者を募集しています。
                 <br>興味のある方は<a href="https://x.com/Aural_Sekoia"><span class = "text-white"><u>こちらから</u></span></a>DMにて連絡してください！
               </p>
@@ -654,5 +704,42 @@ document.addEventListener("DOMContentLoaded", () => {
       navigator.clipboard.writeText(code);
     }
   </script>
+<script>
+  const color_btns = document.querySelectorAll('.colors button');
+const output = document.querySelector('.output');
+
+const target = document.querySelectorAll('.text');
+
+for (let key in color_btns) {
+  if (color_btns.hasOwnProperty(key)) {
+    color_btns[key].addEventListener('click', change_color);
+  }
+}
+
+function change_color(e) {
+  let rgb = this.style.backgroundColor;
+  
+  let rgb_num = rgb.replace(/rgb|\(|\)/g, '');;
+
+  let hex = rgb2hex(rgb);
+
+  // color = color.replace(/rgb|\(|\)/g, '');
+  // console.log(this.style.backgroundColor);
+  // color = 'rgba(' + color + ', 0.5)';
+  target[0].style.backgroundImage = `linear-gradient( 70deg, ` + rgb + ` 45%,#FFF 50%, ` + rgb + ` 55%)`;
+  target[1].style.backgroundImage = `linear-gradient( 70deg, ` + rgb + ` 45%,#FFF 50%, ` + rgb + ` 55%)`;
+
+output.innerHTML = `` + hex + `<br>` + rgb + ``;
+  //target[1].style.background = color;
+  // target.style.outlineColor = color;
+}
+
+
+//rgb to hex
+function rgb2hex(col){
+  return "#" + col.match(/\d+/g).map(function(a){return ("0" + parseInt(a).toString(16)).slice(-2)}).join("");
+}
+</script>
+
 </body>
 </html>
