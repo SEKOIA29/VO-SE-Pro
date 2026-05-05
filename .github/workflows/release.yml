@@ -273,7 +273,7 @@ jobs:
             cp dist/VO-SE_PRO_Win.exe dist_out/
           else
             echo "Building macOS app on runner: ${{ matrix.os }}"
-            if [ "${{ matrix.os }}" = "macos-13" ]; then
+            if [ "${{ matrix.os }}" = "macos-15-intel" ]; then
               MAC_ARCH="x86_64"
               MAC_LABEL="Intel"
             else
