@@ -317,6 +317,36 @@ body {
     opacity: 1;
   }
 }
+.accordion {
+  width: 100%;
+  max-width: 800px;
+}
+
+.btn {
+  width: 100%;
+  padding: 16px;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  background: #fff;
+  color: #000;
+  border-radius: 12px;
+}
+
+.content {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s ease;
+  background: #111;
+  color: #fff;
+  padding: 0 20px;
+  border-radius: 0 0 12px 12px;
+}
+
+.content p,
+.content ul {
+  margin: 16px 0;
+}
 
     </style>
 
@@ -366,7 +396,7 @@ body {
           </div>
           <h2 class="max-w-5xl mx-auto px-6 text-center text-5xl font-bold mb-4 js-split">「スペックの奴隷」を辞めろ。</h2>
           <p class="text-2xl max-w-4xl mx-auto px-6 text-center font-bold mb-4 text-gray-400 leading-relaxe js-animate fadeinsentence">
-            <span class="text-white "><strong>ファイルサイズ約5.3MB<sup>※1</sup>,動作メモリわずか約500MB。</strong></span>
+            <span class="text-white "><strong>ファイルサイズ約1MB<sup>※1</sup>,動作メモリわずか約500MB。</strong></span>
             <br>数学的アルゴリズムがCPUの限界を突破。
             <br>NPUを支配するaural engineなら、爆音のファンとはおさらば。
             <br>PCは熱くならず、あなたの魂だけが熱くなる。
@@ -374,7 +404,8 @@ body {
           </p>
           <div class="text-1xl font-bold leading-relaxed text-center text-gray-400 js-animate fadeinsentence">
               <div>
-                <h1>※1 VO-CE Pro本体のサイズのみです。必要ライブラリなどで1GB以上の空き容量が必要な場合があります。</h1>
+                <h1>※1 VO-SE Pro本体（Macos用）のサイズのみです。Githubからzip形式でインストールする場合は、
+                <br>必要ライブラリなどで2GBほどの空き容量が必要な場合があります。</h1>
               </div>
             </div>
           </div>
@@ -388,7 +419,7 @@ body {
           <h2 class="max-w-5xl mx-auto px-6 text-center text-5xl font-bold mb-4 js-split2">曲のカバーも一瞬で。</h2>
           <p class="text-2xl max-w-4xl mx-auto px-6 text-center font-bold mb-4 text-gray-400 leading-relaxe js-animate fadeinsentence">
             <br><span class = "text-white"><strong>曲の音声さえあれば自動で音階を解析、出力。</strong></span>
-            <br>他がGPUを食い潰す間、VO-CEのNPUによる解析は一瞬。
+            <br>他がGPUを食い潰す間、VO-SEのNPUによる解析は一瞬。
             <br>VO-SEは全UTAU音源を「最新の楽器」へ昇華させる。
             <br>眠っている数千の資産を、戦場へ連れ戻せ。
           </p>
@@ -404,7 +435,7 @@ body {
             </div>
             <div class="text-2xl font-bold text-gray-400 leading-relaxed">
               <p class = "text-center js-animate fadeinsentence">
-                VO-CEは商用利用、創作、どんな利用にも<strong> <span class="text-white">一切の制限なし。</span></strong><sup>※2</sup>。
+                VO-SEは商用利用、創作、どんな利用にも<strong> <span class="text-white">一切の制限なし。</span></strong><sup>※2</sup>。
                 <br>動画を作るたびにライセンスを確認し、商用利用の壁に怯える。
                 <br>そんなのは「創作」じゃない、ただの「事務作業」だ。
                 <br>規定という名の要塞のない、この戦場で試されるのはあなたの腕と情熱だけ。
@@ -412,7 +443,7 @@ body {
             </div>
             <div class="text-1xl font-bold leading-relaxed text-center text-gray-400 js-animate fadeinsentence">
               <div>
-                <span>※2 aural engineとVO-CE公式音源に限ります。UTAU音源などaural製ではない音源を使う場合はその規定に従ってください。</span>
+                <span>※2 aural engineとVO-SE公式音源に限ります。UTAU音源などaural製ではない音源を使う場合はその規定に従ってください。</span>
               </div>
             </div>
             
@@ -421,26 +452,51 @@ body {
         </div>
     </section>
     <section class="py-32 px-6 bg-black font-bold py-32 bg-red-950/5 border-y border-red-900/10">
-      <p class="text-4xl">公式音源<br></p>
+      <p class="text-5xl">公式音源<br></p>
       <p>&nbsp;</p> 
       <div class="card p-10 rounded-3xl">
                 <h2 class="text-3xl font-bold mb-4">公式音源提供者募集中！</h2>
-                <p class="text-gray-400 text-sm">VO-CEには公式音源がまだありません。
+                <p class="text-gray-400 text-sm">VO-SEには公式音源がまだありません。
                 <br> そこで、今auralは公式音源提供者を募集しています。
                 <br>興味のある方は<a href="https://x.com/Aural_Sekoia"><span class = "text-white"><u>こちらから</u></span></a>DMにて連絡してください！
               </p>
         </div>
     </section>
-    <section class="py-32 px-6 bg-black font-bold py-32 bg-red-950/5 border-y border-red-900/10">
-      <p class="text-4xl">インストール方法</p><br></p>
-      <p>&nbsp;</p> 
-      <div class="card p-10">
-          <p class="text-white rounded-4xl">
-         ①必要ライブラリのインストール
-      </p>
-      <div class="text-gray-400 rounded-3xl">
-        <p>以下のツールを<strong>すべて</strong>入れてください。</p>
+    <section class="py-32 px-6 bg-black font-bold bg-red-950/5 border-y border-red-900/10 rounded-3xl">
+
+  <p class="text-5xl">インストール方法</p>
+
+  <p>&nbsp;</p>
+
+  <p class="text-4xl">投げる、即、歌う。</p>
+
+  <p>&nbsp;</p>
+
+  <p class="text-gray-400 text-2xl">
+    ダウンロードして、開く、ただそれだけ。<sup>※3</sup><br>
+    VO-SEには面倒な初期設定はありません。
+  </p>
+<p>&nbsp;</p>
+
+  <p class="text-gray-400 text-sm">
+    ※3 exeかappでインストールする場合のみです。Githubからのzip形式でのインストールは下を参考にしてください。
+    特に、以下のボックスを開くと書いてある
+    前提ソフト(python)を多く導入している方は、
+    GitHubからzip形式でダウンロードすることを推奨します。
+  </p>
+  <p>&nbsp;</p>
+      <div class="accordion">
+  <button class="btn">GitHubからzip形式でダウンロードする場合</button>
+
+  <div class="content">
+    <p class="text-white rounded-4xl">
+      ①必要なライブラリなどのインストール
+    </p>
+
+    <div class="text-gray-400 rounded-3xl">
+      <p>以下を<strong>すべて</strong>入れてください。</p>
       <p>※注 合計2GBほどの空き容量が必要な場合があります。</p>
+
       <ul>
         <li>&nbsp;</li>
         <li><a href="https://www.python.org/downloads/release/python-3119/"><u>python(3.10〜3.11推奨)</u></a></li>
@@ -457,18 +513,24 @@ body {
         <li><a href="https://docs.pytest.org/en/stable/"><u>pytest</u></a></li>
         <li><a href="https://www.qt.io/ja-jp/qt-for-python"><u>Pyside6</u></a></li>
       </ul>
-      
-      </div>
-      <p>&nbsp;</p> 
-      <p class="text-white rounded-4xl">
-         ②インストールして実行
-      </p>
-      <div class="text-gray-400 rounded-3xl">
-        下からインストールし、.exeや.zipを開いてファイルを出す
-        <br>先ほどインストールしたVScodeなどでそのファイルを表示
-      </div>
-      <p text-white rounded-3xl>あとはmain.pyを実行するだけ!面倒な初期設定はありません。</p>
     </div>
+
+    <p class="text-white rounded-4xl">
+      ②インストールして実行
+    </p>
+
+    <div class="text-gray-400 rounded-3xl">
+      下からインストールし、.zipを開いてファイルを出す<br>
+      先ほどインストールしたVSCodeなどでそのファイルを表示
+    </div>
+
+    <p class="text-white rounded-3xl">
+      あとはmain.pyを実行するだけ!zip形式でも初期設定は不要です。
+    </p>
+  </div>
+</div>
+</div>
+          
   </section>
     
     <section id="download" class="py-32 px-6 bg-zinc-900/30 border-t border-white/10">
@@ -740,6 +802,17 @@ function rgb2hex(col){
   return "#" + col.match(/\d+/g).map(function(a){return ("0" + parseInt(a).toString(16)).slice(-2)}).join("");
 }
 </script>
+<script>
+const btn = document.querySelector(".btn");
+const content = document.querySelector(".content");
 
+btn.addEventListener("click", () => {
+  if (content.style.maxHeight) {
+    content.style.maxHeight = null;
+  } else {
+    content.style.maxHeight = content.scrollHeight + "px";
+  }
+});
+</script>
 </body>
 </html>
