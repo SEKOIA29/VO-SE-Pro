@@ -56,7 +56,7 @@ jobs:
         run: ruff check . --select E,F --ignore E501,E401 --fix --exit-zero
 
       - name: 🔍 audioio.h を探す
-        if: matrix.os == 'macos-latest'
+        if: startsWith(matrix.os, 'macos')
         run: find . -name "audioio.h" | sort
 
       - name: 🎙️ Generate Voice Data Header
@@ -99,7 +99,7 @@ jobs:
             /link
    
       - name: 🛠️ Build VOSE Core (macOS)
-        if: matrix.os == 'macos-latest'
+        if: startsWith(matrix.os, 'macos')
         run: |
           mkdir -p bin
           
@@ -115,6 +115,7 @@ jobs:
             [ -e "$f" ] || continue
             echo "  Compiling $f..."
             clang++ -O3 -c -std=c++17 -stdlib=libc++ -mmacosx-version-min=11.0 \
+              -arch x86_64 -arch arm64 \
               -I. -I.. -I../../include \
               "$f"
           done
@@ -123,6 +124,7 @@ jobs:
             [ -e "$f" ] || continue
             echo "  Compiling $f..."
             clang -O3 -c -mmacosx-version-min=11.0 \
+              -arch x86_64 -arch arm64 \
               -I. -I.. -I../../include \
               "$f"
           done
@@ -132,6 +134,7 @@ jobs:
           echo "🔗 Linking all objects into libvose_core.dylib..."
           clang++ -O3 -dynamiclib -std=c++17 -stdlib=libc++ \
             -mmacosx-version-min=11.0 \
+            -arch x86_64 -arch arm64 \
             -I./src \
             -I./include \
             -I./src/world \
@@ -269,6 +272,7 @@ jobs:
           else
             echo "Building macOS app on runner: ${{ matrix.os }}"
             pyinstaller --noconsole --windowed --clean \
+              --target-arch universal2 \
               --paths . \
               --paths modules \
               --icon="assets/icon.icns" \
@@ -290,7 +294,7 @@ jobs:
 
 
       - name: 🍎 Verify and Fix macOS Library Linkage (Complete & Final)
-        if: matrix.os == 'macos-latest'
+        if: startsWith(matrix.os, 'macos')
         shell: bash
         run: |
           set +e
