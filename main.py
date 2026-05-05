@@ -3,6 +3,7 @@ import sys
 import os
 import platform
 import ctypes
+import ctypes.util
 import json
 
 import importlib
@@ -176,6 +177,17 @@ def _check_runtime_requirements():
     for module_name in ("numpy", "pyopenjtalk", "PySide6"):
         if find_spec(module_name) is None:
             missing.append(f"Python package: {module_name}")
+    
+    # Linux では PySide6 が libGL.so.1 を必要とするため、先に明示的に確認する
+    if platform.system() == "Linux":
+        libgl_path = ctypes.util.find_library("GL")
+        if not libgl_path:
+            missing.append("OS library: libGL.so.1 (mesa-libGL)")
+        else:
+            try:
+                ctypes.CDLL(libgl_path)
+            except OSError:
+                missing.append("OS library: libGL.so.1 (mesa-libGL)")
 
     return missing
 
@@ -188,6 +200,8 @@ def main():
         for item in missing:
             print(f"  - {item}")
         print("requirements.txt と OS 依存ライブラリをインストールして再実行してください。")
+        if platform.system() == "Linux":
+            print("例: Ubuntu/Debian -> sudo apt-get install -y libgl1")
         sys.exit(1)
 
     # Linuxヘッドレス環境（DISPLAYなし）では offscreen を既定にして起動を継続
