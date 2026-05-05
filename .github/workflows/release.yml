@@ -390,14 +390,32 @@ jobs:
           mkdir -p dist_out
           ls -la dist_out || true
       # ── ③ タグが v* の時だけ正式リリース、それ以外は pre-release ──
-      - name: Upload Release
+      - name: Upload Release (tag)
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest-dev' }}
-          name: ${{ startsWith(github.ref, 'refs/tags/') && format('VO-SE Pro {0}', github.ref_name) || 'VO-SE Pro (Dev Build)' }}
-          prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          tag_name: ${{ github.ref_name }}
+          name: ${{ format('VO-SE Pro {0}', github.ref_name) }}
+          prerelease: false
           fail_on_unmatched_files: false
-          make_latest: ${{ startsWith(github.ref, 'refs/tags/') }}
+          make_latest: true
+          files: |
+            dist_out/VO-SE_PRO_Win.exe
+            dist_out/VO-SE_PRO_Mac_AppleSilicon.dmg
+            dist_out/VO-SE_PRO_Mac_AppleSilicon_update.zip
+            dist_out/VO-SE_PRO_Mac_Intel.dmg
+            dist_out/VO-SE_PRO_Mac_Intel_update.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Release (dev build)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-dev
+          name: VO-SE Pro (Dev Build)
+          prerelease: true
+          fail_on_unmatched_files: false
           files: |
             dist_out/VO-SE_PRO_Win.exe
             dist_out/VO-SE_PRO_Mac_AppleSilicon.dmg
