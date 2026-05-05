@@ -1,6 +1,5 @@
 #graph_editor_widget.py
 
-
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt, Signal, Slot, QRect, QPointF
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QPaintEvent, QMouseEvent, QPainterPath
