@@ -231,7 +231,7 @@ def main():
     elif system == "Darwin":
         lib_name = "libvose_core.dylib"
     else:
-        lib_name = "libvose_core.
+        lib_name = "libvose_core.so"
     dll_path = get_resource_path(os.path.join("bin", lib_name))
     if not os.path.exists(dll_path):
         QMessageBox.warning(
