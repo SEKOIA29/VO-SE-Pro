@@ -3186,6 +3186,9 @@ class MainWindow(QMainWindow):
 
         try:
             # 1. C++ DLLのレンダリング関数を叩く
+            if self.engine_dll is None:
+                self.log_startup("Synthesis Error: engine DLL is not loaded")
+                return
             raw_audio = self.engine_dll.render(dynamics_data)
             
             # 2. sounddevice で再生（ノンブロッキング）
