@@ -1030,7 +1030,11 @@ class VoiceCardGallery(QWidget):
                 row += 1
 
         # グリッドの下部に伸縮用のスペース（スペーサー）を追加して上に詰める
-        self.grid.setRowStretch(row + 1, 1)
+        grid = self.grid
+        if grid is None:
+            return
+        grid.setRowStretch(row + 1, 1)
+
 
     def _finalize_card_setup(self, card, display_name, internal_id, row, col):
         """
@@ -2825,9 +2829,14 @@ class MainWindow(QMainWindow):
         self.player = QMediaPlayer()
         self.audio_output = QAudioOutput()
     
-        self.player.setAudioOutput(self.audio_output)
-        self.audio_output.setVolume(0.5)
-        self.player.playbackStateChanged.connect(self.on_playback_state_changed)
+        player = self.player
+        audio_output = self.audio_output
+        if player is None or audio_output is None:
+            return
+        player.setAudioOutput(audio_output)
+        audio_output.setVolume(0.5)
+        player.playbackStateChanged.connect(self.on_playback_state_changed)
+
 
         # --- 2. ボリュームコントロールUI ---
         vol_layout = QHBoxLayout()
