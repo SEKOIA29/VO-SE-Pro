@@ -3375,8 +3375,8 @@ class MainWindow(QMainWindow):
         from PySide6.QtCore import QMetaObject, Qt
         QMetaObject.invokeMethod(
             self, 
-            b"_show_update_dialog", 
-        Qt.ConnectionType.QueuedConnection
+            "_show_update_dialog",
+            Qt.ConnectionType.QueuedConnection
         )
         self._pending_update = (latest_ver, page_url, exe_url)
 
