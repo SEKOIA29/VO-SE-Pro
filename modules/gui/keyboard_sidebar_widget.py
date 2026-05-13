@@ -83,10 +83,13 @@ class KeyboardSidebarWidget(QWidget):
         
         # 解像度に合わせてピクセル数を最適化したPixmapを生成
         self._cache_pixmap = QPixmap(int(self.width() * dpr), int(total_height * dpr))
-        self._cache_pixmap.setDevicePixelRatio(dpr)
-        self._cache_pixmap.fill(Qt.GlobalColor.transparent)
+        cache_pixmap = self._cache_pixmap
+        if cache_pixmap is None:
+            return
+        cache_pixmap.setDevicePixelRatio(dpr)
+        cache_pixmap.fill(Qt.GlobalColor.transparent)
         
-        painter = QPainter(self._cache_pixmap)
+        painter = QPainter(cache_pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         # --- レイヤー1: 全白鍵の描画 ---
