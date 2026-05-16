@@ -19,6 +19,23 @@ def get_resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
+def get_engine_library_path():
+    system = platform.system()
+    if system == "Windows":
+        lib_names = ("vose_core.dll",)
+    elif system == "Darwin":
+        lib_names = ("libvose_core.dylib", "vose_core.dylib")
+    else:
+        lib_names = ("libvose_core.so", "vose_core.so")
+
+    for lib_name in lib_names:
+        dll_path = get_resource_path(os.path.join("bin", lib_name))
+        if os.path.exists(dll_path):
+            return dll_path
+
+    return get_resource_path(os.path.join("bin", lib_names[0]))
+
+
 # --- [2] 設定管理クラス (ConfigHandler) ---
 class ConfigHandler:
     def __init__(self, config_path="temp/config.json"):
@@ -60,15 +77,8 @@ class VoSeEngine:
         OSに応じたライブラリ（DLL/dylib）を最適なパスからロードします。
         型チェックエラー（_MEIPASS）を回避し、Mac実機構造に対応した完全版です。
         """
-        if self.os_name == "Windows":
-            lib_name = "vose_core.dll"
-        elif self.os_name == "Darwin":
-            lib_name = "libvose_core.dylib"
-        else:
-            lib_name = "libvose_core.so"
-
         # 1. 基本的なリソースパス
-        dll_path = get_resource_path(os.path.join("bin", lib_name))
+        dll_path = get_engine_library_path()
 
         # 2. Mac特有のフォールバック処理
         if self.os_name == "Darwin":
@@ -76,7 +86,7 @@ class VoSeEngine:
                 meipass = getattr(sys, '_MEIPASS', None)
                 if meipass:
                     bundle_dir = os.path.dirname(os.path.dirname(meipass))
-                    alt_path = os.path.join(bundle_dir, "Frameworks", "bin", lib_name)
+                    alt_path = os.path.join(bundle_dir, "Frameworks", "bin", os.path.basename(dll_path))
                     if os.path.exists(alt_path):
                         dll_path = alt_path
                         print(f"[Info] Mac Frameworks path used: {dll_path}")
@@ -239,14 +249,7 @@ def main():
             break
     # [FIX-1] DLL未検出時は warning ダイアログで明示。エラーではなく warning に留め、
     #         アプリは起動継続（合成・歌唱機能のみ無効化）とする。
-    system = platform.system()
-    if system == "Windows":
-        lib_name = "vose_core.dll"
-    elif system == "Darwin":
-        lib_name = "libvose_core.dylib"
-    else:
-        lib_name = "libvose_core.so"
-    dll_path = get_resource_path(os.path.join("bin", lib_name))
+    dll_path = get_engine_library_path()
     if not os.path.exists(dll_path):
         QMessageBox.warning(
             None,

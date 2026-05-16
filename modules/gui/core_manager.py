@@ -21,23 +21,23 @@ class VoseCoreManager:
             cls._instance._disabled_reason = None
         return cls._instance
 
-    def _library_name(self) -> str:
+    def _library_names(self) -> tuple[str, ...]:
         system = platform.system()
         if system == "Windows":
-            return "vose_core.dll"
+            return ("vose_core.dll",)
         if system == "Darwin":
-            return "libvose_core.dylib"
-        return "libvose_core.so"
+            return ("libvose_core.dylib", "vose_core.dylib")
+        return ("libvose_core.so", "vose_core.so")
 
 
     def _candidate_paths(self) -> list[str]:
-        lib_name = self._library_name()
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        return [
-            os.path.join(repo_root, "bin", lib_name),
-            os.path.join(os.path.dirname(__file__), "..", "bin", lib_name),
-            os.path.join(os.getcwd(), "bin", lib_name),
+        base_dirs = [
+            os.path.join(repo_root, "bin"),
+            os.path.join(os.path.dirname(__file__), "..", "bin"),
+            os.path.join(os.getcwd(), "bin"),
         ]
+        return [os.path.join(base_dir, lib_name) for base_dir in base_dirs for lib_name in self._library_names()]
 
     def _init_engine(self):
         if self._initialized:

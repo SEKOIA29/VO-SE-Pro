@@ -22,16 +22,18 @@ class AppInitializer:
 
         # チェック対象リスト
         # 各プラットフォームに合わせたバイナリ名を判定
-        dll_ext = "vose_core.dll" if sys.platform == "win32" else "libvose_core.dylib"
+        dll_names = ("vose_core.dll",) if sys.platform == "win32" else ("libvose_core.dylib", "vose_core.dylib")
         jtalk_bin = "open_jtalk.exe" if sys.platform == "win32" else "open_jtalk"
 
         required_files = [
-            os.path.join(base_path, "bin", dll_ext),
             os.path.join(base_path, "models", "onset_detector.onnx"),
             os.path.join(base_path, "bin", "open_jtalk", jtalk_bin)
         ]
 
         missing = []
+        if not any(os.path.exists(os.path.join(base_path, "bin", dll_name)) for dll_name in dll_names):
+            missing.append(dll_names[0])
+
         for f in required_files:
             if not os.path.exists(f):
                 missing.append(os.path.basename(f))

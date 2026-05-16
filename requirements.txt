@@ -4,5 +4,13 @@ PySide6
 setuptools>=70,<81
 pyinstaller==6.13.0
 backports.tarfile
-mido
+mido==1.3.2
 onnxruntime
+sounddevice
+soundfile
+janome
+Pillow
+scipy
+chardet
+pykakasi
+packaging

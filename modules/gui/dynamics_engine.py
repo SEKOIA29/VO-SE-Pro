@@ -32,14 +32,19 @@ class DynamicsEngine:
         system = platform.system()
         
         if system == "Windows":
-            lib_name = "vose_core.dll"
+            lib_names = ("vose_core.dll",)
         elif system == "Darwin":
-            lib_name = "libvose_core.dylib"
+            lib_names = ("libvose_core.dylib", "vose_core.dylib")
         else:
-            lib_name = "libvose_core.so"
+            lib_names = ("libvose_core.so", "vose_core.so")
 
         if os.path.isdir(dll_path):
-            full_path = os.path.join(dll_path, lib_name)
+            full_path = os.path.join(dll_path, lib_names[0])
+            for lib_name in lib_names:
+                candidate_path = os.path.join(dll_path, lib_name)
+                if os.path.exists(candidate_path):
+                    full_path = candidate_path
+                    break
         else:
             full_path = dll_path
 
@@ -135,4 +140,3 @@ class DynamicsEngine:
 
         except Exception as e:
             print(f"Engine: Unload warning - {e}")
-
