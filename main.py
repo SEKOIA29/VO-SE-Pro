@@ -281,6 +281,10 @@ def main():
     else:
         window.statusBar().showMessage("VO-SE Core Engine: Not Found (Offline Mode)")
 
+    window.show()
+    window.raise_()
+    window.activateWindow()
+
     result = app.exec()
     config_handler.save_config(config)
     sys.exit(result)
