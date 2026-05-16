@@ -223,6 +223,7 @@ def main():
     try:
         QtWidgets = importlib.import_module("PySide6.QtWidgets")
         QtGui = importlib.import_module("PySide6.QtGui")
+        QtCore = importlib.import_module("PySide6.QtCore")
     except Exception as e:
         print(f"[Fatal] GUI モジュールの読み込みに失敗しました: {e}")
         sys.exit(1)
@@ -239,8 +240,11 @@ def main():
     QApplication = QtWidgets.QApplication
     QMessageBox = QtWidgets.QMessageBox
     QIcon = QtGui.QIcon
+    QTimer = QtCore.QTimer
+    Qt = QtCore.Qt
 
     app = QApplication(sys.argv)
+    app.setApplicationName("VO-SE Pro")
 
     for icon_rel in ("assets/icon.png", "assets/icon.icns", "assets/icon.ico"):
         icon_path = get_resource_path(icon_rel)
@@ -281,9 +285,26 @@ def main():
     else:
         window.statusBar().showMessage("VO-SE Core Engine: Not Found (Offline Mode)")
 
-    window.show()
-    window.raise_()
-    window.activateWindow()
+    def show_main_window():
+        if window.isMinimized():
+            window.showNormal()
+        else:
+            window.show()
+        window.raise_()
+        window.activateWindow()
+        window_handle = window.windowHandle()
+        if window_handle is not None:
+            window_handle.requestActivate()
+
+    def release_startup_frontmost_hint():
+        window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
+        show_main_window()
+
+    window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+    show_main_window()
+    QTimer.singleShot(0, show_main_window)
+    QTimer.singleShot(300, show_main_window)
+    QTimer.singleShot(1200, release_startup_frontmost_hint)
 
     result = app.exec()
     config_handler.save_config(config)
