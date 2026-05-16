@@ -464,6 +464,29 @@ class TimelineWidget(QWidget):
     def get_all_notes_data(self) -> list:
         return self.notes_list
 
+    def get_notes(self) -> list:
+        return self.notes_list
+
+    def set_notes(self, notes: List[Any]) -> None:
+        self.notes_list = list(notes or [])
+        self._invalidate_note_rects()
+        self.notes_changed_signal.emit()
+        self.update()
+
+    def get_selected_notes_range(self) -> Optional[tuple[float, float]]:
+        selected = [n for n in self.notes_list if getattr(n, "is_selected", False)]
+        if not selected:
+            return None
+        start = min(float(getattr(n, "start_time", 0.0)) for n in selected)
+        end = max(
+            float(getattr(n, "start_time", 0.0)) + float(getattr(n, "duration", 0.0))
+            for n in selected
+        )
+        return start, end
+
+    def set_current_time(self, t: float) -> None:
+        self.set_playback_time(t)
+
     def add_note_from_midi(self, pitch: int, start_beat: float, duration_beat: float) -> None:
         new_note = NoteEventClass(
             self.beats_to_seconds(start_beat), self.beats_to_seconds(duration_beat), pitch, "la")

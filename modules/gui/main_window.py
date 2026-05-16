@@ -1292,9 +1292,13 @@ class MainWindow(QMainWindow):
         self.current_voice = "標準ボイス"
         self.volume = 0.8
         self.current_playback_time = 0.0
+        self.playback_start_time = 0.0
+        self.playback_end_time = 0.0
+        self.playback_started_monotonic = 0.0
         
         # UIポインタ (Optional群)
         self.tempo_input = cast(QLineEdit, None)
+        self.time_display_label = cast(QLabel, None)
         self.play_button = cast(QPushButton, None)
         self.play_btn = cast(QPushButton, None)
         self.record_button = cast(QPushButton, None)
@@ -1442,11 +1446,65 @@ class MainWindow(QMainWindow):
         print(f"DEBUG: Recording toggled to: {self.is_recording}")
 
     def update_playback_ui(self):
-        """再生中のUI（時間、スライダー等）を更新（省略なし）"""
-        # playback_timer から定期的に呼ばれる想定
-        if hasattr(self, 'vo_se_engine') and self.vo_se_engine:
-            # current_time = self.vo_se_engine.get_current_time()
-            pass
+        """再生位置・時間表示・タイムラインのプレイヘッドを同期する。"""
+        if getattr(self, 'is_playing', False):
+            elapsed = max(0.0, time.monotonic() - float(getattr(self, 'playback_started_monotonic', 0.0)))
+            current_time = float(getattr(self, 'playback_start_time', 0.0)) + elapsed
+            end_time = max(float(getattr(self, 'playback_end_time', 0.0)), self._get_project_duration_seconds())
+
+            if end_time > 0.0 and current_time >= end_time:
+                if getattr(self, 'is_looping', False):
+                    current_time = 0.0
+                    self.playback_start_time = 0.0
+                    self.playback_started_monotonic = time.monotonic()
+                else:
+                    self.stop_and_clear_playback()
+                    return
+
+            self._set_transport_time(current_time)
+        else:
+            self._set_transport_time(float(getattr(self, 'current_playback_time', 0.0)))
+
+    def _format_timecode(self, seconds: float) -> str:
+        seconds = max(0.0, float(seconds))
+        minutes = int(seconds // 60)
+        whole_seconds = int(seconds % 60)
+        millis = int(round((seconds - int(seconds)) * 1000))
+        if millis >= 1000:
+            whole_seconds += 1
+            millis -= 1000
+        return f"{minutes:02d}:{whole_seconds:02d}.{millis:03d}"
+
+    def _get_project_duration_seconds(self) -> float:
+        timeline = getattr(self, 'timeline_widget', None)
+        notes = list(getattr(timeline, 'notes_list', []) or [])
+        if not notes:
+            return 8.0
+        last_note_end = max(
+            float(getattr(note, 'start_time', 0.0)) + float(getattr(note, 'duration', 0.0))
+            for note in notes
+        )
+        return max(1.0, last_note_end + 1.0)
+
+    def _set_transport_time(self, seconds: float) -> None:
+        seconds = max(0.0, float(seconds))
+        self.current_playback_time = seconds
+
+        timeline = getattr(self, 'timeline_widget', None)
+        if timeline is not None:
+            if hasattr(timeline, 'set_playback_time'):
+                timeline.set_playback_time(seconds)
+            elif hasattr(timeline, 'set_current_time'):
+                timeline.set_current_time(seconds)
+
+        graph = getattr(self, 'graph_editor_widget', None)
+        if graph is not None and hasattr(graph, 'set_current_time'):
+            graph.set_current_time(seconds)
+
+        label = getattr(self, 'time_display_label', None)
+        if label is not None:
+            total = self._get_project_duration_seconds()
+            label.setText(f"{self._format_timecode(seconds)} / {self._format_timecode(total)}")
 
     def setup_voice_gallery(self):
         """
@@ -1528,6 +1586,7 @@ class MainWindow(QMainWindow):
         self.setup_toolbar()
         self.setup_bottom_panel()
         self.setup_status_bar()
+        self._set_transport_time(0.0)
     
 
         # 4. スタイルと初期状態の適用
@@ -1731,6 +1790,16 @@ class MainWindow(QMainWindow):
         self.loop_btn.setCheckable(True)
         self.loop_btn.clicked.connect(self.on_loop_button_toggled)
         self.toolbar.addWidget(self.loop_btn)
+
+        self.toolbar.addSeparator()
+
+        self.time_display_label = QLabel("00:00.000 / 00:00.000")
+        self.time_display_label.setMinimumWidth(150)
+        self.time_display_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.time_display_label.setStyleSheet(
+            "font-family: Menlo, Consolas, monospace; font-weight: 700; color: #f2f2f7;"
+        )
+        self.toolbar.addWidget(self.time_display_label)
 
         self.toolbar.addSeparator()
 
@@ -4001,7 +4070,7 @@ class MainWindow(QMainWindow):
         
         # --- 0. 徹底的な型キャストと安全な属性取得 ---
         # getattrを使用し、かつ None チェックを行うことで reportOptionalMemberAccess を完全に防ぎます
-        play_btn = cast(QPushButton, getattr(self, 'play_button', None))
+        play_btn = cast(QPushButton, getattr(self, 'play_btn', None) or getattr(self, 'play_button', None))
         status_lbl = cast(QLabel, getattr(self, 'status_label', None))
         timeline = cast(Any, getattr(self, 'timeline_widget', None))
         timer = cast(Any, getattr(self, 'playback_timer', None))
@@ -4030,6 +4099,7 @@ class MainWindow(QMainWindow):
             self._refresh_transport_button_states()
             if status_lbl is not None: 
                 status_lbl.setText("停止しました")
+            self.statusBar().showMessage(f"停止: {self._format_timecode(self.current_playback_time)}", 2000)
                 
             self.playing_notes = {}
             return
@@ -4048,10 +4118,6 @@ class MainWindow(QMainWindow):
             
         # timeline.notes_list が型不明と言われないよう cast
         notes = cast(List[Any], getattr(timeline, 'notes_list', []))
-        if not notes:
-            if status_lbl is not None: 
-                status_lbl.setText("ノートが存在しません")
-            return
 
         try:
             if status_lbl is not None: 
@@ -4062,7 +4128,7 @@ class MainWindow(QMainWindow):
             QApplication.processEvents()
 
             # 再生開始位置の取得（型安全なフォールバック付き）
-            start_time: float = 0.0
+            start_time = float(getattr(timeline, '_current_playback_time', self.current_playback_time))
             if hasattr(timeline, 'get_selected_notes_range'):
                 range_data = timeline.get_selected_notes_range()
                 if range_data and isinstance(range_data, tuple) and len(range_data) >= 2:
@@ -4070,6 +4136,10 @@ class MainWindow(QMainWindow):
             
             self.is_playing = True
             self.current_playback_time = start_time
+            self.playback_start_time = start_time
+            self.playback_end_time = self._get_project_duration_seconds()
+            self.playback_started_monotonic = time.monotonic()
+            self._set_transport_time(start_time)
             
             # UI表示の更新
             if play_btn is not None: 
@@ -4077,10 +4147,14 @@ class MainWindow(QMainWindow):
             self._refresh_transport_button_states()
             if status_lbl is not None: 
                 status_lbl.setText(f"再生中: {start_time:.2f}s -")
+            if not notes:
+                self.statusBar().showMessage("ノートなし: タイムラインのみ再生します", 3000)
+            else:
+                self.statusBar().showMessage(f"再生中: {self._format_timecode(start_time)}", 3000)
 
             # 再生スレッドの構築
             engine_for_play = getattr(self, 'vo_se_engine', None)
-            if engine_for_play is not None and hasattr(engine_for_play, 'play_audio'):
+            if notes and engine_for_play is not None and hasattr(engine_for_play, 'play_audio'):
                 new_thread = threading.Thread(
                     target=engine_for_play.play_audio, 
                     daemon=True
@@ -4253,8 +4327,14 @@ class MainWindow(QMainWindow):
         # Pyright の reportAttributeAccessIssue を防ぐため、確実に属性を更新
         self.is_playing: bool = False
         self.current_playback_time: float = 0.0
+        self.playback_start_time = 0.0
+        self.playback_started_monotonic = 0.0
         self.is_looping = False
         self.is_looping_selection = False
+
+        timer = getattr(self, 'playback_timer', None)
+        if timer is not None and hasattr(timer, 'stop'):
+            timer.stop()
         
         # 3. UI状態の更新 (メソッド不在エラーを回避)
         # 循環参照や動的なメソッド追加を考慮し、hasattr でチェック
@@ -4267,7 +4347,9 @@ class MainWindow(QMainWindow):
         t_widget = getattr(self, 'timeline_widget', None)
         if t_widget is not None:
             # 引数の型を float(0.0) で確定させて呼び出し
-            if hasattr(t_widget, 'set_current_time'):
+            if hasattr(t_widget, 'set_playback_time'):
+                t_widget.set_playback_time(0.0)
+            elif hasattr(t_widget, 'set_current_time'):
                 t_widget.set_current_time(0.0)
                 
         # 5. グラフエディタも同期してリセット
