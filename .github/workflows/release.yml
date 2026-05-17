@@ -1,4 +1,4 @@
-name: "🚀 Release VO-SE  Pro (Official Edition)"
+name: "🚀 Release VO-SE vocal (Official Edition)"
 on:
   push:
     branches:
@@ -13,7 +13,6 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-  
 jobs:
   build:
     name: Build for ${{ matrix.os }}
@@ -22,8 +21,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, macos-15-intel, macos-15]
-
-
 
     steps:
       - name: Checkout code
@@ -45,14 +42,9 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install pytest ruff pyright
 
-
-
-
-       
       - name: Ruff Check and Fix (Windows only)
         if: matrix.os == 'windows-latest'
         shell: bash
-        # ルールコードをすべて大文字 (E, F, E501, E401) に修正
         run: ruff check . --select E,F --ignore E501,E401 --fix --exit-zero
 
       - name: 🔍 audioio.h を探す
@@ -61,7 +53,6 @@ jobs:
 
       - name: 🎙️ Generate Voice Data Header
         run: |
-          # リポジトリルートから直接実行することで base_dir が正しく解決される
           python modules/tools/pack_all_voices.py
 
       - name: Auto Commit Fixes
@@ -72,9 +63,6 @@ jobs:
           commit_user_name: github-actions[bot]
           commit_user_email: github-actions[bot]@users.noreply.github.com
 
-
-          
-  
       - name: 🛠️ Setup MSVC (Windows)
         if: matrix.os == 'windows-latest'
         uses: ilammy/msvc-dev-cmd@v1
@@ -102,15 +90,10 @@ jobs:
         if: startsWith(matrix.os, 'macos')
         run: |
           mkdir -p bin
-          
-          # include/world のヘッダーを src/world にコピー
-          # (audioio.cpp が "./audioio.h" で参照するため)
           cp include/world/*.h src/world/
-
           cd src/world
 
           echo "🔨 Compiling WORLD source files..."
-
           for f in *.cpp; do
             [ -e "$f" ] || continue
             echo "  Compiling $f..."
@@ -144,9 +127,6 @@ jobs:
 
           echo "✅ Build Complete: bin/libvose_core.dylib"
           ls -l bin/libvose_core.dylib
-          
-
-
 
       - name: Verify pkg_resources for PyInstaller hook
         shell: python
@@ -175,28 +155,24 @@ jobs:
       - name: Inject version into update_checker.py
         shell: bash
         run: |
-          # タグ (v1.2.0) があればそれを使い、なければ 0.0.0-dev にする
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            VERSION="${GITHUB_REF_NAME#v}"   # "v1.2.0" → "1.2.0"
+            VERSION="${GITHUB_REF_NAME#v}"
           else
             VERSION="0.0.0-dev"
           fi
           echo "Injecting version: $VERSION"
 
-          # update_checker.py の CURRENT_VERSION を書き換える
-          # ファイルがまだなければ作成する
           CHECKER="modules/updater/update_checker.py"
           mkdir -p modules/updater
           if [ -f "$CHECKER" ]; then
             sed -i.bak "s/^CURRENT_VERSION = .*/CURRENT_VERSION = \"$VERSION\"/" "$CHECKER"
           else
-            # ファイルがない場合は最小構成で生成
             cat > "$CHECKER" << EOF
           import json, threading, urllib.request
           from packaging.version import Version
 
           CURRENT_VERSION = "$VERSION"
-          GITHUB_API_URL = "https://api.github.com/repos/YOUR_ORG/VO-SE-Pro/releases/latest"
+          GITHUB_API_URL = "https://api.github.com/repos/YOUR_ORG/VO-SE-vocal/releases/latest"
 
           class UpdateChecker:
               def check_async(self, callback):
@@ -204,13 +180,12 @@ jobs:
 
               def _check(self, callback):
                   try:
-                      req = urllib.request.Request(GITHUB_API_URL, headers={"User-Agent": "VO-SE-Pro"})
+                      req = urllib.request.Request(GITHUB_API_URL, headers={"User-Agent": "VO-SE-vocal"})
                       with urllib.request.urlopen(req, timeout=5) as res:
                           data = json.loads(res.read())
                       latest = data["tag_name"].lstrip("v")
                       page_url = data["html_url"]
                       assets = data.get("assets", [])
-                      # Windows は .exe、Mac はアップデート用 _update.zip を拾う
                       exe_url = next(
                           (a["browser_download_url"] for a in assets
                            if a["name"].endswith("_update.zip") or a["name"].endswith(".exe")),
@@ -228,7 +203,6 @@ jobs:
 
       - name: Lint with Ruff
         run: |
-          # 修正箇所: --ignore e501,e401 -> E501,E401
           ruff check . --select E,F --ignore E501,E401 --fix --exit-zero
 
       - name: Type Check with Pyright
@@ -250,7 +224,6 @@ jobs:
             exit 1
           fi
 
-
       - name: Package App
         shell: bash
         run: |
@@ -267,8 +240,8 @@ jobs:
               --add-data "bin/vose_core.dll;bin" \
               --add-data "assets;assets" \
               --add-data "modules;modules" \
-              --name "VO-SE_PRO_Win" main.py
-            cp dist/VO-SE_PRO_Win.exe dist_out/
+              --name "VO-SE_vocal_Win" main.py
+            cp dist/VO-SE_vocal_Win.exe dist_out/
           else
             echo "Building macOS app on runner: ${{ matrix.os }}"
             if [ "${{ matrix.os }}" = "macos-15-intel" ]; then
@@ -278,6 +251,10 @@ jobs:
               MAC_ARCH="arm64"
               MAC_LABEL="AppleSilicon"
             fi
+
+            echo "🍺 Installing create-dmg..."
+            brew install create-dmg
+
             pyinstaller --noconsole --windowed --clean \
               --target-arch "$MAC_ARCH" \
               --paths . \
@@ -290,22 +267,30 @@ jobs:
               --add-data "bin/libvose_core.dylib:bin" \
               --add-data "assets:assets" \
               --add-data "modules:modules" \
-              --name "VO-SE_PRO_Mac" main.py
-            chmod +x dist/VO-SE_PRO_Mac.app/Contents/MacOS/VO-SE_PRO_Mac
-            hdiutil create -volname "VO-SE Pro" \
-              -srcfolder dist/VO-SE_PRO_Mac.app \
-              -ov -format UDZO \
-              "dist_out/VO-SE_PRO_Mac_${MAC_LABEL}.dmg"
-            cd dist && zip -ry "../dist_out/VO-SE_PRO_Mac_${MAC_LABEL}_update.zip" VO-SE_PRO_Mac.app && cd ..
-          fi
+              --name "VO-SE_vocal_Mac" main.py
+            chmod +x dist/VO-SE_vocal_Mac.app/Contents/MacOS/VO-SE_vocal_Mac
+            
+            echo "💿 Generating polished DMG..."
+            create-dmg \
+              --volname "VO-SE vocal" \
+              --background "assets/dmg_bg.png" \
+              --window-pos 200 120 \
+              --window-size 600 400 \
+              --icon-size 100 \
+              --icon "VO-SE_vocal_Mac.app" 150 185 \
+              --app-drop-link 450 185 \
+              "dist_out/VO-SE_vocal_Mac_${MAC_LABEL}.dmg" \
+              "dist/"
 
+            cd dist && zip -ry "../dist_out/VO-SE_vocal_Mac_${MAC_LABEL}_update.zip" VO-SE_vocal_Mac.app && cd ..
+          fi
 
       - name: 🍎 Verify and Fix macOS Library Linkage (Complete & Final)
         if: startsWith(matrix.os, 'macos')
         shell: bash
         run: |
           set +e
-          APP_BIN=$(find dist -name "VO-SE_PRO_Mac" -type f | grep "\.app/Contents/MacOS/VO-SE_PRO_Mac" | head -n 1)
+          APP_BIN=$(find dist -name "VO-SE_vocal_Mac" -type f | grep "\.app/Contents/MacOS/VO-SE_vocal_Mac" | head -n 1)
           chmod +x "$APP_BIN"
           find dist -name "libvose_core.dylib" -type f | while read -r DYLIB_BIN; do
             chmod 755 "$DYLIB_BIN"
@@ -318,15 +303,13 @@ jobs:
             fi
             codesign --force --deep --sign - "$DYLIB_BIN" 2>&1 || true
           done
-          codesign --force --deep --sign - "dist/VO-SE_PRO_Mac.app" 2>&1 || true
+          codesign --force --deep --sign - "dist/VO-SE_vocal_Mac.app" 2>&1 || true
           set -e
-
-
 
       - name: 📦 Save Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: VO-SE-PRO-Package-${{ matrix.os }}
+          name: VO-SE-vocal-Package-${{ matrix.os }}
           path: dist_out/
 
   smoke-linux:
@@ -376,7 +359,7 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v5
         with:
-          pattern: VO-SE-PRO-Package-*
+          pattern: VO-SE-vocal-Package-*
           merge-multiple: true
           path: dist_out
 
@@ -387,22 +370,22 @@ jobs:
         run: |
           mkdir -p dist_out
           ls -la dist_out || true
-      # ── ③ タグが v* の時だけ正式リリース、それ以外は pre-release ──
+
       - name: Upload Release (tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: ${{ format('VO-SE Pro {0}', github.ref_name) }}
+          name: ${{ format('VO-SE vocal {0}', github.ref_name) }}
           prerelease: false
           fail_on_unmatched_files: false
           make_latest: true
           files: |
-            dist_out/VO-SE_PRO_Win.exe
-            dist_out/VO-SE_PRO_Mac_AppleSilicon.dmg
-            dist_out/VO-SE_PRO_Mac_AppleSilicon_update.zip
-            dist_out/VO-SE_PRO_Mac_Intel.dmg
-            dist_out/VO-SE_PRO_Mac_Intel_update.zip
+            dist_out/VO-SE_vocal_Win.exe
+            dist_out/VO-SE_vocal_Mac_AppleSilicon.dmg
+            dist_out/VO-SE_vocal_Mac_AppleSilicon_update.zip
+            dist_out/VO-SE_vocal_Mac_Intel.dmg
+            dist_out/VO-SE_vocal_Mac_Intel_update.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -411,14 +394,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-dev
-          name: VO-SE Pro (Dev Build)
+          name: VO-SE vocal (Dev Build)
           prerelease: true
           fail_on_unmatched_files: false
           files: |
-            dist_out/VO-SE_PRO_Win.exe
-            dist_out/VO-SE_PRO_Mac_AppleSilicon.dmg
-            dist_out/VO-SE_PRO_Mac_AppleSilicon_update.zip
-            dist_out/VO-SE_PRO_Mac_Intel.dmg
-            dist_out/VO-SE_PRO_Mac_Intel_update.zip
+            dist_out/VO-SE_vocal_Win.exe
+            dist_out/VO-SE_vocal_Mac_AppleSilicon.dmg
+            dist_out/VO-SE_vocal_Mac_AppleSilicon_update.zip
+            dist_out/VO-SE_vocal_Mac_Intel.dmg
+            dist_out/VO-SE_vocal_Mac_Intel_update.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
