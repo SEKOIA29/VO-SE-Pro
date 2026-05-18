@@ -3441,13 +3441,17 @@ class MainWindow(QMainWindow):
     def _on_update_result(self, has_update, latest_ver, page_url, exe_url):
         if not has_update:
             return
+    
         from PySide6.QtCore import QMetaObject, Qt
+    
+        # 型ヒントの修正と変数名のリネーム
+        self._pending_update = (latest_ver, page_url, exe_url)
+    
         QMetaObject.invokeMethod(
-            self, 
-            "_show_update_dialog",
+            self,
+            b"_show_update_dialog",
             Qt.ConnectionType.QueuedConnection
         )
-        self._pending_update = (latest_ver, page_url, exe_url)
 
     @Slot()
     def _show_update_dialog(self):
