@@ -3,7 +3,7 @@
 import pyopenjtalk
 import os
 from typing import List, Optional
-from .data_models import NoteEvent
+from modules.data.data_models import NoteEvent
 
 class TextAnalyzer:
     def __init__(self, dict_path: Optional[str] = None):
