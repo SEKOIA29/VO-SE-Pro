@@ -1029,10 +1029,10 @@ class TimelineWidget(QWidget):
         key_int = event.key()
 
         layer_map = {
-            Qt.Key.Key_1.value: "Dynamics",
-            Qt.Key.Key_2.value: "Pitch",
-            Qt.Key.Key_3.value: "Vibrato",
-            Qt.Key.Key_4.value: "Formant",
+            Qt.Key.Key_1.value: "Pitch",      # 
+            Qt.Key.Key_2.value: "Gender",     # 
+            Qt.Key.Key_3.value: "Tension",    # 
+            Qt.Key.Key_4.value: "Breath",     #
         }
 
         main_window = self.window()
