@@ -211,10 +211,10 @@ class TimelineWidget(QWidget):
                 # --- 修正ポイント: 定義済みの NoteEventClass (Fallback含む) を使用 ---
                 # これにより start_time などの属性が静的解析でも正しく認識されます
                 note = NoteEventClass(
+                    note_number=int(item.get("note_number", 60)),      # ✅ 正しい順序
                     start_time=float(item.get("start_time", 0.0)),
                     duration=float(item.get("duration", 0.5)),
-                    note_number=int(item.get("note_number", 60)),
-                    lyrics=str(item.get("lyrics", "la"))
+                    lyric=str(item.get("lyric", item.get("lyrics", "la")))  # ✅ 後方互換性
                 )
                 note.is_selected = False
                 # -----------------------------------------------------------
