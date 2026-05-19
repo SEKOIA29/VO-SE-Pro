@@ -442,10 +442,22 @@ class TimelineWidget(QWidget):
                 for n in self.notes_list
             ],
             "parameters": {
-                "pitch": self.parameters.get("Pitch", {}),
-                "gender": self.parameters.get("Gender", {}),
-                "tension": self.parameters.get("Tension", {}),
-                "breath": self.parameters.get("Breath", {}),
+                "pitch": [
+                    {"time": ev.time, "value": ev.value} 
+                    for ev in self.parameters.get("Pitch", [])
+                ],
+                "gender": [
+                    {"time": ev.time, "value": ev.value} 
+                    for ev in self.parameters.get("Gender", [])
+                ],
+                "tension": [
+                    {"time": ev.time, "value": ev.value} 
+                    for ev in self.parameters.get("Tension", [])
+                ],
+                "breath": [
+                    {"time": ev.time, "value": ev.value} 
+                    for ev in self.parameters.get("Breath", [])
+                ],
             },
         }
 
