@@ -489,10 +489,14 @@ class TimelineWidget(QWidget):
 
     def add_note_from_midi(self, pitch: int, start_beat: float, duration_beat: float) -> None:
         new_note = NoteEventClass(
-            self.beats_to_seconds(start_beat), self.beats_to_seconds(duration_beat), pitch, "la")
+            note_number=pitch,                              # ✅ 修正
+            start_time=self.beats_to_seconds(start_beat),   # ✅ 修正
+            duration=self.beats_to_seconds(duration_beat),  # ✅ 修正
+            lyric="la"
+        )
         new_note.phoneme = "la"
         self.notes_list.append(new_note)
-        self._invalidate_note_rects()  # [OPT-3]
+        self._invalidate_note_rects()
         self.notes_changed_signal.emit()
         self.update()
 
