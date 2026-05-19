@@ -36,12 +36,13 @@ class NoteEventProtocol(Protocol):
 
 
 class _FallbackNoteEvent:
-    def __init__(self, start_time: float, duration: float,
-                 note_number: int, lyrics: str = "la") -> None:
+    def __init__(self, note_number: int, start_time: float, 
+                 duration: float, lyric: str = "あ") -> None:  #順序統一
+        self.note_number: int = note_number
         self.start_time: float = start_time
         self.duration: float = duration
-        self.note_number: int = note_number
-        self.lyrics: str = lyrics
+        self.lyric: str = lyric  # 
+        self.lyrics: str = lyric  # 
         self.is_selected: bool = False
         self.phoneme: str = ""
         self.onset: float = 0.0
@@ -51,10 +52,10 @@ class _FallbackNoteEvent:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "note_number": self.note_number,
             "start_time": self.start_time,
             "duration": self.duration,
-            "note_number": self.note_number,
-            "lyrics": self.lyrics,
+            "lyric": self.lyric,
             "phoneme": self.phoneme,
             "onset": self.onset,
             "overlap": self.overlap,
