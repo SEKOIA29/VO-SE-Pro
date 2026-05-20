@@ -5,7 +5,7 @@ import ctypes
 import wave
 import numpy as np
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Protocol, runtime_checkable
+from typing import List, Dict, Any, Optional, Protocol, runtime_checkable, cast
 
 from PySide6.QtWidgets import (QWidget, QApplication, QInputDialog, QLineEdit,
                                QMainWindow, QMenu)
