@@ -443,19 +443,19 @@ class TimelineWidget(QWidget):
             ],
             "parameters": {
                 "pitch": [
-                    {"time": ev.time, "value": ev.value} 
+                    {"time": cast(Any, ev).time, "value": cast(Any, ev).value} 
                     for ev in self.parameters.get("Pitch", [])
                 ],
                 "gender": [
-                    {"time": ev.time, "value": ev.value} 
+                    {"time": cast(Any, ev).time, "value": cast(Any, ev).value} 
                     for ev in self.parameters.get("Gender", [])
                 ],
                 "tension": [
-                    {"time": ev.time, "value": ev.value} 
+                    {"time": cast(Any, ev).time, "value": cast(Any, ev).value} 
                     for ev in self.parameters.get("Tension", [])
                 ],
                 "breath": [
-                    {"time": ev.time, "value": ev.value} 
+                    {"time": cast(Any, ev).time, "value": cast(Any, ev).value} 
                     for ev in self.parameters.get("Breath", [])
                 ],
             },
