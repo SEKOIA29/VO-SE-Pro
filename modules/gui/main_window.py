@@ -5922,9 +5922,11 @@ class MainWindow(QMainWindow):
         """エンジン側のキャッシュ生成を安全に実行するサブメソッド"""
         try:
             # エンジン側でNoteEvent構造体への変換と、先行波形計算（UTAUならresampler呼び出し等）を行う
-            if self.vo_se_engine:
+            if self.vo_se_engine and hasattr(self.vo_se_engine, "prepare_cache"):
                 self.vo_se_engine.prepare_cache(notes)
                 print(f"DEBUG: Cache prepared for {len(notes)} notes.")
+            elif self.vo_se_engine:
+                print("⚠️ Engine does not support prepare_cache; skipping cache warm-up.")
         except Exception as e:
             print(f"❌ Engine Cache Error: {e}")
 
@@ -6174,8 +6176,10 @@ class MainWindow(QMainWindow):
             "default_voice": getattr(self, 'current_voice', None),
             "volume": getattr(self, 'volume', 1.0)
         }
-        if hasattr(self, 'config_manager'):
-            self.config_manager.save_config(config)
+        if hasattr(self, 'config_manager') and self.config_manager is not None and hasattr(self.config_manager, 'save_config'):
+        save_config = getattr(config_manager, "save_config", None)
+        if callable(save_config):
+            save_config(config)
         
         if hasattr(self, 'midi_manager') and self.midi_manager:
             self.midi_manager.stop()

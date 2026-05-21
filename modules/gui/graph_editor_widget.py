@@ -60,7 +60,7 @@ class GraphEditorWidget(QWidget):
         # 縦スクロール同期が必要になった時の拡張ポイント
         _ = offset
 
-    def sync_with_notes(self, notes: list) -> None:
+    def sync_with_notes(self, notes: Optional[list] = None) -> None:
         """MainWindow互換: ノート変更時の同期フック。"""
         # 現時点ではグラフ側で直接ノート保持していないため no-op
         _ = notes

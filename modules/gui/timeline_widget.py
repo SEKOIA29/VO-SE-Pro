@@ -1027,6 +1027,25 @@ class TimelineWidget(QWidget):
                     self.notes_changed_signal.emit()
                     self.update()
                 return
+        # 既存ノート外をダブルクリックした場合は新規ノートを配置
+        beat_pos = (pos_f.x() + self.scroll_x_offset) / self.pixels_per_beat
+        start_beat = max(0.0, self.quantize(float(beat_pos)))
+        note_number = 127 - int((pos_f.y() + self.scroll_y_offset) / self.key_height_pixels)
+        note_number = max(0, min(127, note_number))
+        duration_beat = max(self.quantize_resolution, self.quantize_resolution)
+
+        new_note = NoteEventClass(
+            note_number=note_number,
+            start_time=self.beats_to_seconds(start_beat),
+            duration=self.beats_to_seconds(duration_beat),
+            lyric="la",
+        )
+        new_note.is_selected = False
+        new_note.phoneme = self.analyze_lyric_to_phoneme("la")
+        self.notes_list.append(new_note)
+        self._invalidate_note_rects()
+        self.notes_changed_signal.emit()
+        self.update()
 
     # ============================================================
     # キーボード操作

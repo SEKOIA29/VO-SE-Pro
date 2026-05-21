@@ -141,7 +141,7 @@ class VoSeEngine:
         """
         print("--- 歌唱ピッチ解析実行 ---")
         np = importlib.import_module("numpy")
-        
+ 
         if not notes:
             return np.zeros(1, dtype=np.float32)
 
@@ -149,13 +149,22 @@ class VoSeEngine:
         min_hz = 20.0
         max_hz = 5000.0
 
+        def _read_note_value(note_obj, key, default=None):
+            if isinstance(note_obj, dict):
+                return note_obj.get(key, default)
+            return getattr(note_obj, key, default)
+
         hz_segments = []
         for note in notes:
-            duration = float(note.get("duration", 0.0) or 0.0)
+            duration = float(_read_note_value(note, "duration", 0.0) or 0.0)
             if duration <= 0:
                 continue
 
-            midi_note = note.get("note_number", note.get("pitch", note.get("note", 69)))
+            midi_note = _read_note_value(
+                note,
+                "note_number",
+                _read_note_value(note, "pitch", _read_note_value(note, "note", 69))
+            )
             try:
                 midi_value = float(midi_note)
             except (TypeError, ValueError):
