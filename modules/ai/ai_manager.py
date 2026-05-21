@@ -166,6 +166,14 @@ class AIManager(QObject):
         words_map = self.phoneme_dict.get("words", {})
         if text in words_map:
             return words_map[text]
+        try:
+            import pyopenjtalk
+            g2p_result = pyopenjtalk.g2p(text, kana=False)
+            phonemes = [p for p in g2p_result.split() if p]
+            if phonemes:
+                return phonemes
+        except Exception:
+            pass
         logger.debug(f"Word '{text}' not in dict, using fallback decomposition.")
         return list(text)
 

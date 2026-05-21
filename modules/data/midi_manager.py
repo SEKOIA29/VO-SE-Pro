@@ -30,6 +30,16 @@ class MidiSignals(QObject):
 # シングルトンとしてエクスポート
 midi_signals = MidiSignals()
 
+def _extract_lyric(message: Any) -> str:
+    """MIDIメッセージから歌詞候補を抽出。見つからない場合は母音デフォルト。"""
+    for attr in ("text", "lyric", "lyrics"):
+        value = getattr(message, attr, None)
+        if isinstance(value, str):
+            candidate = value.strip()
+            if candidate:
+                return candidate
+    return "a"
+
 def load_midi_file(filepath: str) -> Optional[List[Dict[str, Any]]]:
     """MIDIファイルを読み込み、NoteEventのリスト（辞書形式）を返す（1行も省略なし）"""
     try:
@@ -75,7 +85,7 @@ def load_midi_file(filepath: str) -> Optional[List[Dict[str, Any]]]:
                                 note_number=m_note,
                                 start_time=start_sec,
                                 duration=duration,
-                                lyric="a"  # ✅ デフォルト歌詞
+                                lyric=_extract_lyric(msg)
                             ))
                             # velocity を取得したい場合は別途処理
                             last_note = notes[-1]

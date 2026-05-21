@@ -133,14 +133,53 @@ class VoSeEngine:
         except Exception as e:
             return [f"Analysis failed: {str(e)}"]
 
-    def analyze_singing_pitch(self, notes):
+    def analyze_singing_pitch(self, notes, sample_rate=48000, frame_period_ms=5.0):
         """
-        【歌唱用】ノート情報（音符）からピッチ（F0）配列を生成します。
-        notes: [{'pitch': 60, 'duration': 1.0}, ...] のようなリストを想定
+        【歌唱用】ノート列からF0カーブを生成する。
+        notes: [{'note_number': 60, 'duration': 0.5}, ...] を想定。
+        pitch / note も受け付ける。
         """
         print("--- 歌唱ピッチ解析実行 ---")
         np = importlib.import_module("numpy")
-        f0_curve = np.full(1000, 440.0, dtype=np.float32)  # テスト用の固定ピッチ
+        
+        if not notes:
+            return np.zeros(1, dtype=np.float32)
+
+        frame_sec = max(frame_period_ms / 1000.0, 1e-4)
+        min_hz = 20.0
+        max_hz = 5000.0
+
+        hz_segments = []
+        for note in notes:
+            duration = float(note.get("duration", 0.0) or 0.0)
+            if duration <= 0:
+                continue
+
+            midi_note = note.get("note_number", note.get("pitch", note.get("note", 69)))
+            try:
+                midi_value = float(midi_note)
+            except (TypeError, ValueError):
+                midi_value = 69.0
+
+            hz = 440.0 * (2.0 ** ((midi_value - 69.0) / 12.0))
+            hz = min(max(hz, min_hz), max_hz)
+
+            frame_count = max(1, int(round(duration / frame_sec)))
+            hz_segments.append(np.full(frame_count, hz, dtype=np.float32))
+
+        if not hz_segments:
+            return np.zeros(1, dtype=np.float32)
+
+        f0_curve = np.concatenate(hz_segments)
+
+        # ノート境界を滑らかに補間（簡易ポルタメント）
+        smooth_window = max(1, int(round(0.03 / frame_sec)))  # 約30ms
+        if smooth_window > 1 and len(f0_curve) > smooth_window:
+            kernel = np.hanning(smooth_window)
+            kernel_sum = float(kernel.sum())
+            if kernel_sum > 0:
+                kernel /= kernel_sum
+                f0_curve = np.convolve(f0_curve, kernel, mode='same').astype(np.float32)
         return f0_curve
 
     def process_with_c(self, data_array, f0_array=None):
