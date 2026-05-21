@@ -75,8 +75,11 @@ def load_midi_file(filepath: str) -> Optional[List[Dict[str, Any]]]:
                                 note_number=m_note,
                                 start_time=start_sec,
                                 duration=duration,
-                                velocity=velocity
+                                lyric="a"  # ✅ デフォルト歌詞
                             ))
+                            # velocity を取得したい場合は別途処理
+                            last_note = notes[-1]
+                            last_note.velocity = velocity  # ✅ 属性に代入
         return [n.to_dict() for n in notes]
     except Exception as e:
         print(f"MIDIファイルの読み込みに失敗しました: {e}")

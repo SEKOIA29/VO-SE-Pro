@@ -5,7 +5,7 @@ import ctypes
 import wave
 import numpy as np
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Protocol, runtime_checkable
+from typing import List, Dict, Any, Optional, Protocol, runtime_checkable, cast
 
 from PySide6.QtWidgets import (QWidget, QApplication, QInputDialog, QLineEdit,
                                QMainWindow, QMenu)
@@ -36,12 +36,13 @@ class NoteEventProtocol(Protocol):
 
 
 class _FallbackNoteEvent:
-    def __init__(self, start_time: float, duration: float,
-                 note_number: int, lyrics: str = "la") -> None:
+    def __init__(self, note_number: int, start_time: float, 
+                 duration: float, lyric: str = "あ") -> None:  #順序統一
+        self.note_number: int = note_number
         self.start_time: float = start_time
         self.duration: float = duration
-        self.note_number: int = note_number
-        self.lyrics: str = lyrics
+        self.lyric: str = lyric  # 
+        self.lyrics: str = lyric  # 
         self.is_selected: bool = False
         self.phoneme: str = ""
         self.onset: float = 0.0
@@ -51,10 +52,10 @@ class _FallbackNoteEvent:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "note_number": self.note_number,
             "start_time": self.start_time,
             "duration": self.duration,
-            "note_number": self.note_number,
-            "lyrics": self.lyrics,
+            "lyric": self.lyric,
             "phoneme": self.phoneme,
             "onset": self.onset,
             "overlap": self.overlap,
@@ -210,10 +211,10 @@ class TimelineWidget(QWidget):
                 # --- 修正ポイント: 定義済みの NoteEventClass (Fallback含む) を使用 ---
                 # これにより start_time などの属性が静的解析でも正しく認識されます
                 note = NoteEventClass(
+                    note_number=int(item.get("note_number", 60)),      # ✅ 正しい順序
                     start_time=float(item.get("start_time", 0.0)),
                     duration=float(item.get("duration", 0.5)),
-                    note_number=int(item.get("note_number", 60)),
-                    lyrics=str(item.get("lyrics", "la"))
+                    lyric=str(item.get("lyric", item.get("lyrics", "la")))  # ✅ 後方互換性
                 )
                 note.is_selected = False
                 # -----------------------------------------------------------
@@ -441,10 +442,22 @@ class TimelineWidget(QWidget):
                 for n in self.notes_list
             ],
             "parameters": {
-                "pitch": self.parameters.get("Pitch", {}),
-                "gender": self.parameters.get("Gender", {}),
-                "tension": self.parameters.get("Tension", {}),
-                "breath": self.parameters.get("Breath", {}),
+                "pitch": [
+                    {"time": cast(Any, ev).time, "value": cast(Any, ev).value} 
+                    for ev in self.parameters.get("Pitch", [])
+                ],
+                "gender": [
+                    {"time": cast(Any, ev).time, "value": cast(Any, ev).value} 
+                    for ev in self.parameters.get("Gender", [])
+                ],
+                "tension": [
+                    {"time": cast(Any, ev).time, "value": cast(Any, ev).value} 
+                    for ev in self.parameters.get("Tension", [])
+                ],
+                "breath": [
+                    {"time": cast(Any, ev).time, "value": cast(Any, ev).value} 
+                    for ev in self.parameters.get("Breath", [])
+                ],
             },
         }
 
@@ -489,10 +502,14 @@ class TimelineWidget(QWidget):
 
     def add_note_from_midi(self, pitch: int, start_beat: float, duration_beat: float) -> None:
         new_note = NoteEventClass(
-            self.beats_to_seconds(start_beat), self.beats_to_seconds(duration_beat), pitch, "la")
+            note_number=pitch,                              # ✅ 修正
+            start_time=self.beats_to_seconds(start_beat),   # ✅ 修正
+            duration=self.beats_to_seconds(duration_beat),  # ✅ 修正
+            lyric="la"
+        )
         new_note.phoneme = "la"
         self.notes_list.append(new_note)
-        self._invalidate_note_rects()  # [OPT-3]
+        self._invalidate_note_rects()
         self.notes_changed_signal.emit()
         self.update()
 
@@ -1024,10 +1041,10 @@ class TimelineWidget(QWidget):
         key_int = event.key()
 
         layer_map = {
-            Qt.Key.Key_1.value: "Dynamics",
-            Qt.Key.Key_2.value: "Pitch",
-            Qt.Key.Key_3.value: "Vibrato",
-            Qt.Key.Key_4.value: "Formant",
+            Qt.Key.Key_1.value: "Pitch",      # 
+            Qt.Key.Key_2.value: "Gender",     # 
+            Qt.Key.Key_3.value: "Tension",    # 
+            Qt.Key.Key_4.value: "Breath",     #
         }
 
         main_window = self.window()
