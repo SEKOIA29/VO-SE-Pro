@@ -11,6 +11,7 @@ except Exception:
     ort = None
 from concurrent.futures import ThreadPoolExecutor
 from PySide6.QtCore import QObject, Signal
+from modules.data.licensing import LicenseManager
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +48,28 @@ class AIManager(QObject):
     # ============================================================
 
     def _get_model_path(self) -> str:
-        """PyInstaller 環境でも動作するモデルパス解決"""
+        """
+        PyInstaller 環境でも動作するモデルパス解決。
+        Pro の場合は g_00074000 を優先利用する。
+        """
         if getattr(sys, 'frozen', False):
             base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
         else:
             base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        return os.path.join(base, "models", "aural_dynamics.onnx")
+        models_dir = os.path.join(base, "models")
+
+        if LicenseManager.is_pro():
+            pro_candidates = [
+                os.path.join(models_dir, "g_00074000.onnx"),
+                os.path.join(models_dir, "g_00074000.pth"),
+            ]
+            for candidate in pro_candidates:
+                if os.path.exists(candidate):
+                    logger.info(f"Pro model selected: {candidate}")
+                    return candidate
+            logger.warning("Pro plan is active but g_00074000 model was not found. Falling back to standard model.")
+
+        return os.path.join(models_dir, "aural_dynamics.onnx")
 
     def _get_dict_path(self) -> str:
         """音素辞書ファイルのパス解決"""
@@ -123,6 +140,12 @@ class AIManager(QObject):
             # 2. ONNX Runtime セッション初期化
             if not os.path.exists(self.model_path):
                 self.error.emit(f"Model not found: {self.model_path}")
+                return False
+            if self.model_path.lower().endswith(".pth"):
+                self.error.emit(
+                    f"Unsupported model format for this engine: {self.model_path}. "
+                    "Convert g_00074000.pth to ONNX or place g_00074000.onnx in models/."
+                )
                 return False
 
             available = ort.get_available_providers()
