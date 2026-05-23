@@ -6176,8 +6176,8 @@ class MainWindow(QMainWindow):
             "default_voice": getattr(self, 'current_voice', None),
             "volume": getattr(self, 'volume', 1.0)
         }
-        if hasattr(self, 'config_manager') and self.config_manager is not None and hasattr(self.config_manager, 'save_config'):
-        save_config = getattr(config_manager, "save_config", None)
+        if getattr(self, 'config_manager', None) is not None:
+            save_config = getattr(self.config_manager, "save_config", None)
         if callable(save_config):
             save_config(config)
         
