@@ -213,7 +213,7 @@ jobs:
       - name: Pack Official Voice Data
         shell: bash
         run: |
-          TARGET_SCRIPT=$(find . -name "pack_voice.py" -o -name "pack_all_voices.py" | head -n 1)
+          TARGET_SCRIPT=$(find . \(-name "pack_voice.py" -o -name "pack_all_voices.py" \) -type f | head -n 1)
           if [ -n "$TARGET_SCRIPT" ]; then
             echo "Found script: $TARGET_SCRIPT"
             SCRIPT_DIR=$(dirname "$TARGET_SCRIPT")
@@ -286,26 +286,39 @@ jobs:
             cd dist && zip -ry "../dist_out/VO-SE_vocal_Mac_${MAC_LABEL}_update.zip" VO-SE_vocal_Mac.app && cd ..
           fi
 
+      - name: Verify macOS binary linkage
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_BIN="dist/VO-SE_vocal_Mac.app/Contents/MacOS/VO-SE_vocal_Mac"
+          test -f "$APP_BIN"
+          chmod +x "$APP_BIN"
+          echo "== otool main binary =="
+          otool -L "$APP_BIN"
+          echo "== verify bundled vose core =="
+          find dist -name "libvose_core.dylib" -type f
+
       - name: 🍎 Verify and Fix macOS Library Linkage (Complete & Final)
         if: startsWith(matrix.os, 'macos')
         shell: bash
         run: |
-          set +e
+          set -euo pipefail
           APP_BIN=$(find dist -name "VO-SE_vocal_Mac" -type f | grep "\.app/Contents/MacOS/VO-SE_vocal_Mac" | head -n 1)
           chmod +x "$APP_BIN"
           find dist -name "libvose_core.dylib" -type f | while read -r DYLIB_BIN; do
             chmod 755 "$DYLIB_BIN"
             LIB_NAME=$(basename "$DYLIB_BIN")
-            install_name_tool -id "$LIB_NAME" "$DYLIB_BIN" 2>&1 || true
+            install_name_tool -id "$LIB_NAME" "$DYLIB_BIN"
             OLD_REF=$(otool -L "$APP_BIN" | grep "libvose_core" | awk '{print $1}')
             if [ -n "$OLD_REF" ]; then
-              install_name_tool -change "$OLD_REF" "@executable_path/../Frameworks/bin/$LIB_NAME" "$APP_BIN" 2>&1 || true
-              install_name_tool -change "$OLD_REF" "@loader_path/bin/$LIB_NAME" "$APP_BIN" 2>&1 || true
+            install_name_tool -change "$OLD_REF" "@executable_path/../Frameworks/bin/$LIB_NAME" "$APP_BIN"
             fi
-            codesign --force --deep --sign - "$DYLIB_BIN" 2>&1 || true
+            codesign --force --deep --sign - "$DYLIB_BIN"
           done
-          codesign --force --deep --sign - "dist/VO-SE_vocal_Mac.app" 2>&1 || true
-          set -e
+          codesign --force --deep --sign - "dist/VO-SE_vocal_Mac.app"
+          codesign --verify --deep --strict "dist/VO-SE_vocal_Mac.app"
+          spctl --assess --type execute "dist/VO-SE_vocal_Mac.app" || true
 
       - name: 📦 Save Artifacts
         uses: actions/upload-artifact@v4
@@ -355,7 +368,7 @@ jobs:
   publish:
     name: Publish Release
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, smoke-linux]
     steps:
       - name: Download build artifacts
         uses: actions/download-artifact@v5
