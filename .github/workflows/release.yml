@@ -213,17 +213,26 @@ jobs:
       - name: Pack Official Voice Data
         shell: bash
         run: |
-          TARGET_SCRIPT=$(find . \(-name "pack_voice.py" -o -name "pack_all_voices.py" \) -type f | head -n 1)
+          # 1. 括弧のスペースを修正してスクリプトを検索
+          TARGET_SCRIPT=$(find . \( -name "pack_voice.py" -o -name "pack_all_voices.py" \) -type f | head -n 1)
+          
           if [ -n "$TARGET_SCRIPT" ]; then
             echo "Found script: $TARGET_SCRIPT"
-            SCRIPT_DIR=$(dirname "$TARGET_SCRIPT")
-            cd "$SCRIPT_DIR"
-            python $(basename "$TARGET_SCRIPT")
-            cd -
+            
+            # 2. ディレクトリ移動のトラブルを防ぐため、絶対パスを取得
+            ABS_SCRIPT_PATH=$(pwd)/${TARGET_SCRIPT#./}
+            SCRIPT_DIR=$(dirname "$ABS_SCRIPT_PATH")
+            SCRIPT_NAME=$(basename "$ABS_SCRIPT_PATH")
+            
+            # 3. ディレクトリを移動して実行（pushd / popd の方が安全）
+            pushd "$SCRIPT_DIR" > /dev/null
+            python "$SCRIPT_NAME"
+            popd > /dev/null
           else
             echo "Error: Packing script not found."
             exit 1
           fi
+
 
       - name: Package App
         shell: bash
