@@ -50,18 +50,28 @@ static uint64_t fnv1a_hash(const std::string& str) {
 static std::string generate_cache_hash(const std::string& wav_path) {
     try {
         fs::path p(wav_path);
-        if (!fs::exists(p)) return "0000000000000000";
-        auto last_time = static_cast<long long>(
-            fs::last_write_time(p).time_since_epoch().count());
-        auto file_size = static_cast<unsigned long long>(fs::file_size(p));
-        std::string seed = p.string() + std::to_string(last_time)
-                                      + std::to_string(file_size);
-        uint64_t h = fnv1a_hash(seed);
-        std::stringstream ss;
-        ss << std::hex << std::setw(16) << std::setfill('0') << h;
-        return ss.str();
+        if (fs::exists(p)) {
+            // ディスク上のファイル: パス + 更新時刻 + サイズでハッシュ
+            auto last_time = static_cast<long long>(
+                fs::last_write_time(p).time_since_epoch().count());
+            auto file_size = static_cast<unsigned long long>(fs::file_size(p));
+            std::string seed = p.string() + std::to_string(last_time)
+                                          + std::to_string(file_size);
+            uint64_t h = fnv1a_hash(seed);
+            std::stringstream ss;
+            ss << std::hex << std::setw(16) << std::setfill('0') << h;
+            return ss.str();
+        } else {
+            // エンベッドボイス（ファイルシステム上に存在しない）:
+            // エイリアス名をハッシュ化。旧実装は "0000000000000000" 固定で
+            // 全ボイスが同一キャッシュファイルに衝突していた。
+            uint64_t h = fnv1a_hash(wav_path);
+            std::stringstream ss;
+            ss << "emb_" << std::hex << std::setw(16) << std::setfill('0') << h;
+            return ss.str();
+        }
     } catch (...) {
-        return "error_hash";
+        return "err_" + std::to_string(fnv1a_hash(wav_path));
     }
 }
 
@@ -120,7 +130,11 @@ struct NotePrepass {
     int64_t                              note_samples = 0;
     std::shared_ptr<const EmbeddedVoice> ev;
     std::shared_ptr<const EmbeddedVoice> prev_ev;
-    const OtoEntry*                      oto          = nullptr;
+    // raw pointer ではなく値コピー。
+    // g_oto_db は set_oto_data() で再構築されうるため、
+    // ポインタを長命なオブジェクトに保持すると UB になる。
+    OtoEntry                             oto          = {};
+    bool                                 has_oto      = false;
 
     NotePrepass() = default;
     NotePrepass(NoteState s, int64_t ns,
@@ -128,7 +142,10 @@ struct NotePrepass {
                 std::shared_ptr<const EmbeddedVoice> pe = nullptr,
                 const OtoEntry* o = nullptr)
         : state(s), note_samples(ns), ev(std::move(e)),
-          prev_ev(std::move(pe)), oto(o) {}
+          prev_ev(std::move(pe))
+    {
+        if (o) { oto = *o; has_oto = true; }
+    }
 };
 
 // ============================================================
@@ -150,7 +167,8 @@ struct SynthesisScratchPad {
     int reserved_f0 = 0, reserved_bins = 0;
 
     void ensure_spec(int f0_length, int spec_bins) {
-        if (f0_length > reserved_f0 || spec_bins > reserved_bins) {
+        const bool needs_resize = (f0_length > reserved_f0 || spec_bins > reserved_bins);
+        if (needs_resize) {
             reserved_f0   = std::max(f0_length,  reserved_f0);
             reserved_bins = std::max(spec_bins,  reserved_bins);
             const size_t total = static_cast<size_t>(reserved_f0) * reserved_bins;
@@ -160,14 +178,15 @@ struct SynthesisScratchPad {
             flat_spec_prev.resize(total); flat_ap_prev .resize(total);
             spec_ptrs_prev.resize(reserved_f0); ap_ptrs_prev .resize(reserved_f0);
             flat_mod_ap   .resize(total); mod_ap_ptrs  .resize(reserved_f0);
-        }
-        for (int i = 0; i < reserved_f0; ++i) {
-            const size_t off  = static_cast<size_t>(i) * reserved_bins;
-            spec_ptrs     [i] = &flat_spec     [off];
-            ap_ptrs       [i] = &flat_ap       [off];
-            spec_ptrs_prev[i] = &flat_spec_prev[off];
-            ap_ptrs_prev  [i] = &flat_ap_prev  [off];
-            mod_ap_ptrs   [i] = &flat_mod_ap   [off];
+            // ポインタ再構築はリサイズ時のみ（毎呼び出しは不要）
+            for (int i = 0; i < reserved_f0; ++i) {
+                const size_t off  = static_cast<size_t>(i) * reserved_bins;
+                spec_ptrs     [i] = &flat_spec     [off];
+                ap_ptrs       [i] = &flat_ap       [off];
+                spec_ptrs_prev[i] = &flat_spec_prev[off];
+                ap_ptrs_prev  [i] = &flat_ap_prev  [off];
+                mod_ap_ptrs   [i] = &flat_mod_ap   [off];
+            }
         }
     }
 
@@ -561,31 +580,42 @@ void blend_transition_spectra(
 // C++側でフレーム単位に適用することで遅延ゼロ・Python依存なし。
 // ============================================================
 
-void apply_vibrato(double* f0, int f0_length, double frame_period_ms)
+// ============================================================
+// apply_vibrato
+//
+// ノート後半50%からビブラートを自然に立ち上げる。
+// フェードイン: raised cosine で 0→1（後半最初の25%で飽和）
+// 波形: sin（6Hz・±15cent）
+//
+// global_time_offset_sec: 曲先頭からこのノート開始までの秒数。
+//   これを渡すことで、ノートをまたいでも位相が連続する。
+//   0.0 を渡すと旧来の「ノート先頭で位相リセット」動作になる。
+// ============================================================
+
+void apply_vibrato(double* f0, int f0_length, double frame_period_ms,
+                   double global_time_offset_sec = 0.0)
 {
     if (!f0 || f0_length <= 0) return;
 
-    // ビブラートが始まるフレーム（後半50%から）
     const int vib_start = f0_length / 2;
     const int vib_len   = f0_length - vib_start;
     if (vib_len <= 0) return;
 
-    constexpr double kVibFreqHz  = 6.0;         // 6Hz
-    constexpr double kVibDepth   = 0.00868;      // 約15cent
-    const double     frame_sec   = frame_period_ms / 1000.0;
+    constexpr double kVibFreqHz = 6.0;
+    constexpr double kVibDepth  = 0.00868;   // 約15cent
+    const double     frame_sec  = frame_period_ms / 1000.0;
 
     for (int j = vib_start; j < f0_length; ++j) {
-        // フェードイン: 後半の最初の25%で0→1に立ち上げる
         const double fade_progress =
             static_cast<double>(j - vib_start) / std::max(vib_len - 1, 1);
-        const double fade_in = std::min(fade_progress * 4.0, 1.0); // 25%で飽和
+        const double fade_in = std::min(fade_progress * 4.0, 1.0);
 
-        const double t_sec = static_cast<double>(j) * frame_sec;
-        const double vib   = std::sin(2.0 * M_PI * kVibFreqHz * t_sec)
-                             * kVibDepth * f0[j] * fade_in;
-        f0[j] += vib;
-        // F0が負にならないようにクランプ
-        if (f0[j] < 50.0) f0[j] = 50.0;
+        // グローバル時間で位相を計算 → ノートをまたいでも連続
+        const double t_global = global_time_offset_sec
+                                + static_cast<double>(j) * frame_sec;
+        const double vib = std::sin(2.0 * M_PI * kVibFreqHz * t_global)
+                           * kVibDepth * f0[j] * fade_in;
+        f0[j] = std::max(50.0, f0[j] + vib);
     }
 }
 
@@ -683,6 +713,7 @@ struct SynthNoteParams {
     NoteEvent&         n;
     int                fft_size;
     int                spec_bins;
+    double             global_time_sec = 0.0;  // 曲先頭からのオフセット（ビブラート位相連続化）
 };
 
 static const OtoEntry kDefaultOto = {};
@@ -700,7 +731,7 @@ void synthesize_note_impl(const SynthNoteParams& p, std::vector<double>& note_bu
     const double  note_ms       = static_cast<double>(note_samples) / kFs * 1000.0;
     const double  src_ms        = get_source_ms(*pp.ev);
     const int     output_frames = static_cast<int>(note_ms / kFramePeriod);
-    const OtoEntry& current_oto = pp.oto ? *pp.oto : kDefaultOto;
+    const OtoEntry& current_oto = pp.has_oto ? pp.oto : kDefaultOto;
 
     auto cache_cur = get_or_analyze(pp.ev, fft_size, spec_bins);
 
@@ -752,7 +783,7 @@ void synthesize_note_impl(const SynthNoteParams& p, std::vector<double>& note_bu
     }
 
     smooth_f0_gaussian(tl_scratch.f0.data(), output_frames);
-    apply_vibrato(tl_scratch.f0.data(), output_frames, kFramePeriod);
+    apply_vibrato(tl_scratch.f0.data(), output_frames, kFramePeriod, p.global_time_sec);
 
     note_buf.assign(static_cast<size_t>(note_samples), 0.0);
     VOSE_Synthesis(tl_scratch.f0.data(), output_frames,
@@ -851,6 +882,13 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         }
 
         const int64_t ns = note_samples_safe(pitch_len);
+        if (!notes[i].wav_path) {
+            prepass[i]      = NotePrepass(NoteState::NO_VOICE, ns, nullptr);
+            prev_renderable = false;
+            last_ev         = nullptr;
+            total_samples  += ns;
+            continue;
+        }
         auto ev = find_voice_ref(notes[i].wav_path);
 
         const OtoEntry* found_oto = nullptr;
@@ -894,34 +932,61 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
 
     // ----------------------------------------------------------------
     // パス2-A: 各ノートの note_buf を並列合成
+    //
+    // 設計上の注意:
+    //   tl_scratch は thread_local なので「スレッドごとに独立」だが、
+    //   std::async(launch::async) は実装によってスレッドプールを再利用する。
+    //   同じスレッドが2ノード分の synthesize_note_impl を
+    //   ネストして呼び出すことはないが、プールの枯渇で
+    //   launch::deferred（= メインスレッドで実行）に fallback する実装もある。
+    //   安全のため、1ノート = 1スレッドを明示的に生成する方式にする。
+    //   スレッド数は hardware_concurrency でキャップし、バッチ処理する。
     // ----------------------------------------------------------------
     const int max_threads = static_cast<int>(
         std::max(1u, std::thread::hardware_concurrency()));
 
     std::vector<std::vector<double>> note_bufs(note_count);
 
-    auto synthesize_note = [&](int idx) {
-        SynthNoteParams p{ prepass[idx], notes[idx], fft_size, spec_bins };
-        synthesize_note_impl(p, note_bufs[idx]);
-    };
+    // RENDERABLE なノートのインデックスだけ集める
+    std::vector<int> renderable_indices;
+    renderable_indices.reserve(note_count);
+    for (int i = 0; i < note_count; ++i)
+        if (prepass[i].state == NoteState::RENDERABLE)
+            renderable_indices.push_back(i);
 
+    // ノートごとのグローバル時間オフセット（ビブラート位相連続化用）
+    std::vector<double> note_global_time(note_count, 0.0);
     {
-        std::vector<std::future<void>> futures;
-        futures.reserve(max_threads);
-
+        double acc_sec = 0.0;
         for (int i = 0; i < note_count; ++i) {
-            if (prepass[i].state != NoteState::RENDERABLE) continue;
-
-            futures.push_back(std::async(std::launch::async,
-                                         synthesize_note, i));
-
-            if (static_cast<int>(futures.size()) >= max_threads) {
-                for (auto& f : futures) f.get();
-                futures.clear();
-            }
+            note_global_time[i] = acc_sec;
+            if (prepass[i].note_samples > 0)
+                acc_sec += static_cast<double>(prepass[i].note_samples) / kFs;
         }
+    }
 
-        for (auto& f : futures) f.get();
+    // max_threads ずつバッチ処理
+    // 各スレッドは独立した tl_scratch（thread_local）を持つため競合しない
+    for (int batch_start = 0;
+         batch_start < static_cast<int>(renderable_indices.size());
+         batch_start += max_threads)
+    {
+        const int batch_end = std::min(
+            batch_start + max_threads,
+            static_cast<int>(renderable_indices.size()));
+
+        std::vector<std::thread> threads;
+        threads.reserve(batch_end - batch_start);
+
+        for (int bi = batch_start; bi < batch_end; ++bi) {
+            const int idx = renderable_indices[bi];
+            threads.emplace_back([&, idx] {
+                SynthNoteParams p{ prepass[idx], notes[idx], fft_size, spec_bins,
+                                   note_global_time[idx] };
+                synthesize_note_impl(p, note_bufs[idx]);
+            });
+        }
+        for (auto& t : threads) t.join();
     }
 
     // ----------------------------------------------------------------
@@ -944,7 +1009,7 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         }
 
         const int64_t note_samples = pp.note_samples;
-        const OtoEntry& current_oto = pp.oto ? *pp.oto : kDefaultOto;
+        const OtoEntry& current_oto = pp.has_oto ? pp.oto : kDefaultOto;
 
         const int64_t pre_samples     =
             static_cast<int64_t>(current_oto.preutterance * kFs / 1000.0);
