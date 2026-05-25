@@ -3,6 +3,8 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <unordered_map>
+#include <list>
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -112,11 +114,63 @@ struct AnalysisCache {
     int                 spec_bins = 0;
 };
 
-// キーを shared_ptr のアドレスではなくパス文字列にする。
-// shared_ptr のアドレス比較ではボイス再ロード時に必ずキャッシュミスが起き、
-// ディスクキャッシュが効いていても毎回 build_analysis_cache が走る。
-// パス文字列をキーにすれば再ロード後もメモリキャッシュがヒットする。
-static std::map<std::string, std::shared_ptr<const AnalysisCache>> g_analysis_cache;
+// ============================================================
+// AnalysisCacheStore — LRU エビクション付きメモリキャッシュ
+//
+// 問題: g_analysis_cache が無制限に増える。
+//   100音素 × (harvest_len=2000) × (spec_bins=513) × 2配列 × 8byte
+//   ≈ 1音素あたり約16MB → 100音素で1.6GB
+//
+// 解決: 最大エントリ数を kMaxCacheEntries に制限し、
+//   LRU（Least Recently Used）で古いエントリを追い出す。
+//   アクセス順を std::list で管理し、O(1) エビクションを実現する。
+// ============================================================
+static constexpr size_t kMaxCacheEntries = 64; // 約1GB上限（16MB × 64）
+
+struct CacheStore {
+    using Key   = std::string;
+    using Value = std::shared_ptr<const AnalysisCache>;
+
+    // アクセス順リスト（先頭=最近使用）
+    std::list<std::pair<Key, Value>> lru_list;
+    // キー → リストイテレータ（O(1)アクセス用）
+    std::unordered_map<Key, std::list<std::pair<Key,Value>>::iterator> index;
+
+    // キャッシュに追加または更新（古いエントリを LRU で追い出す）
+    void put(const Key& key, const Value& val) {
+        auto it = index.find(key);
+        if (it != index.end()) {
+            lru_list.erase(it->second);
+            index.erase(it);
+        }
+        lru_list.push_front({key, val});
+        index[key] = lru_list.begin();
+
+        while (index.size() > kMaxCacheEntries) {
+            const Key& old_key = lru_list.back().first;
+            index.erase(old_key);
+            lru_list.pop_back();
+        }
+    }
+
+    // キャッシュから取得（ヒット時は先頭に移動してアクセス順を更新）
+    Value get(const Key& key) {
+        auto it = index.find(key);
+        if (it == index.end()) return nullptr;
+        lru_list.splice(lru_list.begin(), lru_list, it->second);
+        return it->second->second;
+    }
+
+    // キー削除（ボイス再ロード時）
+    void erase(const Key& key) {
+        auto it = index.find(key);
+        if (it == index.end()) return;
+        lru_list.erase(it->second);
+        index.erase(it);
+    }
+};
+
+static CacheStore      g_analysis_cache;
 static std::shared_mutex g_analysis_cache_mutex;
 
 // ============================================================
@@ -242,28 +296,61 @@ static fs::path get_cache_dir() {
 
 static void save_cache(const fs::path& cache_path, const AnalysisCache& cache)
 {
-    FILE* fp = fopen(cache_path.string().c_str(), "wb");
+    // 書き途中でクラッシュしても破損キャッシュが残らないよう
+    // 一時ファイルに書いてからアトミックにリネームする
+    const fs::path tmp_path = fs::path(cache_path).replace_extension(".vsc.tmp");
+
+    FILE* fp = fopen(tmp_path.string().c_str(), "wb");
     if (!fp) return;
+
+    bool ok = true;
     VoseCacheHeader header;
     header.magic     = 0x45534F56;
     header.length    = cache.length;
     header.spec_bins = cache.spec_bins;
-    fwrite(&header, sizeof(header), 1, fp);
-    fwrite(cache.f0.data(),        sizeof(double), cache.length, fp);
-    fwrite(cache.time.data(),      sizeof(double), cache.length, fp);
+
+    ok &= (fwrite(&header,             sizeof(header),  1,            fp) == 1);
+    ok &= (fwrite(cache.f0.data(),     sizeof(double),  cache.length, fp) == static_cast<size_t>(cache.length));
+    ok &= (fwrite(cache.time.data(),   sizeof(double),  cache.length, fp) == static_cast<size_t>(cache.length));
     const size_t sc = static_cast<size_t>(cache.length) * cache.spec_bins;
-    fwrite(cache.flat_spec.data(), sizeof(double), sc, fp);
-    fwrite(cache.flat_ap.data(),   sizeof(double), sc, fp);
+    ok &= (fwrite(cache.flat_spec.data(), sizeof(double), sc, fp) == sc);
+    ok &= (fwrite(cache.flat_ap.data(),   sizeof(double), sc, fp) == sc);
     fclose(fp);
+
+    if (ok) {
+        std::error_code ec;
+        fs::rename(tmp_path, cache_path, ec);  // アトミック置換
+        if (ec) fs::remove(tmp_path, ec);      // リネーム失敗なら一時ファイルを削除
+    } else {
+        fs::remove(tmp_path);  // 書き込み失敗なら一時ファイルを削除
+    }
 }
 
-static std::shared_ptr<AnalysisCache> load_cache(const fs::path& path)
+static std::shared_ptr<AnalysisCache> load_cache(const fs::path& path,
+                                                   int expected_spec_bins = 0)
 {
     if (!fs::exists(path)) return nullptr;
+
     std::ifstream ifs(path, std::ios::binary);
-    VoseCacheHeader header;
-    ifs.read(reinterpret_cast<char*>(&header), sizeof(header));
+    if (!ifs) return nullptr;
+
+    VoseCacheHeader header{};
+    if (!ifs.read(reinterpret_cast<char*>(&header), sizeof(header))) return nullptr;
+
+    // マジック検証
     if (header.magic != 0x45534F56) return nullptr;
+
+    // サニティチェック: 長さ・spec_bins が異常値ならキャッシュ破棄
+    if (header.length <= 0 || header.length > 1'000'000) return nullptr;
+    if (header.spec_bins <= 0 || header.spec_bins > 65536) return nullptr;
+
+    // ④ spec_bins 互換チェック:
+    // fft_size が変わると spec_bins が変わる。異なるサイズのキャッシュを
+    // 読み込むと配列の境界外アクセスが起きる。不一致なら再解析させる。
+    if (expected_spec_bins > 0 && header.spec_bins != expected_spec_bins) {
+        return nullptr;
+    }
+
     auto cache = std::make_shared<AnalysisCache>();
     cache->length    = header.length;
     cache->spec_bins = header.spec_bins;
@@ -272,10 +359,21 @@ static std::shared_ptr<AnalysisCache> load_cache(const fs::path& path)
     const size_t sc = static_cast<size_t>(cache->length) * cache->spec_bins;
     cache->flat_spec.resize(sc);
     cache->flat_ap  .resize(sc);
-    ifs.read(reinterpret_cast<char*>(cache->f0.data()),        sizeof(double)*cache->length);
-    ifs.read(reinterpret_cast<char*>(cache->time.data()),      sizeof(double)*cache->length);
-    ifs.read(reinterpret_cast<char*>(cache->flat_spec.data()), sizeof(double)*sc);
-    ifs.read(reinterpret_cast<char*>(cache->flat_ap.data()),   sizeof(double)*sc);
+
+    // ③ 各 read の成否を検証。途中で失敗したらキャッシュ破棄して再解析
+    auto read_check = [&](void* dst, size_t bytes) -> bool {
+        return static_cast<bool>(
+            ifs.read(reinterpret_cast<char*>(dst), static_cast<std::streamsize>(bytes)));
+    };
+
+    if (!read_check(cache->f0.data(),        sizeof(double) * cache->length))  return nullptr;
+    if (!read_check(cache->time.data(),      sizeof(double) * cache->length))  return nullptr;
+    if (!read_check(cache->flat_spec.data(), sizeof(double) * sc))             return nullptr;
+    if (!read_check(cache->flat_ap.data(),   sizeof(double) * sc))             return nullptr;
+
+    // ストリームが正確に末尾に達しているか確認（余剰バイトがある = 破損）
+    if (ifs.peek() != std::ifstream::traits_type::eof()) return nullptr;
+
     return cache;
 }
 
@@ -355,26 +453,26 @@ get_or_analyze(std::shared_ptr<const EmbeddedVoice> ev_sp, int fft_size, int spe
     const std::string& key = ev_sp->path;
     {
         std::shared_lock<std::shared_mutex> rlock(g_analysis_cache_mutex);
-        auto it = g_analysis_cache.find(key);
-        if (it != g_analysis_cache.end()) return it->second;
+        auto cached = g_analysis_cache.get(key);
+        if (cached) return cached;
     }
 
     const std::string h_str     = generate_cache_hash(ev_sp->path);
     const fs::path    cache_file = get_cache_dir() / (h_str + ".vsc");
-    auto disk_cache = load_cache(cache_file);
+    auto disk_cache = load_cache(cache_file, spec_bins);  // ④ spec_bins を渡して互換チェック
 
     std::unique_lock<std::shared_mutex> wlock(g_analysis_cache_mutex);
     {
-        auto it = g_analysis_cache.find(key);
-        if (it != g_analysis_cache.end()) return it->second;
+        auto cached = g_analysis_cache.get(key);
+        if (cached) return cached;
     }
     if (disk_cache) {
-        g_analysis_cache[key] = disk_cache;
+        g_analysis_cache.put(key, disk_cache);
         return disk_cache;
     }
 
     auto cache = build_analysis_cache(*ev_sp, fft_size, spec_bins);
-    g_analysis_cache[key] = cache;
+    g_analysis_cache.put(key, cache);
     wlock.unlock();
     save_cache(cache_file, *cache);
     return cache;
@@ -492,20 +590,54 @@ static void apply_crossfade(std::vector<double>& dst, int64_t dst_size,
 // apply_gender_shift
 // ============================================================
 
-void apply_gender_shift(double* sr, int spec_bins, double gender, double* tmp)
+// ============================================================
+// apply_gender_shift  （フォルマント追従付き高音域補正）
+//
+// gender  ∈ [0.0, 1.0]
+//   0.5 = 変更なし
+//   < 0.5 = シフト比 < 1.0 → フォルマントを低域に（太い声）
+//   > 0.5 = シフト比 > 1.0 → フォルマントを高域に（細い声・ファルセット）
+//
+// f0_ratio: 現在フレームの F0 / 音源の基準 F0（= 解析時の平均F0）
+//   1.0 = 基準ピッチ（補正なし）
+//   > 1.0 = 高音域 → スペクトル包絡を引き伸ばしてフォルマントを追従させる
+//
+// 高音域補正の効果:
+//   UTAUの標準 resampler は高音でスペクトルをそのまま使うため
+//   「高くなるほど声がこもる」。ここでは F0 比に応じて
+//   スペクトルを対数スケールで引き伸ばすことで自然な声質を維持する。
+// ============================================================
+
+void apply_gender_shift(double* sr, int spec_bins, double gender,
+                        double* tmp, double f0_ratio)
 {
     if (!sr || !tmp || spec_bins <= 0) return;
-    if (std::abs(gender-0.5) < 1e-4) return;
-    const double shift_ratio = std::exp((gender-0.5)*0.4*std::log(2.0));
+
+    // gender シフト比 + F0 追従補正を合成
+    const double gender_ratio = std::exp((gender - 0.5) * 0.4 * std::log(2.0));
+
+    // 高音域補正: F0 が上がるほどスペクトルを引き伸ばす
+    // 補正量は F0 比の 0.5 乗（完全追従は 1.0 乗だが過補正になるので 0.5 が自然）
+    const double formant_ratio = (f0_ratio > 0.0)
+        ? std::pow(f0_ratio, 0.5) : 1.0;
+
+    const double shift_ratio = gender_ratio * formant_ratio;
+
+    // gender も formant も変化なし → 処理スキップ
+    if (std::abs(shift_ratio - 1.0) < 1e-4) return;
+
     constexpr double kFloor = 1e-12;
-    for (int k = 0; k < spec_bins; ++k) tmp[k] = std::log(std::max(sr[k], kFloor));
+    for (int k = 0; k < spec_bins; ++k)
+        tmp[k] = std::log(std::max(sr[k], kFloor));
+
     for (int k = 0; k < spec_bins; ++k) {
         const double src_k = static_cast<double>(k) / shift_ratio;
         const int    k0    = static_cast<int>(src_k);
-        if (k0 >= spec_bins-1) { sr[k] = std::exp(tmp[spec_bins-1]); }
-        else {
+        if (k0 >= spec_bins - 1) {
+            sr[k] = std::exp(tmp[spec_bins - 1]);
+        } else {
             const double frac = src_k - k0;
-            sr[k] = std::exp((1.0-frac)*tmp[k0] + frac*tmp[k0+1]);
+            sr[k] = std::exp((1.0 - frac) * tmp[k0] + frac * tmp[k0 + 1]);
         }
     }
 }
@@ -592,8 +724,23 @@ void blend_transition_spectra(
 //   0.0 を渡すと旧来の「ノート先頭で位相リセット」動作になる。
 // ============================================================
 
+// ============================================================
+// apply_vibrato
+//
+// ノート後半50%からビブラートを自然に立ち上げる。
+// フェードイン: raised cosine で 0→1（後半最初の25%で飽和）
+//
+// global_time_offset_sec : 曲先頭からこのノート開始までの秒数。
+//                          ノートをまたいで位相が連続する。
+// depth_curve / rate_curve: ノートごとの深さ・速さカーブ（nullptr = デフォルト）
+//   depth_curve[j] ∈ [0.0, 1.0]  0=無振動, 1=±15cent フルデプス
+//   rate_curve[j]  ∈ [Hz]         典型値 4〜8Hz
+// ============================================================
 void apply_vibrato(double* f0, int f0_length, double frame_period_ms,
-                   double global_time_offset_sec = 0.0)
+                   double global_time_offset_sec,
+                   const double* depth_curve,  // nullptr = 全フレーム 1.0
+                   const double* rate_curve,   // nullptr = 全フレーム 6.0Hz
+                   int curve_length)
 {
     if (!f0 || f0_length <= 0) return;
 
@@ -601,20 +748,27 @@ void apply_vibrato(double* f0, int f0_length, double frame_period_ms,
     const int vib_len   = f0_length - vib_start;
     if (vib_len <= 0) return;
 
-    constexpr double kVibFreqHz = 6.0;
-    constexpr double kVibDepth  = 0.00868;   // 約15cent
-    const double     frame_sec  = frame_period_ms / 1000.0;
+    constexpr double kVibDepthMax = 0.00868;  // 15cent
+    constexpr double kVibFreqDef  = 6.0;
+    const double     frame_sec    = frame_period_ms / 1000.0;
 
     for (int j = vib_start; j < f0_length; ++j) {
         const double fade_progress =
             static_cast<double>(j - vib_start) / std::max(vib_len - 1, 1);
         const double fade_in = std::min(fade_progress * 4.0, 1.0);
 
-        // グローバル時間で位相を計算 → ノートをまたいでも連続
+        // カーブをリサンプリング（curve_length != f0_length でも対応）
+        const double depth = depth_curve
+            ? resample_curve(depth_curve, curve_length, j, f0_length)
+            : 1.0;
+        const double rate  = rate_curve
+            ? std::max(1.0, resample_curve(rate_curve, curve_length, j, f0_length))
+            : kVibFreqDef;
+
         const double t_global = global_time_offset_sec
                                 + static_cast<double>(j) * frame_sec;
-        const double vib = std::sin(2.0 * M_PI * kVibFreqHz * t_global)
-                           * kVibDepth * f0[j] * fade_in;
+        const double vib = std::sin(2.0 * M_PI * rate * t_global)
+                           * kVibDepthMax * depth * f0[j] * fade_in;
         f0[j] = std::max(50.0, f0[j] + vib);
     }
 }
@@ -783,7 +937,18 @@ void synthesize_note_impl(const SynthNoteParams& p, std::vector<double>& note_bu
     }
 
     smooth_f0_gaussian(tl_scratch.f0.data(), output_frames);
-    apply_vibrato(tl_scratch.f0.data(), output_frames, kFramePeriod, p.global_time_sec);
+
+    // ビブラートカーブが NoteEvent にあれば使用、なければデフォルト (depth=1.0, rate=6Hz)
+    // NoteEvent 側に vibrato_depth_curve / vibrato_rate_curve / vibrato_curve_length
+    // フィールドを追加した場合はそのまま渡せる。未定義なら nullptr で問題ない。
+    const double* vib_depth = (n.vibrato_depth_curve && n.vibrato_curve_length > 0)
+                              ? n.vibrato_depth_curve : nullptr;
+    const double* vib_rate  = (n.vibrato_rate_curve  && n.vibrato_curve_length > 0)
+                              ? n.vibrato_rate_curve  : nullptr;
+    const int     vib_clen  = n.vibrato_curve_length > 0 ? n.vibrato_curve_length : 0;
+
+    apply_vibrato(tl_scratch.f0.data(), output_frames, kFramePeriod,
+                  p.global_time_sec, vib_depth, vib_rate, vib_clen);
 
     note_buf.assign(static_cast<size_t>(note_samples), 0.0);
     VOSE_Synthesis(tl_scratch.f0.data(), output_frames,
