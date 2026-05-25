@@ -115,7 +115,6 @@ def sync_vertical_scroll(self, value):
     self.piano_roll_widget.update()
     self.timeline_widget.update()
 
-
 try:
     from modules.data.data_models import NoteEvent  # type: ignore
 except ImportError:
