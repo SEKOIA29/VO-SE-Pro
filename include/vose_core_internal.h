@@ -35,15 +35,16 @@ struct NotePrepass {
     int64_t                              note_samples = 0;
     std::shared_ptr<const EmbeddedVoice> ev;
     std::shared_ptr<const EmbeddedVoice> prev_ev;
-    const OtoEntry*                      oto          = nullptr;
+    OtoEntry                             oto          = {};
+    bool                                 has_oto      = false;
 
     NotePrepass() = default;
     NotePrepass(NoteState s, int64_t ns,
                 std::shared_ptr<const EmbeddedVoice> e,
                 std::shared_ptr<const EmbeddedVoice> pe = nullptr,
                 const OtoEntry* o = nullptr)
-        : state(s), note_samples(ns), ev(std::move(e)),
-          prev_ev(std::move(pe)), oto(o) {}
+        : state(s), note_samples(ns), ev(std::move(e)), prev_ev(std::move(pe))
+    { if (o) { oto = *o; has_oto = true; } }
 };
 
 struct SynthesisScratchPad {
