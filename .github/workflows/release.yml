@@ -313,21 +313,59 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          APP_BIN=$(find dist -name "VO-SE_vocal_Mac" -type f | grep "\.app/Contents/MacOS/VO-SE_vocal_Mac" | head -n 1)
+
+          # 1. アプリケーションの実行バイナリを確実に特定する（.app形式とonedir形式の両方に対応）
+          APP_BIN=$(find dist -type f -name "VO-SE_vocal_Mac" | grep -E "\.app/Contents/MacOS/" | head -n 1)
+          if [ -z "$APP_BIN" ]; then
+            # .app が見つからない場合は通常のバイナリを検索
+            APP_BIN=$(find dist -type f -name "VO-SE_vocal_Mac" | head -n 1)
+          fi
+
+          if [ -z "$APP_BIN" ]; then
+            echo "Error: APP_BIN (VO-SE_vocal_Mac) not found in dist/"
+            exit 1
+          fi
+          echo "Found APP_BIN: $APP_BIN"
           chmod +x "$APP_BIN"
+
+          # 2. dylib を検索して、参照パス（install_name）の書き換えと個別署名を行う
           find dist -name "libvose_core.dylib" -type f | while read -r DYLIB_BIN; do
+            echo "Processing dylib: $DYLIB_BIN"
             chmod 755 "$DYLIB_BIN"
             LIB_NAME=$(basename "$DYLIB_BIN")
-            install_name_tool -id "$LIB_NAME" "$DYLIB_BIN"
-            OLD_REF=$(otool -L "$APP_BIN" | grep "libvose_core" | awk '{print $1}')
+            
+            # 自身のIDを確定
+            install_name_tool -id "@loader_path/$LIB_NAME" "$DYLIB_BIN"
+            
+            # アプリ本体側が持っている古い参照パスを取得
+            OLD_REF=$(otool -L "$APP_BIN" | grep "libvose_core" | awk '{print $1}' || true)
             if [ -n "$OLD_REF" ]; then
-            install_name_tool -change "$OLD_REF" "@executable_path/../Frameworks/bin/$LIB_NAME" "$APP_BIN"
+              echo "Changing reference in app from $OLD_REF to @executable_path/../Frameworks/bin/$LIB_NAME"
+              install_name_tool -change "$OLD_REF" "@executable_path/../Frameworks/bin/$LIB_NAME" "$APP_BIN" || true
             fi
-            codesign --force --deep --sign - "$DYLIB_BIN"
+            
+            # パス変更によって壊れた署名を一度アドホック署名で直す
+            codesign --force --sign - "$DYLIB_BIN"
           done
-          codesign --force --deep --sign - "dist/VO-SE_vocal_Mac.app"
-          codesign --verify --deep --strict "dist/VO-SE_vocal_Mac.app"
-          spctl --assess --type execute "dist/VO-SE_vocal_Mac.app" || true
+
+          # 3. アプリケーション全体の再署名（.app があれば .app を、なければ親ディレクトリを対象にする）
+          APP_BUNDLE=$(find dist -maxdepth 2 -name "VO-SE_vocal_Mac.app" -type d | head -n 1)
+          if [ -n "$APP_BUNDLE" ]; then
+            echo "Signing app bundle: $APP_BUNDLE"
+            # 内部の個別ファイルをすべてアドホック署名
+            find "$APP_BUNDLE" -type f \( -name "*.dylib" -o -name "*.so" -o -name "VO-SE_vocal_Mac" \) -exec codesign --force --sign - {} \;
+            # 最後に .app 自体を署名（これが正しいネスト署名の順番です）
+            codesign --force --sign - "$APP_BUNDLE"
+            
+            echo "Verifying signature..."
+            codesign --verify --deep --strict "$APP_BUNDLE"
+            spctl --assess --type execute "$APP_BUNDLE" || true
+          else
+            echo "No .app bundle found. Signing individual files in dist..."
+            find dist -type f \( -name "*.dylib" -o -name "*.so" -o -name "VO-SE_vocal_Mac" \) -exec codesign --force --sign - {} \;
+          fi
+          echo "✅ macOS Linkage & Code Signing completed successfully!"
+
 
       - name: 📦 Save Artifacts
         uses: actions/upload-artifact@v4
