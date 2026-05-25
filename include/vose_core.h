@@ -42,7 +42,11 @@ struct NoteEvent {
     // 追加パラメータ（精度維持のためdouble）
     double* gender_curve;      
     double* tension_curve;     
-    double* breath_curve;      
+    double* breath_curve;
+
+    double* vibrato_depth_curve; 
+    double* vibrato_rate_curve;
+    int     vibrato_curve_length;
 };
 #pragma pack(pop)
 
