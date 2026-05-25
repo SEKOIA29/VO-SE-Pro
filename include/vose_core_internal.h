@@ -73,6 +73,14 @@ struct SynthNoteParams {
 };
 
 // ============================================================
+// oto.ini DB への参照（streaming から oto を引くために必要）
+// ============================================================
+#include <map>
+#include <shared_mutex>
+extern std::map<std::string, OtoEntry> g_oto_db;
+extern std::shared_mutex               g_oto_db_mutex;
+
+// ============================================================
 // スレッドローカルスクラッチパッド (各スレッドで独立)
 // ============================================================
 extern thread_local SynthesisScratchPad tl_scratch;
