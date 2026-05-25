@@ -69,8 +69,8 @@ static std::string generate_cache_hash(const std::string& wav_path) {
 // oto.ini DB
 // ============================================================
 
-static std::map<std::string, OtoEntry> g_oto_db;
-static std::shared_mutex g_oto_db_mutex;
+std::map<std::string, OtoEntry> g_oto_db;
+std::shared_mutex g_oto_db_mutex;
 
 extern "C" void set_oto_data(const OtoEntry* entries, int count) {
     std::unique_lock<std::shared_mutex> lock(g_oto_db_mutex);
@@ -102,8 +102,11 @@ struct AnalysisCache {
     int                 spec_bins = 0;
 };
 
-static std::map<std::shared_ptr<const EmbeddedVoice>,
-                std::shared_ptr<const AnalysisCache>> g_analysis_cache;
+// キーを shared_ptr のアドレスではなくパス文字列にする。
+// shared_ptr のアドレス比較ではボイス再ロード時に必ずキャッシュミスが起き、
+// ディスクキャッシュが効いていても毎回 build_analysis_cache が走る。
+// パス文字列をキーにすれば再ロード後もメモリキャッシュがヒットする。
+static std::map<std::string, std::shared_ptr<const AnalysisCache>> g_analysis_cache;
 static std::shared_mutex g_analysis_cache_mutex;
 
 // ============================================================
@@ -330,9 +333,10 @@ build_analysis_cache(const EmbeddedVoice& ev, int fft_size, int spec_bins)
 std::shared_ptr<const AnalysisCache>
 get_or_analyze(std::shared_ptr<const EmbeddedVoice> ev_sp, int fft_size, int spec_bins)
 {
+    const std::string& key = ev_sp->path;
     {
         std::shared_lock<std::shared_mutex> rlock(g_analysis_cache_mutex);
-        auto it = g_analysis_cache.find(ev_sp);
+        auto it = g_analysis_cache.find(key);
         if (it != g_analysis_cache.end()) return it->second;
     }
 
@@ -342,16 +346,16 @@ get_or_analyze(std::shared_ptr<const EmbeddedVoice> ev_sp, int fft_size, int spe
 
     std::unique_lock<std::shared_mutex> wlock(g_analysis_cache_mutex);
     {
-        auto it = g_analysis_cache.find(ev_sp);
+        auto it = g_analysis_cache.find(key);
         if (it != g_analysis_cache.end()) return it->second;
     }
     if (disk_cache) {
-        g_analysis_cache[ev_sp] = disk_cache;
+        g_analysis_cache[key] = disk_cache;
         return disk_cache;
     }
 
     auto cache = build_analysis_cache(*ev_sp, fft_size, spec_bins);
-    g_analysis_cache[ev_sp] = cache;
+    g_analysis_cache[key] = cache;
     wlock.unlock();
     save_cache(cache_file, *cache);
     return cache;
@@ -426,23 +430,43 @@ inline double resample_curve(const double* curve, int src_len,
 // apply_crossfade
 // ============================================================
 
+// ============================================================
+// apply_crossfade
+//
+// dst[offset..] に src を書き込む。先頭 xfade_len サンプルは
+// dst と src を raised-cosine でブレンドする。
+//
+// overlap_samples: oto.ini の overlap をサンプル換算した値。
+//   src の先頭を overlap 分だけスキップして書き込み開始することで、
+//   子音頭がクロスフェードに食われる問題を解消する。
+//   UTAU 標準の挙動に合わせている。
+// ============================================================
 static void apply_crossfade(std::vector<double>& dst, int64_t dst_size,
                              const std::vector<double>& src, int64_t src_size,
-                             int64_t offset, int xfade_len)
+                             int64_t offset, int xfade_len,
+                             int64_t overlap_samples = 0)
 {
     if (offset < 0 || offset >= dst_size) return;
+
+    // overlap 分だけ src の読み出し開始位置をずらす
+    const int64_t src_start   = std::clamp(overlap_samples, int64_t(0), src_size);
+    const int64_t src_usable  = src_size - src_start;
+    if (src_usable <= 0) return;
+
     const int safe_xfade = static_cast<int>(
-        std::min<int64_t>(xfade_len, std::min(src_size, dst_size-offset)));
+        std::min<int64_t>(xfade_len, std::min(src_usable, dst_size - offset)));
+
     for (int s = 0; s < safe_xfade; ++s) {
-        const double t       = static_cast<double>(s) / safe_xfade;
-        const double fade_in = 0.5*(1.0-std::cos(M_PI*t));
-        const int64_t di     = offset + s;
+        const double  t       = static_cast<double>(s) / safe_xfade;
+        const double  fade_in = 0.5 * (1.0 - std::cos(M_PI * t));
+        const int64_t di      = offset + s;
         if (di >= dst_size) break;
-        dst[di] = dst[di]*(1.0-fade_in) + src[s]*fade_in;
+        dst[di] = dst[di] * (1.0 - fade_in) + src[src_start + s] * fade_in;
     }
-    const int64_t body_end = std::min(offset+src_size, dst_size);
-    for (int64_t s = offset+safe_xfade; s < body_end; ++s)
-        dst[s] = src[s-offset];
+
+    const int64_t body_end = std::min(offset + src_usable, dst_size);
+    for (int64_t s = offset + safe_xfade; s < body_end; ++s)
+        dst[s] = src[src_start + (s - offset)];
 }
 
 // ============================================================
@@ -683,15 +707,10 @@ void synthesize_note_impl(const SynthNoteParams& p, std::vector<double>& note_bu
     tl_scratch.ensure_f0(output_frames);
     tl_scratch.ensure_spec(output_frames, spec_bins);
 
-    if (pp.prev_ev) {
-        auto cache_prev = get_or_analyze(pp.prev_ev, fft_size, spec_bins);
-        copy_cache_to_scratch_prev(*cache_prev);
-        blend_transition_spectra(
-            tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(), output_frames,
-            tl_scratch.spec_ptrs_prev.data(), tl_scratch.ap_ptrs_prev.data(),
-            cache_prev->length, spec_bins, kTransitionFrames);
-    }
-
+    // ----------------------------------------------------------------
+    // ステップ1: cur スペクトルを DSP 込みで書き込む
+    // (blend_transition_spectra より先に実行する必要がある)
+    // ----------------------------------------------------------------
     for (int j = 0; j < output_frames; ++j) {
         const double t_out_ms = j * kFramePeriod;
         const double t_src_ms = map_time(t_out_ms, current_oto, src_ms, note_ms);
@@ -717,6 +736,19 @@ void synthesize_note_impl(const SynthNoteParams& p, std::vector<double>& note_bu
 
         apply_gender_shift  (sr, spec_bins, gender, tl_scratch.spec_tmp.data());
         apply_tension_breath(sr, ar, spec_bins, tension, breath);
+    }
+
+    // ----------------------------------------------------------------
+    // ステップ2: prev スペクトルを scratch_prev に展開してブレンド
+    // (cur が書き終わった後でないと blend の cur 側がゼロになる)
+    // ----------------------------------------------------------------
+    if (pp.prev_ev) {
+        auto cache_prev = get_or_analyze(pp.prev_ev, fft_size, spec_bins);
+        copy_cache_to_scratch_prev(*cache_prev);
+        blend_transition_spectra(
+            tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(), output_frames,
+            tl_scratch.spec_ptrs_prev.data(), tl_scratch.ap_ptrs_prev.data(),
+            cache_prev->length, spec_bins, kTransitionFrames);
     }
 
     smooth_f0_gaussian(tl_scratch.f0.data(), output_frames);
@@ -750,9 +782,9 @@ DLLEXPORT void load_embedded_resource(const char* phoneme,
 
     std::unique_lock<std::shared_mutex> clock(g_analysis_cache_mutex);
     std::unique_lock<std::shared_mutex> wlock(g_voice_db_mutex);
-    auto old_it = g_voice_db.find(phoneme);
-    if (old_it != g_voice_db.end())
-        g_analysis_cache.erase(old_it->second);
+    // パス文字列キーでキャッシュを無効化（再ロード時も確実にヒット）
+    g_analysis_cache.erase(phoneme);
+    ev->path = phoneme;
     g_voice_db[phoneme] = std::move(ev);
 }
 
@@ -860,9 +892,6 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
     tl_scratch.ensure_spec(max_harvest_len, spec_bins);
     std::vector<double> full_song_buffer(buffer_total, 0.0);
 
-    static const OtoEntry kLocalDefaultOto = {};
-    // Note: kDefaultOto is now defined at file scope above synthesize_note_impl
-
     // ----------------------------------------------------------------
     // パス2-A: 各ノートの note_buf を並列合成
     // ----------------------------------------------------------------
@@ -917,8 +946,13 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         const int64_t note_samples = pp.note_samples;
         const OtoEntry& current_oto = pp.oto ? *pp.oto : kDefaultOto;
 
-        const int64_t pre_samples  =
+        const int64_t pre_samples     =
             static_cast<int64_t>(current_oto.preutterance * kFs / 1000.0);
+        // overlap: oto.ini の overlap フィールドが存在する場合に有効。
+        // vose_core.h の OtoEntry に overlap メンバがなければ 0 に変更すること。
+        // (UTAUの標準的な OtoEntry には overlap が存在する)
+        const int64_t overlap_samples =
+            static_cast<int64_t>(current_oto.overlap * kFs / 1000.0);
         const int64_t base_offset  = last_note_rendered
                                      ? current_offset - kCrossfadeSamples
                                      : current_offset;
@@ -926,7 +960,8 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
         const int     xfade        = last_note_rendered ? kCrossfadeSamples : 0;
 
         apply_crossfade(full_song_buffer, buffer_total,
-                        note_bufs[idx], note_samples, write_offset, xfade);
+                        note_bufs[idx], note_samples,
+                        write_offset, xfade, overlap_samples);
 
         current_offset += last_note_rendered
                           ? note_samples - kCrossfadeSamples
