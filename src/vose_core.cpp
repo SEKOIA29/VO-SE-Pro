@@ -919,7 +919,7 @@ void synthesize_note_impl(const SynthNoteParams& p, std::vector<double>& note_bu
         const double breath  = n.breath_curve
             ? resample_curve(n.breath_curve,  n.pitch_length, j, output_frames) : 0.5;
 
-        apply_gender_shift  (sr, spec_bins, gender, tl_scratch.spec_tmp.data());
+        apply_gender_shift(sr, spec_bins, gender, tl_scratch.spec_tmp.data(), 1.0);
         apply_tension_breath(sr, ar, spec_bins, tension, breath);
     }
 
