@@ -180,7 +180,7 @@ struct SynthesisScratchPad {
     }
 };
 
-static thread_local SynthesisScratchPad tl_scratch;
+thread_local SynthesisScratchPad tl_scratch;
 
 // ============================================================
 // 定数
@@ -201,7 +201,7 @@ static int64_t note_samples_safe(int p) {
 // find_voice_ref
 // ============================================================
 
-static std::shared_ptr<const EmbeddedVoice> find_voice_ref(const char* key)
+std::shared_ptr<const EmbeddedVoice> find_voice_ref(const char* key)
 {
     std::shared_lock<std::shared_mutex> lock(g_voice_db_mutex);
     auto it = g_voice_db.find(key ? key : "");
@@ -327,7 +327,7 @@ build_analysis_cache(const EmbeddedVoice& ev, int fft_size, int spec_bins)
 // get_or_analyze
 // ============================================================
 
-static std::shared_ptr<const AnalysisCache>
+std::shared_ptr<const AnalysisCache>
 get_or_analyze(std::shared_ptr<const EmbeddedVoice> ev_sp, int fft_size, int spec_bins)
 {
     {
@@ -361,11 +361,11 @@ get_or_analyze(std::shared_ptr<const EmbeddedVoice> ev_sp, int fft_size, int spe
 // UTAUタイムマッピング
 // ============================================================
 
-static double get_source_ms(const EmbeddedVoice& ev) {
+double get_source_ms(const EmbeddedVoice& ev) {
     return static_cast<double>(ev.waveform.size()) / ev.fs * 1000.0;
 }
 
-static double map_time(double t_out_ms, const OtoEntry& oto,
+double map_time(double t_out_ms, const OtoEntry& oto,
                         double source_wav_len_ms, double note_duration_ms)
 {
     const double offset     = oto.offset;
@@ -409,7 +409,7 @@ static void copy_cache_to_scratch_prev(const AnalysisCache& c)
 // resample_curve
 // ============================================================
 
-static inline double resample_curve(const double* curve, int src_len,
+inline double resample_curve(const double* curve, int src_len,
                                      int dst_idx, int dst_len)
 {
     if (!curve || src_len <= 0 || dst_len <= 0) return 0.0;
@@ -449,7 +449,7 @@ static void apply_crossfade(std::vector<double>& dst, int64_t dst_size,
 // apply_gender_shift
 // ============================================================
 
-static void apply_gender_shift(double* sr, int spec_bins, double gender, double* tmp)
+void apply_gender_shift(double* sr, int spec_bins, double gender, double* tmp)
 {
     if (!sr || !tmp || spec_bins <= 0) return;
     if (std::abs(gender-0.5) < 1e-4) return;
@@ -471,7 +471,7 @@ static void apply_gender_shift(double* sr, int spec_bins, double gender, double*
 // apply_tension_breath
 // ============================================================
 
-static void apply_tension_breath(double* sr, double* ar, int spec_bins,
+void apply_tension_breath(double* sr, double* ar, int spec_bins,
                                   double tension, double breath)
 {
     if (!sr || !ar || spec_bins <= 1) return;
@@ -499,7 +499,7 @@ static void apply_tension_breath(double* sr, double* ar, int spec_bins,
 // blend_transition_spectra
 // ============================================================
 
-static void blend_transition_spectra(
+void blend_transition_spectra(
     double** spec_cur, double** ap_cur, int cur_len,
     double** spec_prev, double** ap_prev, int prev_len,
     int spec_bins, int transition_frames)
@@ -537,7 +537,7 @@ static void blend_transition_spectra(
 // C++側でフレーム単位に適用することで遅延ゼロ・Python依存なし。
 // ============================================================
 
-static void apply_vibrato(double* f0, int f0_length, double frame_period_ms)
+void apply_vibrato(double* f0, int f0_length, double frame_period_ms)
 {
     if (!f0 || f0_length <= 0) return;
 
@@ -575,7 +575,7 @@ static void apply_vibrato(double* f0, int f0_length, double frame_period_ms)
 // 処理コスト: f0_length × 5 の乗算のみ → 無視できる
 // ============================================================
 
-static void smooth_f0_gaussian(double* f0, int f0_length)
+void smooth_f0_gaussian(double* f0, int f0_length)
 {
     if (!f0 || f0_length <= 0) return;
 
@@ -614,7 +614,10 @@ static void VOSE_Synthesis(
     tl_scratch.ensure_spec(f0_length, spec_bins);
     double** mod_ap = tl_scratch.mod_ap_ptrs.data();
 
-    static thread_local std::mt19937 rng(42);
+    static thread_local std::mt19937 rng(
+        std::random_device{}() ^
+        static_cast<uint32_t>(std::hash<std::thread::id>{}(
+            std::this_thread::get_id())));
     std::uniform_real_distribution<double> dist(-0.02, 0.02);
 
     for (int i = 0; i < f0_length; ++i) {
@@ -642,6 +645,88 @@ static void VOSE_Synthesis(
         prev_y_hp = hp;
         y[i] += hp*0.05;
     }
+}
+
+// ============================================================
+// synthesize_note_impl
+//
+// execute_render の並列合成ラムダを自由関数に昇格。
+// vose_streaming.cpp の synth_loop() からも呼べる。
+// ============================================================
+
+struct SynthNoteParams {
+    const NotePrepass& pp;
+    NoteEvent&         n;
+    int                fft_size;
+    int                spec_bins;
+};
+
+static const OtoEntry kDefaultOto = {};
+
+void synthesize_note_impl(const SynthNoteParams& p, std::vector<double>& note_buf)
+{
+    const NotePrepass& pp    = p.pp;
+    NoteEvent&         n     = p.n;
+    const int   fft_size     = p.fft_size;
+    const int   spec_bins    = p.spec_bins;
+
+    if (pp.state != NoteState::RENDERABLE) return;
+
+    const int64_t note_samples  = pp.note_samples;
+    const double  note_ms       = static_cast<double>(note_samples) / kFs * 1000.0;
+    const double  src_ms        = get_source_ms(*pp.ev);
+    const int     output_frames = static_cast<int>(note_ms / kFramePeriod);
+    const OtoEntry& current_oto = pp.oto ? *pp.oto : kDefaultOto;
+
+    auto cache_cur = get_or_analyze(pp.ev, fft_size, spec_bins);
+
+    tl_scratch.ensure_f0(output_frames);
+    tl_scratch.ensure_spec(output_frames, spec_bins);
+
+    if (pp.prev_ev) {
+        auto cache_prev = get_or_analyze(pp.prev_ev, fft_size, spec_bins);
+        copy_cache_to_scratch_prev(*cache_prev);
+        blend_transition_spectra(
+            tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(), output_frames,
+            tl_scratch.spec_ptrs_prev.data(), tl_scratch.ap_ptrs_prev.data(),
+            cache_prev->length, spec_bins, kTransitionFrames);
+    }
+
+    for (int j = 0; j < output_frames; ++j) {
+        const double t_out_ms = j * kFramePeriod;
+        const double t_src_ms = map_time(t_out_ms, current_oto, src_ms, note_ms);
+        const int src_frame   = std::clamp(
+            static_cast<int>(t_src_ms / kFramePeriod), 0, cache_cur->length-1);
+
+        double* sr = tl_scratch.spec_ptrs[j];
+        double* ar = tl_scratch.ap_ptrs  [j];
+        std::copy_n(&cache_cur->flat_spec[static_cast<size_t>(src_frame)*spec_bins],
+                    spec_bins, sr);
+        std::copy_n(&cache_cur->flat_ap  [static_cast<size_t>(src_frame)*spec_bins],
+                    spec_bins, ar);
+
+        tl_scratch.f0[j] = n.pitch_curve
+            ? resample_curve(n.pitch_curve, n.pitch_length, j, output_frames)
+            : 440.0;
+        const double gender  = n.gender_curve
+            ? resample_curve(n.gender_curve,  n.pitch_length, j, output_frames) : 0.5;
+        const double tension = n.tension_curve
+            ? resample_curve(n.tension_curve, n.pitch_length, j, output_frames) : 0.5;
+        const double breath  = n.breath_curve
+            ? resample_curve(n.breath_curve,  n.pitch_length, j, output_frames) : 0.5;
+
+        apply_gender_shift  (sr, spec_bins, gender, tl_scratch.spec_tmp.data());
+        apply_tension_breath(sr, ar, spec_bins, tension, breath);
+    }
+
+    smooth_f0_gaussian(tl_scratch.f0.data(), output_frames);
+    apply_vibrato(tl_scratch.f0.data(), output_frames, kFramePeriod);
+
+    note_buf.assign(static_cast<size_t>(note_samples), 0.0);
+    VOSE_Synthesis(tl_scratch.f0.data(), output_frames,
+                   tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(),
+                   fft_size, kFramePeriod, pp.ev->fs,
+                   static_cast<int>(note_samples), note_buf.data());
 }
 
 // ============================================================
@@ -775,7 +860,8 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
     tl_scratch.ensure_spec(max_harvest_len, spec_bins);
     std::vector<double> full_song_buffer(buffer_total, 0.0);
 
-    static const OtoEntry kDefaultOto = {};
+    static const OtoEntry kLocalDefaultOto = {};
+    // Note: kDefaultOto is now defined at file scope above synthesize_note_impl
 
     // ----------------------------------------------------------------
     // パス2-A: 各ノートの note_buf を並列合成
@@ -786,70 +872,8 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
     std::vector<std::vector<double>> note_bufs(note_count);
 
     auto synthesize_note = [&](int idx) {
-        const NotePrepass& pp = prepass[idx];
-        if (pp.state != NoteState::RENDERABLE) return;
-
-        NoteEvent& n               = notes[idx];
-        const int64_t note_samples = pp.note_samples;
-        const double  note_ms      = static_cast<double>(note_samples) / kFs * 1000.0;
-        const double  src_ms       = get_source_ms(*pp.ev);
-        const int     output_frames = static_cast<int>(note_ms / kFramePeriod);
-        const OtoEntry& current_oto = pp.oto ? *pp.oto : kDefaultOto;
-
-        auto cache_cur = get_or_analyze(pp.ev, fft_size, spec_bins);
-
-        tl_scratch.ensure_f0(output_frames);
-        tl_scratch.ensure_spec(output_frames, spec_bins);
-
-        if (pp.prev_ev) {
-            auto cache_prev = get_or_analyze(pp.prev_ev, fft_size, spec_bins);
-            copy_cache_to_scratch_prev(*cache_prev);
-            blend_transition_spectra(
-                tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(), output_frames,
-                tl_scratch.spec_ptrs_prev.data(), tl_scratch.ap_ptrs_prev.data(),
-                cache_prev->length, spec_bins, kTransitionFrames);
-        }
-
-        for (int j = 0; j < output_frames; ++j) {
-            const double t_out_ms = j * kFramePeriod;
-            const double t_src_ms = map_time(t_out_ms, current_oto, src_ms, note_ms);
-            const int src_frame   = std::clamp(
-                static_cast<int>(t_src_ms / kFramePeriod), 0, cache_cur->length-1);
-
-            double* sr = tl_scratch.spec_ptrs[j];
-            double* ar = tl_scratch.ap_ptrs  [j];
-            std::copy_n(&cache_cur->flat_spec[static_cast<size_t>(src_frame)*spec_bins],
-                        spec_bins, sr);
-            std::copy_n(&cache_cur->flat_ap  [static_cast<size_t>(src_frame)*spec_bins],
-                        spec_bins, ar);
-
-            tl_scratch.f0[j] = n.pitch_curve
-                ? resample_curve(n.pitch_curve, n.pitch_length, j, output_frames)
-                : 440.0;
-            const double gender  = n.gender_curve
-                ? resample_curve(n.gender_curve,  n.pitch_length, j, output_frames) : 0.5;
-            const double tension = n.tension_curve
-                ? resample_curve(n.tension_curve, n.pitch_length, j, output_frames) : 0.5;
-            const double breath  = n.breath_curve
-                ? resample_curve(n.breath_curve,  n.pitch_length, j, output_frames) : 0.5;
-
-            apply_gender_shift  (sr, spec_bins, gender, tl_scratch.spec_tmp.data());
-            apply_tension_breath(sr, ar, spec_bins, tension, breath);
-        }
-
-        smooth_f0_gaussian(tl_scratch.f0.data(), output_frames);
-        apply_vibrato(tl_scratch.f0.data(), output_frames, kFramePeriod);
-
-        note_bufs[idx].assign(static_cast<size_t>(note_samples), 0.0);
-        
-        // --- 【Pro機能拡張ポイント】 ---
-        // 将来的には、ここで is_pro フラグを使って、WORLD のより重いが高音質な
-        // アルゴリズムに分岐させたり、kFramePeriod を短くして時間解像度を上げる
-        // などの処理が可能です。
-        VOSE_Synthesis(tl_scratch.f0.data(), output_frames,
-                       tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(),
-                       fft_size, kFramePeriod, pp.ev->fs,
-                       static_cast<int>(note_samples), note_bufs[idx].data());
+        SynthNoteParams p{ prepass[idx], notes[idx], fft_size, spec_bins };
+        synthesize_note_impl(p, note_bufs[idx]);
     };
 
     {
