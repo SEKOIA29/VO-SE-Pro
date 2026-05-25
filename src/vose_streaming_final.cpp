@@ -214,6 +214,14 @@ private:
             tmp_n.tension_curve = qn.tension_curve.data();
             tmp_n.breath_curve  = qn.breath_curve.data();
 
+            // oto.ini エントリ取得（streaming でも正しくタイムマッピングする）
+            const OtoEntry* found_oto = nullptr;
+            {
+                std::shared_lock<std::shared_mutex> lk(g_oto_db_mutex);
+                auto it = g_oto_db.find(qn.wav_path);
+                if (it != g_oto_db.end()) found_oto = &it->second;
+            }
+
             // note_samples (execute_render と同じ計算式)
             const int64_t note_samples =
                 (static_cast<int64_t>(pl) - 1) *
@@ -225,9 +233,8 @@ private:
                 NoteState::RENDERABLE,
                 note_samples,
                 ev,
-                prev_ev,  // 前ノートのボイス（クロスフェード用）
-                nullptr   // oto: streaming ではデフォルト使用
-                          // 改善: oto_db から引いて渡す (Phase 3 タスク)
+                prev_ev,    // クロスフェード用前ノートボイス
+                found_oto   // oto.ini エントリ（タイムマッピングに使用）
             );
 
             // ===================================================
