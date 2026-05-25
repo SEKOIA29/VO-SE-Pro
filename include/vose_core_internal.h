@@ -116,7 +116,11 @@ void blend_transition_spectra(
 
 // F0 DSP
 void smooth_f0_gaussian(double* f0, int f0_length);
-void apply_vibrato(double* f0, int f0_length, double frame_period_ms);
+void apply_vibrato(double* f0, int f0_length, double frame_period_ms,
+                   double global_time_offset_sec,
+                   const double* depth_curve,
+                   const double* rate_curve,
+                   int curve_length);
 
 // ノート合成 (execute_render / synth_loop 共通)
 void synthesize_note_impl(const SynthNoteParams& p, std::vector<double>& note_buf);
