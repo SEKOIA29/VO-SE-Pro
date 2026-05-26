@@ -1414,11 +1414,14 @@ class MainWindow(QMainWindow):
         self.dynamics_ai = ai if ai else DynamicsAIEngine()
 
         # ボイスマネージャー
-        VoiceManager = safe_import("modules.backend.voice_manager", "VoiceManager", MockVoiceManager)
-        self.voice_manager = cast(Any, VoiceManager(self.dynamics_ai))
+        VoiceManager = safe_import("modules.audio.voice_manager", "VoiceManager", MockVoiceManager)
+        try:
+            self.voice_manager = cast(Any, VoiceManager(self.dynamics_ai))
+        except TypeError:
+            self.voice_manager = cast(Any, VoiceManager())
 
         # オーディオ・プレイヤー系
-        AudioPlayer = safe_import("modules.audio.player", "AudioPlayer", MockAudioPlayer)
+        AudioPlayer = safe_import("modules.backend.audio_player", "AudioPlayer", MockAudioPlayer)
         self.audio_player = AudioPlayer(volume=getattr(self, 'volume', 0.8))
 
         # トーク解析系（Talk機能用）

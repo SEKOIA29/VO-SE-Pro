@@ -126,5 +126,43 @@ class VoiceManager:
             
         return config
 
+    def install_voice_from_zip(self, zip_path):
+        """ZIP音源を voice_banks に展開して追加する。"""
+        import zipfile
+        import tempfile
+        import shutil
+
+        if not os.path.exists(zip_path):
+            raise FileNotFoundError(f"ZIP not found: {zip_path}")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                zf.extractall(tmp_dir)
+
+            candidates = []
+            for root, _, files in os.walk(tmp_dir):
+                if 'oto.ini' in files:
+                    candidates.append(root)
+
+            if not candidates:
+                raise ValueError('oto.ini が見つからないため、UTAU音源として認識できません。')
+
+            src_dir = min(candidates, key=lambda p: len(p))
+            voice_name = os.path.basename(src_dir.rstrip(os.sep)) or 'ImportedVoice'
+            safe_name = ''.join(ch for ch in voice_name if ch not in '<>:"/\\|?*').strip() or 'ImportedVoice'
+
+            os.makedirs(self.internal_voice_dir, exist_ok=True)
+            dest_dir = os.path.join(self.internal_voice_dir, safe_name)
+            base = dest_dir
+            idx = 1
+            while os.path.exists(dest_dir):
+                dest_dir = f"{base}_{idx}"
+                idx += 1
+
+            shutil.copytree(src_dir, dest_dir)
+
+        self.scan_voices()
+        return os.path.basename(dest_dir)
+
     def get_voice_path(self, name):
         return self.voices.get(name)
