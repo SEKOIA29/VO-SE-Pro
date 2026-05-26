@@ -26,6 +26,14 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+
+// --- clamp polyfill (for C++14/macOS libc++) ---
+#ifndef HAVE_STD_CLAMP
+template <typename T>
+constexpr const T& clamp(const T& v, const T& lo, const T& hi) {
+    return (v < lo) ? lo : (hi < v) ? hi : v;
+}
+#endif
 #include <thread>
 #include <vector>
 #include <cmath>
@@ -217,7 +225,7 @@ private:
             // oto.ini エントリ取得（streaming でも正しくタイムマッピングする）
             const OtoEntry* found_oto = nullptr;
             {
-                std::shared_lock<std::shared_mutex> lk(g_oto_db_mutex);
+                std::unique_lock<std::mutex> lk(g_oto_db_mutex);
                 auto it = g_oto_db.find(qn.wav_path);
                 if (it != g_oto_db.end()) found_oto = &it->second;
             }
@@ -256,7 +264,7 @@ private:
                     const double fi = 0.5 * (1.0 - std::cos(M_PI * s / xfade));
                     v *= fi;
                 }
-                chunk[s] = static_cast<float>(std::clamp(v, -1.0, 1.0));
+                chunk[s] = static_cast<float>(clamp(v, -1.0, 1.0));
             }
 
             // RingBuffer に書き込み（満杯なら待機してリトライ）
@@ -275,8 +283,10 @@ private:
             }
 
             // タイムスタンプ更新（クロスフェード分を差し引く）
-            position_ms_.fetch_add(
-                static_cast<double>(out_len - xfade) / kFs_internal * 1000.0);
+            // std::atomic<double>はfetch_add未サポートのためload/setで加算
+            double pos = position_ms_.load();
+            pos += static_cast<double>(out_len - xfade) / kFs_internal * 1000.0;
+            position_ms_.store(pos);
 
             prev_ev = ev;  // 次ノートのクロスフェード用
         }

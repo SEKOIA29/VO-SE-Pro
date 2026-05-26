@@ -1,3 +1,10 @@
+// --- clamp polyfill (for C++14/macOS libc++) ---
+#ifndef HAVE_STD_CLAMP
+template <typename T>
+constexpr const T& clamp(const T& v, const T& lo, const T& hi) {
+    return (v < lo) ? lo : (hi < v) ? hi : v;
+}
+#endif
 //vose_core.cpp
 
 #include <vector>
@@ -7,10 +14,10 @@
 #include <list>
 #include <algorithm>
 #include <cmath>
-#include <filesystem>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <fstream>
 #include <iomanip>    
-#include <shared_mutex> // std::shared_mutex 用
 #include <random>
 #include <sstream>
 #include <cstring>
@@ -18,7 +25,10 @@
 #include <future>
 #include <thread>
 #include <mutex>
-#include <shared_mutex>
+#include <mutex>
+#include <condition_variable>
+using VoseMutex = std::mutex;
+using VoseUniqueLock = std::unique_lock<std::mutex>;
 #include <memory>
 #define _USE_MATH_DEFINES
 #ifndef M_PI
@@ -26,6 +36,7 @@
 #endif
 #include "vose_core.h"
 #include "voice_data.h"
+// ...existing code...
 
 #include "world/synthesis.h"
 #include "world/cheaptrick.h"
@@ -34,7 +45,7 @@
 #include "world/audioio.h"
 #include "world/constantnumbers.h"
 
-namespace fs = std::filesystem;
+// fs::path などは std::string で代用
 
 // ============================================================
 // FNV-1a ハッシュ
@@ -50,30 +61,22 @@ static uint64_t fnv1a_hash(const std::string& str) {
 }
 
 static std::string generate_cache_hash(const std::string& wav_path) {
-    try {
-        fs::path p(wav_path);
-        if (fs::exists(p)) {
-            // ディスク上のファイル: パス + 更新時刻 + サイズでハッシュ
-            auto last_time = static_cast<long long>(
-                fs::last_write_time(p).time_since_epoch().count());
-            auto file_size = static_cast<unsigned long long>(fs::file_size(p));
-            std::string seed = p.string() + std::to_string(last_time)
-                                          + std::to_string(file_size);
-            uint64_t h = fnv1a_hash(seed);
-            std::stringstream ss;
-            ss << std::hex << std::setw(16) << std::setfill('0') << h;
-            return ss.str();
-        } else {
-            // エンベッドボイス（ファイルシステム上に存在しない）:
-            // エイリアス名をハッシュ化。旧実装は "0000000000000000" 固定で
-            // 全ボイスが同一キャッシュファイルに衝突していた。
-            uint64_t h = fnv1a_hash(wav_path);
-            std::stringstream ss;
-            ss << "emb_" << std::hex << std::setw(16) << std::setfill('0') << h;
-            return ss.str();
-        }
-    } catch (...) {
-        return "err_" + std::to_string(fnv1a_hash(wav_path));
+    struct stat st;
+    if (stat(wav_path.c_str(), &st) == 0) {
+        // ファイルが存在する場合: パス + 更新時刻 + サイズでハッシュ
+        auto last_time = static_cast<long long>(st.st_mtime);
+        auto file_size = static_cast<unsigned long long>(st.st_size);
+        std::string seed = wav_path + std::to_string(last_time) + std::to_string(file_size);
+        uint64_t h = fnv1a_hash(seed);
+        std::stringstream ss;
+        ss << std::hex << std::setw(16) << std::setfill('0') << h;
+        return ss.str();
+    } else {
+        // エンベッドボイス（ファイルシステム上に存在しない）:
+        uint64_t h = fnv1a_hash(wav_path);
+        std::stringstream ss;
+        ss << "emb_" << std::hex << std::setw(16) << std::setfill('0') << h;
+        return ss.str();
     }
 }
 
@@ -82,10 +85,10 @@ static std::string generate_cache_hash(const std::string& wav_path) {
 // ============================================================
 
 std::map<std::string, OtoEntry> g_oto_db;
-std::shared_mutex g_oto_db_mutex;
+VoseMutex g_oto_db_mutex;
 
 extern "C" void set_oto_data(const OtoEntry* entries, int count) {
-    std::unique_lock<std::shared_mutex> lock(g_oto_db_mutex);
+    VoseUniqueLock lock(g_oto_db_mutex);
     g_oto_db.clear();
     if (!entries || count <= 0) return;
     for (int i = 0; i < count; ++i)
@@ -103,7 +106,7 @@ struct EmbeddedVoice {
 };
 
 static std::map<std::string, std::shared_ptr<const EmbeddedVoice>> g_voice_db;
-static std::shared_mutex g_voice_db_mutex;
+VoseMutex g_voice_db_mutex;
 
 struct AnalysisCache {
     std::vector<double> f0;
@@ -171,7 +174,7 @@ struct CacheStore {
 };
 
 static CacheStore      g_analysis_cache;
-static std::shared_mutex g_analysis_cache_mutex;
+VoseMutex g_analysis_cache_mutex;
 
 // ============================================================
 // NoteState / NotePrepass
@@ -279,7 +282,7 @@ static int64_t note_samples_safe(int p) {
 
 std::shared_ptr<const EmbeddedVoice> find_voice_ref(const char* key)
 {
-    std::shared_lock<std::shared_mutex> lock(g_voice_db_mutex);
+    VoseUniqueLock lock(g_voice_db_mutex);
     auto it = g_voice_db.find(key ? key : "");
     return (it != g_voice_db.end()) ? it->second : nullptr;
 }
@@ -288,19 +291,22 @@ std::shared_ptr<const EmbeddedVoice> find_voice_ref(const char* key)
 // ディスクキャッシュ
 // ============================================================
 
-static fs::path get_cache_dir() {
-    fs::path p = "cache";
-    if (!fs::exists(p)) fs::create_directories(p);
+static std::string get_cache_dir() {
+    std::string p = "cache";
+    struct stat st;
+    if (stat(p.c_str(), &st) != 0) {
+        mkdir(p.c_str(), 0755);
+    }
     return p;
 }
 
-static void save_cache(const fs::path& cache_path, const AnalysisCache& cache)
+static void save_cache(const std::string& cache_path, const AnalysisCache& cache)
 {
     // 書き途中でクラッシュしても破損キャッシュが残らないよう
     // 一時ファイルに書いてからアトミックにリネームする
-    const fs::path tmp_path = fs::path(cache_path).replace_extension(".vsc.tmp");
+    std::string tmp_path = cache_path + ".tmp";
 
-    FILE* fp = fopen(tmp_path.string().c_str(), "wb");
+    FILE* fp = fopen(tmp_path.c_str(), "wb");
     if (!fp) return;
 
     bool ok = true;
@@ -319,17 +325,19 @@ static void save_cache(const fs::path& cache_path, const AnalysisCache& cache)
 
     if (ok) {
         std::error_code ec;
-        fs::rename(tmp_path, cache_path, ec);  // アトミック置換
-        if (ec) fs::remove(tmp_path, ec);      // リネーム失敗なら一時ファイルを削除
+        rename(tmp_path.c_str(), cache_path.c_str());  // アトミック置換
+        // 失敗時はtmpファイルを削除
+        // (rename失敗時のエラー処理は省略)
     } else {
-        fs::remove(tmp_path);  // 書き込み失敗なら一時ファイルを削除
+        unlink(tmp_path.c_str());  // 書き込み失敗なら一時ファイルを削除
     }
 }
 
-static std::shared_ptr<AnalysisCache> load_cache(const fs::path& path,
+static std::shared_ptr<AnalysisCache> load_cache(const std::string& path,
                                                    int expected_spec_bins = 0)
 {
-    if (!fs::exists(path)) return nullptr;
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0) return nullptr;
 
     std::ifstream ifs(path, std::ios::binary);
     if (!ifs) return nullptr;
@@ -452,16 +460,16 @@ get_or_analyze(std::shared_ptr<const EmbeddedVoice> ev_sp, int fft_size, int spe
 {
     const std::string& key = ev_sp->path;
     {
-        std::shared_lock<std::shared_mutex> rlock(g_analysis_cache_mutex);
+        VoseUniqueLock rlock(g_analysis_cache_mutex);
         auto cached = g_analysis_cache.get(key);
         if (cached) return cached;
     }
 
     const std::string h_str     = generate_cache_hash(ev_sp->path);
-    const fs::path    cache_file = get_cache_dir() / (h_str + ".vsc");
+    const std::string cache_file = get_cache_dir() + "/" + h_str + ".vsc";
     auto disk_cache = load_cache(cache_file, spec_bins);  // ④ spec_bins を渡して互換チェック
 
-    std::unique_lock<std::shared_mutex> wlock(g_analysis_cache_mutex);
+    VoseUniqueLock wlock(g_analysis_cache_mutex);
     {
         auto cached = g_analysis_cache.get(key);
         if (cached) return cached;
@@ -566,7 +574,7 @@ static void apply_crossfade(std::vector<double>& dst, int64_t dst_size,
     if (offset < 0 || offset >= dst_size) return;
 
     // overlap 分だけ src の読み出し開始位置をずらす
-    const int64_t src_start   = std::clamp(overlap_samples, int64_t(0), src_size);
+    const int64_t src_start   = clamp(overlap_samples, int64_t(0), src_size);
     const int64_t src_usable  = src_size - src_start;
     if (src_usable <= 0) return;
 
@@ -665,7 +673,7 @@ void apply_tension_breath(double* sr, double* ar, int spec_bins,
             ar[k] = amount >= 0.0
                 ? ar[k] + amount*(1.0-ar[k])
                 : ar[k] + amount*ar[k];
-            ar[k] = std::clamp(ar[k], 0.0, 1.0);
+            ar[k] = clamp(ar[k], 0.0, 1.0);
         }
     }
 }
@@ -695,7 +703,7 @@ void blend_transition_spectra(
         for (int k = 0; k < spec_bins; ++k) {
             sc[k] = std::exp(w_cur *std::log(std::max(sc[k],kFloor))
                            + w_prev*std::log(std::max(sp[k],kFloor)));
-            ac[k] = std::clamp(w_cur*ac[k] + w_prev*ap[k], 0.0, 1.0);
+            ac[k] = clamp(w_cur*ac[k] + w_prev*ap[k], 0.0, 1.0);
         }
     }
 }
@@ -839,7 +847,7 @@ static void VOSE_Synthesis(
             double current_ap = ap_src[k];
             const double freq = static_cast<double>(k)*fs/fft_size;
             if (freq > 2000.0) current_ap += vibrato_breath + dist(rng);
-            ap_dst[k] = std::clamp(current_ap, 0.0, 1.0);
+            ap_dst[k] = clamp(current_ap, 0.0, 1.0);
         }
     }
 
@@ -899,7 +907,7 @@ void synthesize_note_impl(const SynthNoteParams& p, std::vector<double>& note_bu
     for (int j = 0; j < output_frames; ++j) {
         const double t_out_ms = j * kFramePeriod;
         const double t_src_ms = map_time(t_out_ms, current_oto, src_ms, note_ms);
-        const int src_frame   = std::clamp(
+        const int src_frame   = clamp(
             static_cast<int>(t_src_ms / kFramePeriod), 0, cache_cur->length-1);
 
         double* sr = tl_scratch.spec_ptrs[j];
@@ -976,8 +984,8 @@ DLLEXPORT void load_embedded_resource(const char* phoneme,
     for (int i = 0; i < sample_count; ++i)
         ev->waveform[i] = static_cast<double>(raw_data[i]) * kInv32768;
 
-    std::unique_lock<std::shared_mutex> clock(g_analysis_cache_mutex);
-    std::unique_lock<std::shared_mutex> wlock(g_voice_db_mutex);
+    VoseUniqueLock clock(g_analysis_cache_mutex);
+    VoseUniqueLock wlock(g_voice_db_mutex);
     // パス文字列キーでキャッシュを無効化（再ロード時も確実にヒット）
     g_analysis_cache.erase(phoneme);
     ev->path = phoneme;
@@ -1058,7 +1066,7 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
 
         const OtoEntry* found_oto = nullptr;
         {
-            std::shared_lock<std::shared_mutex> lock(g_oto_db_mutex);
+            VoseUniqueLock lock(g_oto_db_mutex);
             auto oto_it = g_oto_db.find(notes[i].wav_path);
             if (oto_it != g_oto_db.end()) {
                 found_oto = &oto_it->second;
