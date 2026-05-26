@@ -71,15 +71,16 @@ struct SynthNoteParams {
     NoteEvent&         n;
     int                fft_size;
     int                spec_bins;
+    double             global_time_sec = 0.0;
 };
 
 // ============================================================
-// oto.ini DB への参照（streaming から oto を引くために必要）
+// oto.ini DB への参照
 // ============================================================
 #include <map>
-#include <shared_mutex>
+#include <mutex>
 extern std::map<std::string, OtoEntry> g_oto_db;
-extern std::shared_mutex               g_oto_db_mutex;
+extern std::mutex                      g_oto_db_mutex;
 
 // ============================================================
 // スレッドローカルスクラッチパッド (各スレッドで独立)
@@ -106,7 +107,8 @@ double map_time(double t_out_ms, const OtoEntry& oto,
 double resample_curve(const double* curve, int src_len, int dst_idx, int dst_len);
 
 // スペクトル DSP
-void apply_gender_shift(double* sr, int spec_bins, double gender, double* tmp);
+void apply_gender_shift(double* sr, int spec_bins, double gender,
+                        double* tmp, double f0_ratio = 1.0);
 void apply_tension_breath(double* sr, double* ar, int spec_bins,
                           double tension, double breath);
 void blend_transition_spectra(

@@ -553,10 +553,6 @@ inline double resample_curve(const double* curve, int src_len,
 
 // ============================================================
 // apply_crossfade
-// ============================================================
-
-// ============================================================
-// apply_crossfade
 //
 // dst[offset..] に src を書き込む。先頭 xfade_len サンプルは
 // dst と src を raised-cosine でブレンドする。
@@ -564,7 +560,6 @@ inline double resample_curve(const double* curve, int src_len,
 // overlap_samples: oto.ini の overlap をサンプル換算した値。
 //   src の先頭を overlap 分だけスキップして書き込み開始することで、
 //   子音頭がクロスフェードに食われる問題を解消する。
-//   UTAU 標準の挙動に合わせている。
 // ============================================================
 static void apply_crossfade(std::vector<double>& dst, int64_t dst_size,
                              const std::vector<double>& src, int64_t src_size,
@@ -595,25 +590,13 @@ static void apply_crossfade(std::vector<double>& dst, int64_t dst_size,
 }
 
 // ============================================================
-// apply_gender_shift
-// ============================================================
-
-// ============================================================
 // apply_gender_shift  （フォルマント追従付き高音域補正）
 //
-// gender  ∈ [0.0, 1.0]
-//   0.5 = 変更なし
-//   < 0.5 = シフト比 < 1.0 → フォルマントを低域に（太い声）
-//   > 0.5 = シフト比 > 1.0 → フォルマントを高域に（細い声・ファルセット）
-//
-// f0_ratio: 現在フレームの F0 / 音源の基準 F0（= 解析時の平均F0）
-//   1.0 = 基準ピッチ（補正なし）
-//   > 1.0 = 高音域 → スペクトル包絡を引き伸ばしてフォルマントを追従させる
-//
-// 高音域補正の効果:
-//   UTAUの標準 resampler は高音でスペクトルをそのまま使うため
-//   「高くなるほど声がこもる」。ここでは F0 比に応じて
-//   スペクトルを対数スケールで引き伸ばすことで自然な声質を維持する。
+// gender  ∈ [0.0, 1.0]  0.5=変更なし / <0.5=太い声 / >0.5=細い声
+// f0_ratio: 現在フレームのF0 / 音源基準F0
+//   高音域ほど > 1.0 → スペクトル包絡を引き伸ばしてフォルマントを追従させる
+//   UTAUの標準resamplerは高音でスペクトルをそのまま使うため「こもる」。
+//   ここでF0比に応じて引き伸ばすことで自然な声質を維持する。
 // ============================================================
 
 void apply_gender_shift(double* sr, int spec_bins, double gender,
@@ -712,37 +695,8 @@ void blend_transition_spectra(
 // apply_vibrato
 //
 // ノート後半50%からビブラートを自然に立ち上げる。
-// フェードイン: raised cosine で 0→1
-// 波形: sin（6Hz・±15cent）
-// 15cent = 目標Hz × (2^(15/1200) - 1) ≈ 目標Hz × 0.00868
-//
-// AuralAIEngineの _apply_pseudo_ai と同じ発想だが、
-// C++側でフレーム単位に適用することで遅延ゼロ・Python依存なし。
-// ============================================================
-
-// ============================================================
-// apply_vibrato
-//
-// ノート後半50%からビブラートを自然に立ち上げる。
-// フェードイン: raised cosine で 0→1（後半最初の25%で飽和）
-// 波形: sin（6Hz・±15cent）
-//
-// global_time_offset_sec: 曲先頭からこのノート開始までの秒数。
-//   これを渡すことで、ノートをまたいでも位相が連続する。
-//   0.0 を渡すと旧来の「ノート先頭で位相リセット」動作になる。
-// ============================================================
-
-// ============================================================
-// apply_vibrato
-//
-// ノート後半50%からビブラートを自然に立ち上げる。
-// フェードイン: raised cosine で 0→1（後半最初の25%で飽和）
-//
-// global_time_offset_sec : 曲先頭からこのノート開始までの秒数。
-//                          ノートをまたいで位相が連続する。
-// depth_curve / rate_curve: ノートごとの深さ・速さカーブ（nullptr = デフォルト）
-//   depth_curve[j] ∈ [0.0, 1.0]  0=無振動, 1=±15cent フルデプス
-//   rate_curve[j]  ∈ [Hz]         典型値 4〜8Hz
+// global_time_offset_sec: 曲先頭からの絶対時間 → ノートをまたいで位相連続
+// depth_curve/rate_curve: ノートごとの制御カーブ（nullptr = デフォルト）
 // ============================================================
 void apply_vibrato(double* f0, int f0_length, double frame_period_ms,
                    double global_time_offset_sec,
@@ -897,6 +851,17 @@ void synthesize_note_impl(const SynthNoteParams& p, std::vector<double>& note_bu
 
     auto cache_cur = get_or_analyze(pp.ev, fft_size, spec_bins);
 
+    // フォルマント追従用: 音源の基準F0（解析時の有声フレーム平均）を計算
+    // これを各フレームのF0と比較してスペクトルの引き伸ばし量を決める
+    double base_f0 = 0.0;
+    {
+        int voiced = 0;
+        for (int j = 0; j < cache_cur->length; ++j) {
+            if (cache_cur->f0[j] > 50.0) { base_f0 += cache_cur->f0[j]; ++voiced; }
+        }
+        base_f0 = (voiced > 0) ? base_f0 / voiced : 220.0;
+    }
+
     tl_scratch.ensure_f0(output_frames);
     tl_scratch.ensure_spec(output_frames, spec_bins);
 
@@ -927,7 +892,10 @@ void synthesize_note_impl(const SynthNoteParams& p, std::vector<double>& note_bu
         const double breath  = n.breath_curve
             ? resample_curve(n.breath_curve,  n.pitch_length, j, output_frames) : 0.5;
 
-        apply_gender_shift(sr, spec_bins, gender, tl_scratch.spec_tmp.data(), 1.0);
+        // フォルマント追従: 現フレームF0 / 音源基準F0 を渡す
+        // 高音域ほど > 1.0 になり、スペクトル包絡が引き伸ばされて声がこもらない
+        const double f0_ratio = (base_f0 > 0.0) ? tl_scratch.f0[j] / base_f0 : 1.0;
+        apply_gender_shift(sr, spec_bins, gender, tl_scratch.spec_tmp.data(), f0_ratio);
         apply_tension_breath(sr, ar, spec_bins, tension, breath);
     }
 

@@ -40,13 +40,16 @@ struct NoteEvent {
     int pitch_length;          // 配列の長さ
     
     // 追加パラメータ（精度維持のためdouble）
-    double* gender_curve;      
-    double* tension_curve;     
+    double* gender_curve;
+    double* tension_curve;
     double* breath_curve;
 
-    double* vibrato_depth_curve; 
+    // ビブラート制御カーブ（nullptr = デフォルト動作）
+    // depth_curve[i] ∈ [0.0, 1.0]  0=無振動, 1=±15cent フルデプス
+    // rate_curve[i]  ∈ [Hz]         典型値 4〜8Hz（0=6Hzデフォルト）
+    double* vibrato_depth_curve;
     double* vibrato_rate_curve;
-    int     vibrato_curve_length;
+    int     vibrato_curve_length;  // depth/rate カーブ共通の長さ
 };
 #pragma pack(pop)
 
