@@ -14,6 +14,9 @@ import zipfile
 import shutil
 import threading
 import math
+import tempfile
+from urllib.parse import urlparse
+from urllib.request import urlretrieve
 from copy import deepcopy
 from typing import Any, List, Dict, Optional, TYPE_CHECKING, cast              
 
@@ -3925,22 +3928,44 @@ class MainWindow(QMainWindow):
         if not mime_data.hasUrls():
             return
             
-        files = [u.toLocalFile() for u in mime_data.urls()]
-        
-        for file_path in files:
+        file_items: List[Dict[str, str]] = []
+        for url in mime_data.urls():
+            local_path = url.toLocalFile()
+            if local_path:
+                file_items.append({"path": local_path, "source": "local"})
+                continue
+
+            # ブラウザ等からのURLドロップに対応（UTAU音源ZIPの直接導入）
+            raw_url = url.toString()
+            if raw_url:
+                file_items.append({"path": raw_url, "source": "url"})
+
+        for item in file_items:
+            file_path = item["path"]
+            source_type = item["source"]
             file_lower = file_path.lower()
             
             # --- 1. 音源ライブラリ(ZIP)の場合 ---
-            if file_lower.endswith(".zip"):
+            if file_lower.endswith(".zip") or (source_type == "url" and ".zip" in file_lower):
                 status_bar = self.statusBar()
                 if status_bar:
                     status_bar.showMessage(f"音源を導入中: {os.path.basename(file_path)}")
                 
                 try:
+                    zip_input_path = file_path
+                    tmp_file_path = None
+                    if source_type == "url":
+                        parsed = urlparse(file_path)
+                        if parsed.scheme not in ("http", "https"):
+                            raise ValueError(f"未対応のURLスキームです: {parsed.scheme}")
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
+                            tmp_file_path = tmp.name
+                        urlretrieve(file_path, tmp_file_path)
+                        zip_input_path = tmp_file_path
                     # VoiceManagerの存在確認
                     v_manager = getattr(self, 'voice_manager', None)
                     if v_manager and hasattr(v_manager, 'install_voice_from_zip'):
-                        new_voice = v_manager.install_voice_from_zip(file_path)
+                        new_voice = v_manager.install_voice_from_zip(zip_input_path)
                         
                         # 成功演出：SEを鳴らして通知
                         audio_out = getattr(self, 'audio_output', None)
@@ -3958,8 +3983,12 @@ class MainWindow(QMainWindow):
                             self.scan_utau_voices()
                     else:
                         print("DEBUG: voice_manager or install_voice_from_zip not found.")
+                    if tmp_file_path and os.path.exists(tmp_file_path):
+                        os.remove(tmp_file_path)
 
                 except Exception as e:
+                    if 'tmp_file_path' in locals() and tmp_file_path and os.path.exists(tmp_file_path):
+                        os.remove(tmp_file_path)
                     from PySide6.QtWidgets import QMessageBox
                     QMessageBox.critical(self, "導入失敗", f"インストール中にエラーが発生しました:\n{str(e)}")
 
