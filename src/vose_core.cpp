@@ -29,7 +29,9 @@ constexpr const T& clamp(const T& v, const T& lo, const T& hi) {
 #include <condition_variable>
 
 // BigVGAN ONNX Runtime
+#ifdef VOSE_PRO
 #include <onnxruntime_cxx_api.h>
+#endif
 using VoseMutex = std::mutex;
 using VoseUniqueLock = std::unique_lock<std::mutex>;
 #include <memory>
