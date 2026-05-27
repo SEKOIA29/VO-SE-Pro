@@ -339,7 +339,7 @@ static void save_cache(const std::string& cache_path, const AnalysisCache& cache
 }
 
 static std::shared_ptr<AnalysisCache> load_cache(const std::string& path,
-                                                   int expected_spec_bins = 0)
+                                                 int expected_spec_bins = 0)
 {
     struct stat st;
     if (stat(path.c_str(), &st) != 0) return nullptr;
@@ -353,13 +353,13 @@ static std::shared_ptr<AnalysisCache> load_cache(const std::string& path,
     // マジック検証
     if (header.magic != 0x45534F56) return nullptr;
 
-    // サニティチェック: 長さ・spec_bins が異常値ならキャッシュ破棄
+    // サニティチェック: 長さ・spec_bins が異常値ならキャッシュ破棄（OOM防止）
     if (header.length <= 0 || header.length > 1'000'000) return nullptr;
     if (header.spec_bins <= 0 || header.spec_bins > 65536) return nullptr;
 
-    // ④ spec_bins 互換チェック:
+    // spec_bins 互換チェック:
     // fft_size が変わると spec_bins が変わる。異なるサイズのキャッシュを
-    // 読み込むと配列の境界外アクセスが起きる。不一致なら再解析させる。
+    // 読み込むと配列の境界外アクセスが起きるため、不一致なら再解析させる。
     if (expected_spec_bins > 0 && header.spec_bins != expected_spec_bins) {
         return nullptr;
     }
@@ -367,29 +367,32 @@ static std::shared_ptr<AnalysisCache> load_cache(const std::string& path,
     auto cache = std::make_shared<AnalysisCache>();
     cache->length    = header.length;
     cache->spec_bins = header.spec_bins;
+    
+    // メモリ確保
     cache->f0  .resize(cache->length);
     cache->time.resize(cache->length);
     const size_t sc = static_cast<size_t>(cache->length) * cache->spec_bins;
     cache->flat_spec.resize(sc);
     cache->flat_ap  .resize(sc);
 
-    // ③ 各 read の成否を検証。途中で失敗したらキャッシュ破棄して再解析
+    // 各 read の成否を検証するラムダ
     auto read_check = [&](void* dst, size_t bytes) -> bool {
         return static_cast<bool>(
             ifs.read(reinterpret_cast<char*>(dst), static_cast<std::streamsize>(bytes)));
     };
 
-    if (!read_check(cache->f0.data(),        sizeof(double) * cache->length))  return nullptr;
-    if (!read_check(cache->time.data(),      sizeof(double) * cache->length))  return nullptr;
-    if (!read_check(cache->flat_spec.data(), sizeof(double) * sc))             return nullptr;
-    if (!read_check(cache->flat_ap.data(),   sizeof(double) * sc))             return nullptr;
+    // 【最適化】sizeof(double) をコンテナの要素型（sizeof(cache->...[0])）に書き換え、
+    // 将来的に float 等に型変更してもバグが出ないよう安全性を担保。
+    if (!read_check(cache->f0.data(),        sizeof(cache->f0[0]) * cache->length))  return nullptr;
+    if (!read_check(cache->time.data(),      sizeof(cache->time[0]) * cache->length)) return nullptr;
+    if (!read_check(cache->flat_spec.data(), sizeof(cache->flat_spec[0]) * sc))      return nullptr;
+    if (!read_check(cache->flat_ap.data(),   sizeof(cache->flat_ap[0]) * sc))        return nullptr;
 
-    // ストリームが正確に末尾に達しているか確認（余剰バイトがある = 破損）
+    // ストリームが正確に末尾に達しているか確認（余剰バイトがある = ファイル破損とみなす）
     if (ifs.peek() != std::ifstream::traits_type::eof()) return nullptr;
 
     return cache;
 }
-
 // ============================================================
 // build_analysis_cache
 // ============================================================
@@ -463,31 +466,57 @@ build_analysis_cache(const EmbeddedVoice& ev, int fft_size, int spec_bins)
 std::shared_ptr<const AnalysisCache>
 get_or_analyze(std::shared_ptr<const EmbeddedVoice> ev_sp, int fft_size, int spec_bins)
 {
+    if (!ev_sp) return nullptr;
     const std::string& key = ev_sp->path;
+
+    // 1. メモリキャッシュ（LRU）のファーストチェック
     {
         VoseUniqueLock rlock(g_analysis_cache_mutex);
         auto cached = g_analysis_cache.get(key);
         if (cached) return cached;
     }
 
-    const std::string h_str     = generate_cache_hash(ev_sp->path);
+    // 2. ロックを外した状態でディスクキャッシュのパス生成と読み込み（I/Oボトルネックの分離）
+    const std::string h_str      = generate_cache_hash(key);
     const std::string cache_file = get_cache_dir() + "/" + h_str + ".vsc";
-    auto disk_cache = load_cache(cache_file, spec_bins);  // ④ spec_bins を渡して互換チェック
+    auto disk_cache = load_cache(cache_file, spec_bins);
 
+    // 3. 書き込みロックを取得して状態を確定させる
     VoseUniqueLock wlock(g_analysis_cache_mutex);
-    {
-        auto cached = g_analysis_cache.get(key);
-        if (cached) return cached;
+
+    // 【Double-Checked Locking】ディスク読み込みやロック待ちの間に、
+    // 他のスレッドが既にメモリキャッシュに格納していないかを「必ず再確認」
+    auto cached = g_analysis_cache.get(key);
+    if (cached) {
+        // wlock はスコープを抜ける（関数の波括弧を閉じる）時に自動的に安全に解放されます
+        return cached; 
     }
+
+    // ディスクキャッシュが有効だった場合、LRUに登録して返す
     if (disk_cache) {
         g_analysis_cache.put(key, disk_cache);
         return disk_cache;
     }
 
+    // 4. キャッシュがどこにもない場合のみ、WORLDで新規解析を実行
+    // ロックを持ったまま解析すると全スレッドが止まるため、一時的にロックを解除（重要）
+    wlock.unlock();
     auto cache = build_analysis_cache(*ev_sp, fft_size, spec_bins);
+    wlock.lock(); // メモリキャッシュへ書き込むために再ロック
+
+    // 解析中に別のスレッドが同じファイルを解析し終えていないか、最終防衛ラインのチェック
+    auto final_cached = g_analysis_cache.get(key);
+    if (final_cached) {
+        return final_cached;
+    }
+
+    // メモリキャッシュに格納
     g_analysis_cache.put(key, cache);
+    
+    // ディスクへの書き込みは重いため、ロックを完全に解除してから非同期（または安全なスコープ）で行う
     wlock.unlock();
     save_cache(cache_file, *cache);
+
     return cache;
 }
 
