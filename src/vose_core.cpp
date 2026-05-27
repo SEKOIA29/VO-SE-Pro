@@ -15,10 +15,12 @@ constexpr const T& clamp(const T& v, const T& lo, const T& hi) {
 #include <algorithm>
 #include <cmath>
 #include <sys/stat.h>
-#ifndef _WIN32
+#ifdef _WIN32
+#include <direct.h>
+#else
 #include <unistd.h>
-#include <fstream>
 #endif
+#include <fstream>
 #include <iomanip>    
 #include <random>
 #include <sstream>
@@ -32,7 +34,6 @@ constexpr const T& clamp(const T& v, const T& lo, const T& hi) {
 using VoseMutex = std::mutex;
 using VoseUniqueLock = std::unique_lock<std::mutex>;
 #include <memory>
-#define _USE_MATH_DEFINES
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -297,7 +298,11 @@ static std::string get_cache_dir() {
     std::string p = "cache";
     struct stat st;
     if (stat(p.c_str(), &st) != 0) {
+        #ifdef _WIN32
+        _mkdir(p.c_str());
+        #else
         mkdir(p.c_str(), 0755);
+        #endif
     }
     return p;
 }
@@ -326,7 +331,7 @@ static void save_cache(const std::string& cache_path, const AnalysisCache& cache
     fclose(fp);
 
     if (ok) {
-        std::error_code ec;
+        
         rename(tmp_path.c_str(), cache_path.c_str());  // アトミック置換
         // 失敗時はtmpファイルを削除
         // (rename失敗時のエラー処理は省略)
