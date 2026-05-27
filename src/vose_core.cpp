@@ -15,8 +15,10 @@ constexpr const T& clamp(const T& v, const T& lo, const T& hi) {
 #include <algorithm>
 #include <cmath>
 #include <sys/stat.h>
+#ifndef _WIN32
 #include <unistd.h>
 #include <fstream>
+#endif
 #include <iomanip>    
 #include <random>
 #include <sstream>
