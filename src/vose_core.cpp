@@ -1395,14 +1395,17 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
 // ============================================================
 // BigVGAN セッション管理
 // ============================================================
+#ifdef VOSE_PRO
 namespace {
     static Ort::Env            g_ort_env{ORT_LOGGING_LEVEL_WARNING, "vose_bigvgan"};
     static Ort::SessionOptions g_ort_opts;
 }
+#endif
 
 // BigVGAN ONNXモデルのパスを設定する（init_official_engine から呼ぶ）
 // path が nullptr または空なら BigVGAN を無効化する
 extern "C" DLLEXPORT void set_bigvgan_model(const char* onnx_path) {
+#ifdef VOSE_PRO
     std::lock_guard<VoseMutex> lk(g_bigvgan_mutex);
     if (!onnx_path || onnx_path[0] == '\0') {
         g_bigvgan_session.reset();
@@ -1418,9 +1421,10 @@ extern "C" DLLEXPORT void set_bigvgan_model(const char* onnx_path) {
 #else
         g_bigvgan_session = std::make_unique<Ort::Session>(g_ort_env, onnx_path, g_ort_opts);
 #endif
-    } catch (const Ort::Exception& e) {
-        // ロード失敗時は BigVGAN 無効のまま続行（WORLD出力にフォールバック）
+    } catch (...) {
         g_bigvgan_session.reset();
-        (void)e;
     }
+#else
+    (void)onnx_path; // 未使用変数警告の抑制
+#endif
 }
