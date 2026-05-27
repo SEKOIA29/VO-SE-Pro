@@ -1224,10 +1224,11 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
     //
     // BigVGANが無効なら従来通り WORLD出力をそのまま wavwrite する。
     // ----------------------------------------------------------------
-    {
+{
         const double* src   = full_song_buffer.data() + pre_buffer_samples;
         const int     n_src = static_cast<int>(total_samples);
 
+#ifdef VOSE_PRO
         if (g_bigvgan_session && n_src > 0) {
             // ----------------------------------------------------------
             // ステップ1: double → float 正規化
@@ -1413,9 +1414,13 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
             wavwrite(bigvgan_out.data(), n_src, out_fs, out_bit_depth, output_path);
 
         } else {
-            // BigVGAN無効時: WORLD出力をそのまま書き出す
+            // BigVGAN無効時（Pro版としてビルドされているがモデル未ロード時）: WORLD出力をそのまま書き出す
             wavwrite(src, n_src, out_fs, out_bit_depth, output_path);
         }
+#else
+        // 無印版ビルド時: ONNX関連をすべて無視してWORLD出力をそのまま書き出す
+        wavwrite(src, n_src, out_fs, out_bit_depth, output_path);
+#endif
     }
 }
 
