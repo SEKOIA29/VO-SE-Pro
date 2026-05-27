@@ -15,11 +15,7 @@ constexpr const T& clamp(const T& v, const T& lo, const T& hi) {
 #include <algorithm>
 #include <cmath>
 #include <sys/stat.h>
-#ifdef _WIN32
-#include <direct.h>
-#else
 #include <unistd.h>
-#endif
 #include <fstream>
 #include <iomanip>    
 #include <random>
@@ -31,9 +27,13 @@ constexpr const T& clamp(const T& v, const T& lo, const T& hi) {
 #include <mutex>
 #include <mutex>
 #include <condition_variable>
+
+// BigVGAN ONNX Runtime
+#include <onnxruntime_cxx_api.h>
 using VoseMutex = std::mutex;
 using VoseUniqueLock = std::unique_lock<std::mutex>;
 #include <memory>
+#define _USE_MATH_DEFINES
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -298,11 +298,7 @@ static std::string get_cache_dir() {
     std::string p = "cache";
     struct stat st;
     if (stat(p.c_str(), &st) != 0) {
-        #ifdef _WIN32
-        _mkdir(p.c_str());
-        #else
         mkdir(p.c_str(), 0755);
-        #endif
     }
     return p;
 }
@@ -331,7 +327,7 @@ static void save_cache(const std::string& cache_path, const AnalysisCache& cache
     fclose(fp);
 
     if (ok) {
-        
+        std::error_code ec;
         rename(tmp_path.c_str(), cache_path.c_str());  // アトミック置換
         // 失敗時はtmpファイルを削除
         // (rename失敗時のエラー処理は省略)
@@ -1183,11 +1179,246 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
     }
 
     // ----------------------------------------------------------------
-    // 【有料化の要】Pro版は 32bit出力、Free版は 16bit出力
+    // BigVGAN ボコーダー処理
+    //
+    // WORLD合成の出力PCM（double[]）をメルスペクトログラムに変換し、
+    // BigVGAN ONNX モデルで高品質PCMに再合成する。
+    //
+    // パイプライン:
+    //   full_song_buffer (WORLD出力, double[])
+    //     → pcm_float (float[], [-1,1] 正規化)
+    //     → mel_filterbank (80bin, win=1024, hop=256, 44100Hz)
+    //     → BigVGAN推論 (256フレームchunk, 25msオーバーラップ)
+    //     → overlap-add → wavwrite
+    //
+    // BigVGANが無効なら従来通り WORLD出力をそのまま wavwrite する。
     // ----------------------------------------------------------------
-    wavwrite(full_song_buffer.data() + pre_buffer_samples,
-             static_cast<int>(total_samples),
-             out_fs, out_bit_depth, output_path);
+    {
+        const double* src   = full_song_buffer.data() + pre_buffer_samples;
+        const int     n_src = static_cast<int>(total_samples);
+
+        if (g_bigvgan_session && n_src > 0) {
+            // ----------------------------------------------------------
+            // ステップ1: double → float 正規化
+            // ----------------------------------------------------------
+            std::vector<float> pcm(n_src);
+            for (int i = 0; i < n_src; ++i)
+                pcm[i] = static_cast<float>(std::clamp(src[i], -1.0, 1.0));
+
+            // ----------------------------------------------------------
+            // ステップ2: メルスペクトログラム変換
+            //
+            // パラメータ (BigVGAN学習時の標準値):
+            //   sample_rate = 44100
+            //   n_fft       = 1024
+            //   hop_size    = 256
+            //   n_mels      = 80
+            //   fmin        = 0 Hz
+            //   fmax        = 22050 Hz (Nyquist)
+            // ----------------------------------------------------------
+            constexpr int   kNFft    = 1024;
+            constexpr int   kHop     = 256;
+            constexpr int   kNMels   = 80;
+            constexpr float kFMin    = 0.0f;
+            constexpr float kFMax    = 22050.0f;
+            constexpr float kSR      = 44100.0f;
+            constexpr float kLogFloor = 1e-5f;  // log(mel) のフロア
+
+            const int n_frames = (n_src + kHop - 1) / kHop;
+
+            // Hann窓
+            std::vector<float> window(kNFft);
+            for (int i = 0; i < kNFft; ++i)
+                window[i] = 0.5f * (1.0f - std::cos(2.0f * static_cast<float>(M_PI) * i / kNFft));
+
+            // メルフィルタバンク行列を構築（n_mels × (n_fft/2+1)）
+            const int spec_bins_fft = kNFft / 2 + 1;
+            auto hz_to_mel = [](float hz) { return 2595.0f * std::log10(1.0f + hz / 700.0f); };
+            auto mel_to_hz = [](float mel) { return 700.0f * (std::pow(10.0f, mel / 2595.0f) - 1.0f); };
+
+            std::vector<std::vector<float>> mel_fb(kNMels, std::vector<float>(spec_bins_fft, 0.0f));
+            {
+                const float mel_min = hz_to_mel(kFMin);
+                const float mel_max = hz_to_mel(kFMax);
+                std::vector<float> mel_pts(kNMels + 2);
+                for (int m = 0; m < kNMels + 2; ++m)
+                    mel_pts[m] = mel_to_hz(mel_min + (mel_max - mel_min) * m / (kNMels + 1));
+
+                for (int m = 0; m < kNMels; ++m) {
+                    for (int k = 0; k < spec_bins_fft; ++k) {
+                        const float hz = k * kSR / kNFft;
+                        if (hz >= mel_pts[m] && hz <= mel_pts[m+1])
+                            mel_fb[m][k] = (hz - mel_pts[m]) / (mel_pts[m+1] - mel_pts[m]);
+                        else if (hz > mel_pts[m+1] && hz <= mel_pts[m+2])
+                            mel_fb[m][k] = (mel_pts[m+2] - hz) / (mel_pts[m+2] - mel_pts[m+1]);
+                    }
+                }
+            }
+
+            // メルスペクトログラム [n_frames][n_mels]
+            std::vector<std::vector<float>> mel_spec(n_frames, std::vector<float>(kNMels, kLogFloor));
+            {
+                std::vector<float> frame_buf(kNFft, 0.0f);
+                std::vector<float> power(spec_bins_fft);
+
+                for (int t = 0; t < n_frames; ++t) {
+                    const int center = t * kHop;
+                    // ゼロパディング付きで窓掛け
+                    for (int i = 0; i < kNFft; ++i) {
+                        const int s = center - kNFft/2 + i;
+                        frame_buf[i] = (s >= 0 && s < n_src) ? pcm[s] * window[i] : 0.0f;
+                    }
+
+                    // FFT（Cooley-Tukey 実FFT）
+                    // kNFft=1024 は2の冪乗なのでそのまま使える
+                    // ここでは libm の sincos を使ったシンプルな実装
+                    std::vector<float> re(kNFft), im(kNFft, 0.0f);
+                    std::copy(frame_buf.begin(), frame_buf.end(), re.begin());
+                    for (int step = 1; step < kNFft; step <<= 1) {
+                        for (int i = 0; i < kNFft; i += step*2) {
+                            for (int j = 0; j < step; ++j) {
+                                const float ang = -static_cast<float>(M_PI) * j / step;
+                                const float wr  = std::cos(ang), wi = std::sin(ang);
+                                const float tr  = wr*re[i+j+step] - wi*im[i+j+step];
+                                const float ti  = wr*im[i+j+step] + wi*re[i+j+step];
+                                re[i+j+step] = re[i+j] - tr; im[i+j+step] = im[i+j] - ti;
+                                re[i+j]     += tr;           im[i+j]     += ti;
+                            }
+                        }
+                    }
+                    // ビット反転並べ替え
+                    for (int i = 1, j = 0; i < kNFft; ++i) {
+                        int bit = kNFft >> 1;
+                        for (; j & bit; bit >>= 1) j ^= bit;
+                        j ^= bit;
+                        if (i < j) { std::swap(re[i],re[j]); std::swap(im[i],im[j]); }
+                    }
+
+                    for (int k = 0; k < spec_bins_fft; ++k)
+                        power[k] = re[k]*re[k] + im[k]*im[k];
+
+                    for (int m = 0; m < kNMels; ++m) {
+                        float val = 0.0f;
+                        for (int k = 0; k < spec_bins_fft; ++k)
+                            val += mel_fb[m][k] * power[k];
+                        mel_spec[t][m] = std::log(std::max(val, kLogFloor));
+                    }
+                }
+            }
+
+            // ----------------------------------------------------------
+            // ステップ3: BigVGAN推論
+            //
+            // chunk_frames = 256  → 65536サンプル出力
+            // overlap_frames = 25ms @ hop=256 → ceil(25ms*44100/256) = 4フレーム
+            // オーバーラップ部は raised-cosine でブレンド
+            // ----------------------------------------------------------
+            constexpr int kChunkFrames   = 256;
+            constexpr int kOverlapFrames = 4;   // 25ms相当（実測で十分な連続性）
+            constexpr int kChunkSamples  = kChunkFrames * kHop;  // 65536
+            constexpr int kOverlapSamples = kOverlapFrames * kHop;
+
+            std::vector<float> out_pcm(n_frames * kHop, 0.0f);
+
+            Ort::MemoryInfo mem_info =
+                Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+            const char* input_name  = "input_mel";
+            const char* output_name = "output_audio";
+
+            std::vector<float> chunk_mel(kNMels * kChunkFrames);
+
+            for (int t_start = 0; t_start < n_frames; t_start += kChunkFrames - kOverlapFrames) {
+                // メルchunkを [1, 80, 256] に充填（足りない部分は末尾フレームで埋める）
+                for (int t = 0; t < kChunkFrames; ++t) {
+                    const int src_t = std::min(t_start + t, n_frames - 1);
+                    for (int m = 0; m < kNMels; ++m)
+                        chunk_mel[m * kChunkFrames + t] = mel_spec[src_t][m];
+                }
+
+                // ONNX推論
+                std::array<int64_t, 3> input_shape  = {1, kNMels, kChunkFrames};
+                std::array<int64_t, 3> output_shape = {1, 1, kChunkSamples};
+
+                auto input_tensor = Ort::Value::CreateTensor<float>(
+                    mem_info, chunk_mel.data(), chunk_mel.size(),
+                    input_shape.data(), input_shape.size());
+
+                auto outputs = g_bigvgan_session->Run(
+                    Ort::RunOptions{nullptr},
+                    &input_name, &input_tensor, 1,
+                    &output_name, 1);
+
+                const float* chunk_out = outputs[0].GetTensorData<float>();
+
+                // オーバーラップアド（raised-cosine ブレンド）
+                const int write_sample = t_start * kHop;
+                for (int s = 0; s < kChunkSamples; ++s) {
+                    const int out_s = write_sample + s;
+                    if (out_s >= static_cast<int>(out_pcm.size())) break;
+
+                    if (s < kOverlapSamples && t_start > 0) {
+                        // オーバーラップ領域: 前chunkと raised-cosine ブレンド
+                        const float fade_in = 0.5f * (1.0f -
+                            std::cos(static_cast<float>(M_PI) * s / kOverlapSamples));
+                        out_pcm[out_s] = out_pcm[out_s] * (1.0f - fade_in)
+                                       + chunk_out[s]   * fade_in;
+                    } else {
+                        out_pcm[out_s] = chunk_out[s];
+                    }
+                }
+
+                // 曲末に達したら終了
+                if (t_start + kChunkFrames >= n_frames) break;
+            }
+
+            // ----------------------------------------------------------
+            // ステップ4: BigVGAN出力を double[] に変換して wavwrite
+            // ----------------------------------------------------------
+            std::vector<double> bigvgan_out(n_src);
+            for (int i = 0; i < n_src; ++i)
+                bigvgan_out[i] = std::clamp(static_cast<double>(out_pcm[i]), -1.0, 1.0);
+
+            wavwrite(bigvgan_out.data(), n_src, out_fs, out_bit_depth, output_path);
+
+        } else {
+            // BigVGAN無効時: WORLD出力をそのまま書き出す
+            wavwrite(src, n_src, out_fs, out_bit_depth, output_path);
+        }
+    }
 }
- 
+
 } // extern "C"
+
+// ============================================================
+// BigVGAN セッション管理
+// ============================================================
+namespace {
+    static Ort::Env            g_ort_env{ORT_LOGGING_LEVEL_WARNING, "vose_bigvgan"};
+    static Ort::SessionOptions g_ort_opts;
+}
+
+// BigVGAN ONNXモデルのパスを設定する（init_official_engine から呼ぶ）
+// path が nullptr または空なら BigVGAN を無効化する
+extern "C" DLLEXPORT void set_bigvgan_model(const char* onnx_path) {
+    std::lock_guard<VoseMutex> lk(g_bigvgan_mutex);
+    if (!onnx_path || onnx_path[0] == '\0') {
+        g_bigvgan_session.reset();
+        return;
+    }
+    try {
+        g_ort_opts.SetIntraOpNumThreads(
+            static_cast<int>(std::max(1u, std::thread::hardware_concurrency())));
+        g_ort_opts.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+#ifdef _WIN32
+        const std::wstring wpath(onnx_path, onnx_path + strlen(onnx_path));
+        g_bigvgan_session = std::make_unique<Ort::Session>(g_ort_env, wpath.c_str(), g_ort_opts);
+#else
+        g_bigvgan_session = std::make_unique<Ort::Session>(g_ort_env, onnx_path, g_ort_opts);
+#endif
+    } catch (const Ort::Exception& e) {
+        // ロード失敗時は BigVGAN 無効のまま続行（WORLD出力にフォールバック）
+        g_bigvgan_session.reset();
+        (void)e;
+    }
+}
