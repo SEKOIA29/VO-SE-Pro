@@ -5243,42 +5243,50 @@ class MainWindow(QMainWindow):
 
     def scan_utau_voices(self):
         """音源フォルダをスキャンし統合管理"""
-        voice_root = os.path.join(os.getcwd(), "voices")
-        if not os.path.exists(voice_root):
-            os.makedirs(voice_root)
+        voice_roots = [
+            os.path.join(os.getcwd(), "voices"),
+            os.path.join(os.getcwd(), "voice_banks"),
+        ]
+
+        for root in voice_roots:
+            os.makedirs(root, exist_ok=True)
 
         found_voices: dict = {}
 
         # 1. ユーザー追加音源のスキャン
-        for dir_name in os.listdir(voice_root):
-            dir_path = os.path.join(voice_root, dir_name)
-            if not os.path.isdir(dir_path):
-                continue
+        for voice_root in voice_roots:
+            for dir_name in os.listdir(voice_root):
+                dir_path = os.path.join(voice_root, dir_name)
+                if not os.path.isdir(dir_path):
+                    continue
 
-            oto_path = os.path.join(dir_path, "oto.ini")
-            if not os.path.exists(oto_path):
-                continue
+                oto_path = os.path.join(dir_path, "oto.ini")
+                if not os.path.exists(oto_path):
+                   continue
 
-            char_name = dir_name
-            char_txt = os.path.join(dir_path, "character.txt")
+                char_name = dir_name
+                char_txt = os.path.join(dir_path, "character.txt")
 
-            if os.path.exists(char_txt):
-                content = self.read_file_safely(char_txt)
-                if content:
-                    for line in content.splitlines():
-                        if line.startswith("name="):
-                            char_name = line.split("=", 1)[1].strip()
-                            break
+                if os.path.exists(char_txt):
+                    content = self.read_file_safely(char_txt)
+                    if content:
+                        for line in content.splitlines():
+                            if line.startswith("name="):
+                                char_name = line.split("=", 1)[1].strip()
+                                break
 
-            found_voices[char_name] = {
-                "path": dir_path,
-                "icon": (
-                    os.path.join(dir_path, "icon.png")
-                    if os.path.exists(os.path.join(dir_path, "icon.png"))
-                    else "resources/default_avatar.png"
-                ),
-                "id": dir_name,
-            }
+                if char_name in found_voices:
+                    char_name = f"{char_name} ({os.path.basename(voice_root)})"
+
+                found_voices[char_name] = {
+                    "path": dir_path,
+                    "icon": (
+                        os.path.join(dir_path, "icon.png")
+                        if os.path.exists(os.path.join(dir_path, "icon.png"))
+                        else "resources/default_avatar.png"
+                    ),
+                    "id": f"{os.path.basename(voice_root)}:{dir_name}",
+                }
 
         # 2. 公式音源のスキャン
         base_path = getattr(self, "base_path", os.getcwd())
