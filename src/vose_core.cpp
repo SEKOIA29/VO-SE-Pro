@@ -15,12 +15,6 @@ constexpr const T& clamp(const T& v, const T& lo, const T& hi) {
 #include <algorithm>
 #include <cmath>
 #include <sys/stat.h>
-#if defined(_WIN32) || defined(_WIN64)
-#  include <io.h>
-#  include <process.h>
-#else
-#  include <unistd.h>
-#endif
 #include <fstream>
 #include <iomanip>    
 #include <random>
@@ -30,22 +24,40 @@ constexpr const T& clamp(const T& v, const T& lo, const T& hi) {
 #include <future>
 #include <thread>
 #include <mutex>
-#include <mutex>
 #include <condition_variable>
+#include <memory>
+
+// 先に型定義を完了させ、ONNXセッション側での未定義エラーを防ぐ
+using VoseMutex = std::mutex;
+using VoseUniqueLock = std::unique_lock<std::mutex>;
+
+// --- Windows (MSVC) と POSIX (macOS/Linux) のクロスプラットフォーム吸収マクロ ---
+#if defined(_WIN32) || defined(_WIN64)
+#  include <io.h>
+#  include <process.h>
+#  include <direct.h>     // Windowsの_mkdir用
+#  define access _access
+#  define F_OK 0
+#  define mkdir(path, mode) _mkdir(path) // 2引数版をWindows用に1引数ラップ
+#else
+#  include <unistd.h>
+#endif
+
+// _USE_MATH_DEFINES の再定義警告(C4005)および未定義対策
+#ifndef _USE_MATH_DEFINES
+#define _USE_MATH_DEFINES
+#endif
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 // BigVGAN ONNX Runtime
 #ifdef VOSE_PRO
 #include <onnxruntime_cxx_api.h>
 static std::unique_ptr<Ort::Session> g_bigvgan_session;
-static VoseMutex                     g_bigvgan_mutex;
+static VoseMutex                     g_bigvgan_mutex; // 前方で定義済みのため安全
 #endif
-using VoseMutex = std::mutex;
-using VoseUniqueLock = std::unique_lock<std::mutex>;
-#include <memory>
-#define _USE_MATH_DEFINES
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+
 #include "vose_core.h"
 #include "voice_data.h"
 // ...existing code...
