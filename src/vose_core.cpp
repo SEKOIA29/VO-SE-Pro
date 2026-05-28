@@ -31,6 +31,8 @@ constexpr const T& clamp(const T& v, const T& lo, const T& hi) {
 // BigVGAN ONNX Runtime
 #ifdef VOSE_PRO
 #include <onnxruntime_cxx_api.h>
+static std::unique_ptr<Ort::Session> g_bigvgan_session;
+static VoseMutex                     g_bigvgan_mutex;
 #endif
 using VoseMutex = std::mutex;
 using VoseUniqueLock = std::unique_lock<std::mutex>;
@@ -1264,6 +1266,8 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
                 window[i] = 0.5f * (1.0f - std::cos(2.0f * static_cast<float>(M_PI) * i / kNFft));
 
             // メルフィルタバンク行列を構築（n_mels × (n_fft/2+1)）
+            // 正規化: 各フィルタをその帯域幅で割ることで、
+            // 低周波ビンの過大評価を防ぐ（BigVGAN学習時と同じ分布にする）
             const int spec_bins_fft = kNFft / 2 + 1;
             auto hz_to_mel = [](float hz) { return 2595.0f * std::log10(1.0f + hz / 700.0f); };
             auto mel_to_hz = [](float mel) { return 700.0f * (std::pow(10.0f, mel / 2595.0f) - 1.0f); };
@@ -1277,12 +1281,13 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
                     mel_pts[m] = mel_to_hz(mel_min + (mel_max - mel_min) * m / (kNMels + 1));
 
                 for (int m = 0; m < kNMels; ++m) {
+                    const float norm = 2.0f / (mel_pts[m+2] - mel_pts[m]); // 面積正規化
                     for (int k = 0; k < spec_bins_fft; ++k) {
                         const float hz = k * kSR / kNFft;
                         if (hz >= mel_pts[m] && hz <= mel_pts[m+1])
-                            mel_fb[m][k] = (hz - mel_pts[m]) / (mel_pts[m+1] - mel_pts[m]);
+                            mel_fb[m][k] = norm * (hz - mel_pts[m]) / (mel_pts[m+1] - mel_pts[m]);
                         else if (hz > mel_pts[m+1] && hz <= mel_pts[m+2])
-                            mel_fb[m][k] = (mel_pts[m+2] - hz) / (mel_pts[m+2] - mel_pts[m+1]);
+                            mel_fb[m][k] = norm * (mel_pts[m+2] - hz) / (mel_pts[m+2] - mel_pts[m+1]);
                     }
                 }
             }
@@ -1292,38 +1297,43 @@ DLLEXPORT void execute_render(NoteEvent* notes, int note_count, const char* outp
             {
                 std::vector<float> frame_buf(kNFft, 0.0f);
                 std::vector<float> power(spec_bins_fft);
+                std::vector<float> re(kNFft), im(kNFft);
 
                 for (int t = 0; t < n_frames; ++t) {
                     const int center = t * kHop;
-                    // ゼロパディング付きで窓掛け
                     for (int i = 0; i < kNFft; ++i) {
                         const int s = center - kNFft/2 + i;
                         frame_buf[i] = (s >= 0 && s < n_src) ? pcm[s] * window[i] : 0.0f;
                     }
 
-                    // FFT（Cooley-Tukey 実FFT）
-                    // kNFft=1024 は2の冪乗なのでそのまま使える
-                    // ここでは libm の sincos を使ったシンプルな実装
-                    std::vector<float> re(kNFft), im(kNFft, 0.0f);
+                    // Cooley-Tukey 基数2 DIT FFT（正しい順序）
+                    // ステップ1: ビット反転並べ替え（これを先にやる）
                     std::copy(frame_buf.begin(), frame_buf.end(), re.begin());
+                    std::fill(im.begin(), im.end(), 0.0f);
+                    {
+                        int j = 0;
+                        for (int i = 1; i < kNFft; ++i) {
+                            int bit = kNFft >> 1;
+                            for (; j & bit; bit >>= 1) j ^= bit;
+                            j ^= bit;
+                            if (i < j) { std::swap(re[i], re[j]); }
+                        }
+                    }
+                    // ステップ2: バタフライ演算（並べ替え後に実行）
                     for (int step = 1; step < kNFft; step <<= 1) {
-                        for (int i = 0; i < kNFft; i += step*2) {
+                        const float ang_base = -static_cast<float>(M_PI) / step;
+                        for (int i = 0; i < kNFft; i += step * 2) {
                             for (int j = 0; j < step; ++j) {
-                                const float ang = -static_cast<float>(M_PI) * j / step;
+                                const float ang = ang_base * j;
                                 const float wr  = std::cos(ang), wi = std::sin(ang);
                                 const float tr  = wr*re[i+j+step] - wi*im[i+j+step];
                                 const float ti  = wr*im[i+j+step] + wi*re[i+j+step];
-                                re[i+j+step] = re[i+j] - tr; im[i+j+step] = im[i+j] - ti;
-                                re[i+j]     += tr;           im[i+j]     += ti;
+                                re[i+j+step] = re[i+j] - tr;
+                                im[i+j+step] = im[i+j] - ti;
+                                re[i+j]     += tr;
+                                im[i+j]     += ti;
                             }
                         }
-                    }
-                    // ビット反転並べ替え
-                    for (int i = 1, j = 0; i < kNFft; ++i) {
-                        int bit = kNFft >> 1;
-                        for (; j & bit; bit >>= 1) j ^= bit;
-                        j ^= bit;
-                        if (i < j) { std::swap(re[i],re[j]); std::swap(im[i],im[j]); }
                     }
 
                     for (int k = 0; k < spec_bins_fft; ++k)
