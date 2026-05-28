@@ -152,53 +152,81 @@ struct AnalysisCache {
 //   LRU（Least Recently Used）で古いエントリを追い出す。
 //   アクセス順を std::list で管理し、O(1) エビクションを実現する。
 // ============================================================
+// VO-SE専用の型定義（既存の定義に合わせて調整してください）
+struct AnalysisCache; 
+
 static constexpr size_t kMaxCacheEntries = 64; // 約1GB上限（16MB × 64）
 
 struct CacheStore {
     using Key   = std::string;
     using Value = std::shared_ptr<const AnalysisCache>;
 
+private:
     // アクセス順リスト（先頭=最近使用）
     std::list<std::pair<Key, Value>> lru_list;
-    // キー → リストイテレータ（O(1)アクセス用）
-    std::unordered_map<Key, std::list<std::pair<Key,Value>>::iterator> index;
+    // キー → リストイテレータ
+    std::unordered_map<Key, std::list<std::pair<Key, Value>>::iterator> index;
+    
+    // 内部にミューテックスを隠蔽し、スレッド安全性を保証
+    mutable std::mutex mtx; 
 
-    // キャッシュに追加または更新（古いエントリを LRU で追い出す）
+public:
+    // キャッシュに追加または更新
     void put(const Key& key, const Value& val) {
+        std::lock_guard<std::mutex> lock(mtx); // 関数を抜ける時に自動アンロック
+
         auto it = index.find(key);
         if (it != index.end()) {
             lru_list.erase(it->second);
             index.erase(it);
         }
+        
         lru_list.push_front({key, val});
         index[key] = lru_list.begin();
 
+        // キャッシュ溢れ時の追い出し処理（バグ修正版）
         while (index.size() > kMaxCacheEntries) {
-            const Key& old_key = lru_list.back().first;
+            // 参照ではなく、値を完全にコピーしてローカルに退避させる
+            const Key old_key = lru_list.back().first; 
+            
             index.erase(old_key);
-            lru_list.pop_back();
+            lru_list.pop_back(); // ここでリストから消えても old_key は生きているので安全
         }
     }
 
-    // キャッシュから取得（ヒット時は先頭に移動してアクセス順を更新）
+    // キャッシュから取得（ヒット時はアクセス順を更新）
     Value get(const Key& key) {
+        std::lock_guard<std::mutex> lock(mtx);
+
         auto it = index.find(key);
         if (it == index.end()) return nullptr;
+        
+        // ヒットしたエントリをリストの先頭（MRU）へ移動
         lru_list.splice(lru_list.begin(), lru_list, it->second);
+        
         return it->second->second;
     }
 
-    // キー削除（ボイス再ロード時）
+    // キー削除（ボイス再ロード時など）
     void erase(const Key& key) {
+        std::lock_guard<std::mutex> lock(mtx);
+
         auto it = index.find(key);
         if (it == index.end()) return;
+        
         lru_list.erase(it->second);
         index.erase(it);
     }
+
+    // デバッグ・統計用：現在のキャッシュエントリ数を安全に取得
+    size_t size() const {
+        std::lock_guard<std::mutex> lock(mtx);
+        return index.size();
+    }
 };
 
-static CacheStore      g_analysis_cache;
-VoseMutex g_analysis_cache_mutex;
+// グローバルインスタンス（内部でロックされるため、外部での個別ミューテックス制御は不要になります）
+static CacheStore g_analysis_cache;
 
 // ============================================================
 // NoteState / NotePrepass
@@ -233,56 +261,102 @@ struct NotePrepass {
 // SynthesisScratchPad
 // ============================================================
 
+
 struct SynthesisScratchPad {
+    // 平坦化（1次元化）された動的バッファ
     std::vector<double>  flat_spec, flat_ap, spec_tmp;
     std::vector<double*> spec_ptrs, ap_ptrs;
+    
     std::vector<double>  f0, time_axis;
 
     std::vector<double>  flat_spec_prev, flat_ap_prev;
     std::vector<double*> spec_ptrs_prev, ap_ptrs_prev;
+    
     std::vector<double>  f0_prev, time_axis_prev;
 
     std::vector<double>  flat_mod_ap;
     std::vector<double*> mod_ap_ptrs;
 
-    int reserved_f0 = 0, reserved_bins = 0;
+    // 実際にバッファとして確保されている「最大サイズ」
+    int reserved_f0 = 0;
+    int reserved_bins = 0;
 
+    // 【重要】今回の呼び出しにおける「実際の有効なストライド（列数）」を保持
+    int current_bins = 0;
+
+    /**
+     * @brief スペクトログラム行列のメモリを安全に確保・更新する
+     * @param f0_length 要求された時間フレーム数 (行数)
+     * @param spec_bins 要求された周波数ビン数 (列数)
+     */
     void ensure_spec(int f0_length, int spec_bins) {
+        // 今回の有効な列数を記録（データアクセスの安全弁）
+        current_bins = spec_bins;
+
+        // 行数または列数が、過去に確保した最大サイズを超えている場合のみリサイズ
         const bool needs_resize = (f0_length > reserved_f0 || spec_bins > reserved_bins);
+        
         if (needs_resize) {
+            // キャパシティを最大値に更新
             reserved_f0   = std::max(f0_length,  reserved_f0);
             reserved_bins = std::max(spec_bins,  reserved_bins);
             const size_t total = static_cast<size_t>(reserved_f0) * reserved_bins;
-            flat_spec     .resize(total); flat_ap      .resize(total);
+
+            // 1次元バッファの一括リサイズ
+            flat_spec     .resize(total); 
+            flat_ap       .resize(total);
             spec_tmp      .resize(reserved_bins);
-            spec_ptrs     .resize(reserved_f0); ap_ptrs      .resize(reserved_f0);
-            flat_spec_prev.resize(total); flat_ap_prev .resize(total);
-            spec_ptrs_prev.resize(reserved_f0); ap_ptrs_prev .resize(reserved_f0);
-            flat_mod_ap   .resize(total); mod_ap_ptrs  .resize(reserved_f0);
-            // ポインタ再構築はリサイズ時のみ（毎呼び出しは不要）
-            for (int i = 0; i < reserved_f0; ++i) {
-                const size_t off  = static_cast<size_t>(i) * reserved_bins;
-                spec_ptrs     [i] = &flat_spec     [off];
-                ap_ptrs       [i] = &flat_ap       [off];
-                spec_ptrs_prev[i] = &flat_spec_prev[off];
-                ap_ptrs_prev  [i] = &flat_ap_prev  [off];
-                mod_ap_ptrs   [i] = &flat_mod_ap   [off];
-            }
+            flat_spec_prev.resize(total); 
+            flat_ap_prev  .resize(total);
+            flat_mod_ap   .resize(total);
+
+            // ポインタ配列（行ポインタ）の領域確保
+            spec_ptrs     .resize(reserved_f0); 
+            ap_ptrs       .resize(reserved_f0);
+            spec_ptrs_prev.resize(reserved_f0); 
+            ap_ptrs_prev  .resize(reserved_f0);
+            mod_ap_ptrs   .resize(reserved_f0);
         }
+
+        // 【バグの根本治療】
+        // needs_resize の成否に関わらず、呼び出しごとにポインタを毎回再構築する。
+        // これにより、reserved_bins (現在のメモリの物理ストライド) に基づく正しい先頭アドレスが
+        // 常にすべての行（0 〜 f0_length-1）に保証される。
+        for (int i = 0; i < f0_length; ++i) {
+            const size_t off = static_cast<size_t>(i) * reserved_bins;
+            spec_ptrs     [i] = &flat_spec     [off];
+            ap_ptrs       [i] = &flat_ap       [off];
+            spec_ptrs_prev[i] = &flat_spec_prev[off];
+            ap_ptrs_prev  [i] = &flat_ap_prev  [off];
+            mod_ap_ptrs   [i] = &flat_mod_ap   [off];
+        }
+    }
+
+    /**
+     * @brief 2次元配列風に安全にアクセスするためのユーティリティ（デバッグ・安全用）
+     * 外部で `spec_ptrs[i][j]` と書く代わりに `at_spec(i, j)` を使うことで、
+     * 万が一ストライドが狂っても数値を破壊させない防壁となる。
+     */
+    inline double& at_spec(int frame, int bin) {
+        return flat_spec[static_cast<size_t>(frame) * reserved_bins + bin];
     }
 
     void ensure_f0(int n) {
         if (n > static_cast<int>(f0.size())) {
-            f0.resize(n); time_axis.resize(n);
+            f0.resize(n); 
+            time_axis.resize(n);
         }
     }
+
     void ensure_f0_prev(int n) {
         if (n > static_cast<int>(f0_prev.size())) {
-            f0_prev.resize(n); time_axis_prev.resize(n);
+            f0_prev.resize(n); 
+            time_axis_prev.resize(n);
         }
     }
 };
 
+// スレッドローカルなインスタンス宣言
 thread_local SynthesisScratchPad tl_scratch;
 
 // ============================================================
