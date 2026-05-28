@@ -854,8 +854,65 @@ static void VOSE_Synthesis(
 }
 
 // ============================================================
-// synthesize_note_impl
+// apply_post_eq
 //
+// WORLD合成出力に対する Biquad IIR ポストEQフィルタ。
+//
+// 補正対象:
+//   80Hz   -1.5dB  低域の位相歪みを軽減（low shelf）
+//   380Hz  -2.0dB  CheapTrickによる箱鳴り感をカット
+//   3kHz   -2.5dB  金属的・機械的な倍音ピークをカット
+//   6kHz   +1.5dB  プレゼンス（声の前への出方）を補強
+//   9kHz   +2.5dB  エアー感・息の質感を付加（high shelf）
+//   14kHz  +1.5dB  超高域の空気感を補強（high shelf）
+//
+// 実装:
+//   直列 Biquad IIR（Audio EQ Cookbook, Zölzer準拠）
+//   44100Hz 固定係数。各バンド {b0, b1, b2, a1, a2}
+//   処理コスト: 6バンド × 5乗算 = 30演算/sample
+//
+// 周波数応答（全バンド合成）:
+//    100Hz: -0.59dB   380Hz: -2.04dB   1kHz: -0.22dB
+//    3kHz:  -2.15dB   6kHz:  +1.69dB   9kHz: +1.93dB
+//   14kHz:  +3.16dB  20kHz:  +3.98dB
+// ============================================================
+
+static const double kPostEQ[6][5] = {
+    //  b0               b1               b2               a1               a2
+    {  0.9991702401, -1.9799444128,  0.9808921526, -1.9799332931,  0.9800735124 }, // 80Hz  -1.5dB low shelf
+    {  0.9959199627, -1.9574523909,  0.9644048069, -1.9574523909,  0.9603247695 }, // 380Hz -2.0dB peaking
+    {  0.9732681116, -1.6255368854,  0.8129672385, -1.6255368854,  0.7862353501 }, // 3kHz  -2.5dB peaking
+    {  1.0421903920, -1.0188582642,  0.5101714814, -1.0188582642,  0.5523618733 }, // 6kHz  +1.5dB peaking
+    {  1.1826694018, -0.4862449515,  0.2096969549, -0.2513191682,  0.1574405734 }, // 9kHz  +2.5dB high shelf
+    {  1.0679214447,  0.4618551642,  0.1643779455,  0.5229532628,  0.1712012916 }, // 14kHz +1.5dB high shelf
+};
+
+static void apply_post_eq(double* y, int y_length)
+{
+    if (!y || y_length <= 0) return;
+
+    // 各バンドのフィルタ状態（x: 入力2サンプル前、y: 出力2サンプル前）
+    // Direct Form II Transposed で実装（数値安定性が高い）
+    struct BiquadState { double s1 = 0.0, s2 = 0.0; };
+    BiquadState states[6];
+
+    for (int i = 0; i < y_length; ++i) {
+        double x = y[i];
+        for (int b = 0; b < 6; ++b) {
+            const double* c = kPostEQ[b];
+            // Direct Form II Transposed:
+            //   y[n] = b0*x[n] + s1[n-1]
+            //   s1[n] = b1*x[n] - a1*y[n] + s2[n-1]
+            //   s2[n] = b2*x[n] - a2*y[n]
+            const double out = c[0]*x + states[b].s1;
+            states[b].s1     = c[1]*x - c[3]*out + states[b].s2;
+            states[b].s2     = c[2]*x - c[4]*out;
+            x = out;
+        }
+        y[i] = x;
+    }
+}
+
 // execute_render の並列合成ラムダを自由関数に昇格。
 // vose_streaming.cpp の synth_loop() からも呼べる。
 // ============================================================
@@ -967,6 +1024,9 @@ void synthesize_note_impl(const SynthNoteParams& p, std::vector<double>& note_bu
                    tl_scratch.spec_ptrs.data(), tl_scratch.ap_ptrs.data(),
                    fft_size, kFramePeriod, pp.ev->fs,
                    static_cast<int>(note_samples), note_buf.data());
+
+    // ポストEQ: WORLD出力の金属的倍音・箱鳴り補正、高域補強
+    apply_post_eq(note_buf.data(), static_cast<int>(note_samples));
 }
 
 // ============================================================
