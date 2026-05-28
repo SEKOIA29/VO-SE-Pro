@@ -388,9 +388,8 @@ jobs:
           fi
           echo "✅ macOS Linkage & Code Signing completed successfully!"
 
-
       - name: 🍎 Optional notarize macOS app (recommended)
-        if: startsWith(matrix.os, 'macos') && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != ''
+        if: matrix.os != 'windows-latest'
         shell: bash
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -400,6 +399,10 @@ jobs:
           set -euo pipefail
           APP_BUNDLE="dist/VO-SE_vocal_Mac.app"
           ZIP_PATH="dist_out/VO-SE_vocal_Mac_notarize.zip"
+          if [ -z "$APPLE_ID" ] || [ -z "$APPLE_APP_SPECIFIC_PASSWORD" ] || [ -z "$APPLE_TEAM_ID" ]; then
+            echo "Skip notarization: secrets not set"
+            exit 0
+          fi
           if [ ! -d "$APP_BUNDLE" ]; then
             echo "Skip notarization: app bundle not found"
             exit 0
@@ -412,7 +415,6 @@ jobs:
             --wait
           xcrun stapler staple "$APP_BUNDLE"
           spctl --assess --type execute "$APP_BUNDLE"
-
 
       - name: 📦 Save Artifacts
         uses: actions/upload-artifact@v4
