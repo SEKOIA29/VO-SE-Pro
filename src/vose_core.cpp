@@ -227,6 +227,7 @@ public:
 
 // グローバルインスタンス（内部でロックされるため、外部での個別ミューテックス制御は不要になります）
 static CacheStore g_analysis_cache;
+static std::mutex g_analysis_cache_mutex;
 
 // ============================================================
 // NoteState / NotePrepass
