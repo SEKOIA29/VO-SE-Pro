@@ -1878,13 +1878,18 @@ class MainWindow(QMainWindow):
 
         timeline_row = QHBoxLayout()
         self.timeline_widget = TimelineWidget()
+        self.keyboard_sidebar = KeyboardSidebarWidget(
+            key_height_pixels=self.timeline_widget.key_height_pixels
+        )
+        self.keyboard_sidebar_widget = self.keyboard_sidebar
     
         # ↓ ここで初期化（setup_timeline_area から移植）
         self.v_scrollbar = QSlider(Qt.Orientation.Vertical, self)
         self.v_scrollbar.setRange(0, 1000)
         self.v_scrollbar.setValue(10)
         self.v_scrollbar.valueChanged.connect(self.timeline_widget.set_vertical_offset)
-    
+
+        timeline_row.addWidget(self.keyboard_sidebar)
         timeline_row.addWidget(self.timeline_widget)
         timeline_row.addWidget(self.v_scrollbar)
     
@@ -1903,6 +1908,7 @@ class MainWindow(QMainWindow):
 
         # 下段：グラフエディタ
         self.graph_editor_widget = GraphEditorWidget()
+        self.graph_editor_widget.pixels_per_beat = self.timeline_widget.pixels_per_beat
         self.graph_editor_widget.parameters_changed.connect(self.on_graph_parameters_changed)
         timeline_splitter.addWidget(self.graph_editor_widget)
 
@@ -2118,12 +2124,20 @@ class MainWindow(QMainWindow):
         # --- 1. スクロール同期（垂直：鍵盤とノート領域） ---
         if self.v_scrollbar and self.keyboard_sidebar and self.timeline_widget:
             self.v_scrollbar.valueChanged.connect(self.keyboard_sidebar.set_vertical_offset)
-            self.v_scrollbar.valueChanged.connect(self.timeline_widget.set_vertical_offset)
+            
+        if self.keyboard_sidebar is not None:
+            self.keyboard_sidebar.note_pressed.connect(
+                lambda note: self.handle_midi_realtime(note, 100, "on")
+            )
+            self.keyboard_sidebar.note_released.connect(
+                lambda note: self.handle_midi_realtime(note, 0, "off")
+            )
 
         # --- 2. スクロール同期（水平：ノートとピッチグラフ領域） ---
         if self.h_scrollbar and self.timeline_widget and self.graph_editor_widget:
-            self.h_scrollbar.valueChanged.connect(self.timeline_widget.set_horizontal_offset)
+            
             self.h_scrollbar.valueChanged.connect(self.graph_editor_widget.set_horizontal_offset)
+            self.timeline_widget.scroll_synced_signal.connect(self._sync_horizontal_scrollbar_from_timeline)
 
         # --- 3. タイムライン・データ更新の同期 ---
         if self.timeline_widget:
@@ -5816,6 +5830,20 @@ class MainWindow(QMainWindow):
     # =========================================================================
     # スクロールバー制御
     # ==========================================================================
+    @Slot(int)
+    def _sync_horizontal_scrollbar_from_timeline(self, offset: int) -> None:
+        """TimelineWidget内部操作（ホイール/端スクロール）を外部UIへ反映する。"""
+        if self.h_scrollbar is not None:
+            if offset > self.h_scrollbar.maximum():
+                self.update_scrollbar_range()
+            self.h_scrollbar.blockSignals(True)
+            self.h_scrollbar.setValue(max(0, min(int(offset), self.h_scrollbar.maximum())))
+            self.h_scrollbar.blockSignals(False)
+
+        if self.graph_editor_widget is not None:
+            if self.timeline_widget is not None and hasattr(self.graph_editor_widget, "pixels_per_beat"):
+                self.graph_editor_widget.pixels_per_beat = self.timeline_widget.pixels_per_beat
+            self.graph_editor_widget.set_horizontal_offset(int(offset))
 
     @Slot()
     def update_scrollbar_range(self):
