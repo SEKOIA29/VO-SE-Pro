@@ -177,52 +177,61 @@ jobs:
       # ── ① バージョンをソースに埋め込む ──────────────────────────
       - name: Inject version into update_checker.py
         shell: bash
+        env:
+          RELEASE_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '0.0.0-dev' }}
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-          else
-            VERSION="0.0.0-dev"
-          fi
-          echo "Injecting version: $VERSION"
+          echo "Injecting version: $RELEASE_VERSION"
 
-          CHECKER="modules/updater/update_checker.py"
-          mkdir -p modules/updater
-          if [ -f "$CHECKER" ]; then
-            sed -i.bak "s/^CURRENT_VERSION = .*/CURRENT_VERSION = \"$VERSION\"/" "$CHECKER"
-          else
-            cat > "$CHECKER" << EOF
-          import json, threading, urllib.request
-          from packaging.version import Version
 
-          CURRENT_VERSION = "$VERSION"
-          GITHUB_API_URL = "https://api.github.com/repos/YOUR_ORG/VO-SE-vocal/releases/latest"
+          python - << 'PY'
+          import os
+          import re
+          from pathlib import Path
 
-          class UpdateChecker:
-              def check_async(self, callback):
-                  threading.Thread(target=self._check, args=(callback,), daemon=True).start()
+          version = os.environ["RELEASE_VERSION"].removeprefix("v")
+          checker = Path("modules/updater/update_checker.py")
+          checker.parent.mkdir(parents=True, exist_ok=True)
 
-              def _check(self, callback):
-                  try:
-                      req = urllib.request.Request(GITHUB_API_URL, headers={"User-Agent": "VO-SE-vocal"})
-                      with urllib.request.urlopen(req, timeout=5) as res:
-                          data = json.loads(res.read())
-                      latest = data["tag_name"].lstrip("v")
-                      page_url = data["html_url"]
-                      assets = data.get("assets", [])
-                      exe_url = next(
-                          (a["browser_download_url"] for a in assets
-                           if a["name"].endswith("_update.zip") or a["name"].endswith(".exe")),
-                          None
-                      )
-                      if Version(latest) > Version(CURRENT_VERSION):
-                          callback(True, latest, page_url, exe_url)
-                      else:
-                          callback(False, latest, None, None)
-                  except Exception:
-                      callback(None, None, None, None)
-          EOF
-          fi
-          echo "Done. CURRENT_VERSION is now $VERSION"
+          if checker.exists():
+              text = checker.read_text(encoding="utf-8")
+              text = re.sub(
+                  r'^CURRENT_VERSION = .*$',
+                  f'CURRENT_VERSION = "{version}"',
+                  text,
+                  count=1,
+                  flags=re.MULTILINE,
+              )
+              if 'CURRENT_VERSION = ' not in text:
+                  text = f'CURRENT_VERSION = "{version}"\n' + text
+          else:
+              text = (
+                  'import json, threading, urllib.request\n'
+                  'from packaging.version import Version\n\n'
+                  f'CURRENT_VERSION = "{version}"\n'
+                  'GITHUB_API_URL = "https://api.github.com/repos/YOUR_ORG/VO-SE-vocal/releases/latest"\n\n'
+                  'class UpdateChecker:\n'
+                  '    def check_async(self, callback):\n'
+                  '        threading.Thread(target=self._check, args=(callback,), daemon=True).start()\n\n'
+                  '    def _check(self, callback):\n'
+                  '        try:\n'
+                  '            req = urllib.request.Request(GITHUB_API_URL, headers={"User-Agent": "VO-SE-vocal"})\n'
+                  '            with urllib.request.urlopen(req, timeout=5) as res:\n'
+                  '                data = json.loads(res.read())\n'
+                  '            latest = data["tag_name"].lstrip("v")\n'
+                  '            page_url = data["html_url"]\n'
+                  '            assets = data.get("assets", [])\n'
+                  '            exe_url = next((a["browser_download_url"] for a in assets if a["name"].endswith("_update.zip") or a["name"].endswith(".exe")), None)\n'
+                  '            if Version(latest) > Version(CURRENT_VERSION):\n'
+                  '                callback(True, latest, page_url, exe_url)\n'
+                  '            else:\n'
+                  '                callback(False, latest, None, None)\n'
+                  '        except Exception:\n'
+                  '            callback(None, None, None, None)\n'
+              )
+
+          checker.write_text(text, encoding="utf-8")
+          PY
+          echo "Done. CURRENT_VERSION is now ${RELEASE_VERSION#v}"
 
       - name: Lint with Ruff
         run: |
@@ -284,8 +293,6 @@ jobs:
               MAC_LABEL="AppleSilicon"
             fi
 
-            echo "🍺 Installing create-dmg..."
-            brew install create-dmg
 
             pyinstaller --noconsole --windowed --clean \
               --target-arch "$MAC_ARCH" \
@@ -302,19 +309,7 @@ jobs:
               --name "VO-SE_vocal_Mac" main.py
             chmod +x dist/VO-SE_vocal_Mac.app/Contents/MacOS/VO-SE_vocal_Mac
             
-            echo "💿 Generating polished DMG..."
-            create-dmg \
-              --volname "VO-SE vocal" \
-              --background "assets/dmg_bg.png" \
-              --window-pos 200 120 \
-              --window-size 600 400 \
-              --icon-size 100 \
-              --icon "VO-SE_vocal_Mac.app" 150 185 \
-              --app-drop-link 450 185 \
-              "dist_out/VO-SE_vocal_Mac_${MAC_LABEL}.dmg" \
-              "dist/"
-
-            cd dist && zip -ry "../dist_out/VO-SE_vocal_Mac_${MAC_LABEL}_update.zip" VO-SE_vocal_Mac.app && cd ..
+            echo "macOS app bundle is ready for signing before packaging."
           fi
 
       - name: Verify macOS binary linkage
@@ -415,6 +410,43 @@ jobs:
             --wait
           xcrun stapler staple "$APP_BUNDLE"
           spctl --assess --type execute "$APP_BUNDLE"
+
+      - name: 💿 Package signed macOS artifacts
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ matrix.os }}" = "macos-15-intel" ]; then
+            MAC_LABEL="Intel"
+          else
+            MAC_LABEL="AppleSilicon"
+          fi
+
+          APP_BUNDLE="dist/VO-SE_vocal_Mac.app"
+          if [ ! -d "$APP_BUNDLE" ]; then
+            echo "Error: app bundle not found at $APP_BUNDLE"
+            exit 1
+          fi
+
+          mkdir -p dist_out
+          echo "🍺 Installing create-dmg..."
+          brew install create-dmg
+
+          echo "💿 Generating signed DMG..."
+          create-dmg \
+            --volname "VO-SE vocal" \
+            --background "assets/dmg_bg.png" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "VO-SE_vocal_Mac.app" 150 185 \
+            --app-drop-link 450 185 \
+            "dist_out/VO-SE_vocal_Mac_${MAC_LABEL}.dmg" \
+            "dist/"
+
+          echo "🗜️ Generating signed update ZIP..."
+          (cd dist && zip -ry "../dist_out/VO-SE_vocal_Mac_${MAC_LABEL}_update.zip" VO-SE_vocal_Mac.app)
 
       - name: 📦 Save Artifacts
         uses: actions/upload-artifact@v4
