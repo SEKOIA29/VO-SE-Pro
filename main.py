@@ -225,6 +225,61 @@ class VoSeEngine:
             print(f"C-Process error: {e}")
             return data_array
 
+PYTHON_RUNTIME_PACKAGES = (
+    "numpy",
+    "pyopenjtalk",
+    "PySide6",
+    "sounddevice",
+    "soundfile",
+)
+
+OS_RUNTIME_LIBRARIES = {
+    "Linux": (
+        ("libGL.so.1", "GL", "libgl1"),
+        ("libEGL.so.1", "EGL", "libegl1"),
+        ("libxkbcommon.so.0", "xkbcommon", "libxkbcommon0"),
+        ("libxkbcommon-x11.so.0", "xkbcommon-x11", "libxkbcommon-x11-0"),
+        ("libdbus-1.so.3", "dbus-1", "libdbus-1-3"),
+        ("libxcb-cursor.so.0", "xcb-cursor", "libxcb-cursor0"),
+        ("libXrender.so.1", "Xrender", "libxrender1"),
+        ("libXi.so.6", "Xi", "libxi6"),
+        ("libSM.so.6", "SM", "libsm6"),
+        ("libXext.so.6", "Xext", "libxext6"),
+        ("libfontconfig.so.1", "fontconfig", "libfontconfig1"),
+        ("libpulse.so.0", "pulse", "libpulse0"),
+        ("libasound.so.2", "asound", "libasound2t64/libasound2"),
+        ("libsndfile.so.1", "sndfile", "libsndfile1"),
+        ("libportaudio.so.2", "portaudio", "portaudio19-dev"),
+    ),
+    "Darwin": (
+        ("libportaudio.dylib", "portaudio", "portaudio"),
+        ("libsndfile.dylib", "sndfile", "libsndfile"),
+    ),
+}
+
+OS_DEPENDENCY_INSTALL_HINTS = {
+    "Linux": (
+        "Ubuntu/Debian: sudo apt-get install -y "
+        "libgl1 libegl1 libxkbcommon0 libxkbcommon-x11-0 libdbus-1-3 "
+        "libxcb-cursor0 libxrender1 libxi6 libsm6 libxext6 libfontconfig1 "
+        "libpulse0 libasound2t64 libsndfile1 portaudio19-dev"
+    ),
+    "Darwin": "macOS: brew install portaudio libsndfile",
+}
+
+
+def _is_os_library_loadable(library_lookup_name):
+    library_path = ctypes.util.find_library(library_lookup_name)
+    if not library_path:
+        return False
+
+    try:
+        ctypes.CDLL(library_path)
+    except OSError:
+        return False
+
+    return True
+
 
 def _check_runtime_requirements():
     """
@@ -232,20 +287,17 @@ def _check_runtime_requirements():
     """
     missing = []
 
-    for module_name in ("numpy", "pyopenjtalk", "PySide6"):
+    for module_name in PYTHON_RUNTIME_PACKAGES:
         if find_spec(module_name) is None:
             missing.append(f"Python package: {module_name}")
     
-    # Linux では PySide6 が libGL.so.1 を必要とするため、先に明示的に確認する
-    if platform.system() == "Linux":
-        libgl_path = ctypes.util.find_library("GL")
-        if not libgl_path:
-            missing.append("OS library: libGL.so.1 (mesa-libGL)")
-        else:
-            try:
-                ctypes.CDLL(libgl_path)
-            except OSError:
-                missing.append("OS library: libGL.so.1 (mesa-libGL)")
+
+    system_name = platform.system()
+    check_os_libraries = not (getattr(sys, "frozen", False) and system_name == "Darwin")
+    if check_os_libraries:
+        for display_name, lookup_name, package_name in OS_RUNTIME_LIBRARIES.get(system_name, ()):
+            if not _is_os_library_loadable(lookup_name):
+                missing.append(f"OS library: {display_name} ({package_name})")
 
     return missing
 
@@ -258,8 +310,9 @@ def main():
         for item in missing:
             print(f"  - {item}")
         print("requirements.txt と OS 依存ライブラリをインストールして再実行してください。")
-        if platform.system() == "Linux":
-            print("例: Ubuntu/Debian -> sudo apt-get install -y libgl1")
+        install_hint = OS_DEPENDENCY_INSTALL_HINTS.get(platform.system())
+        if install_hint:
+            print(f"例: {install_hint}")
         sys.exit(1)
 
     # Linuxヘッドレス環境（DISPLAYなし）では offscreen を既定にして起動を継続
