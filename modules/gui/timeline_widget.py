@@ -112,7 +112,7 @@ class TimelineWidget(QWidget):
     """
 
     notes_changed_signal = Signal()
-    scroll_synced_signal = Signal(float)
+    scroll_synced_signal = Signal(int)
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -832,12 +832,16 @@ class TimelineWidget(QWidget):
             self.scroll_x_offset = max(0, self.scroll_x_offset)
             
             self._invalidate_grid() # グリッド再描画
+            self._invalidate_note_rects()
+            self.scroll_synced_signal.emit(int(self.scroll_x_offset))
             self.update()
         else:
             # 通常のスクロール（横）
             delta = event.angleDelta().y()
             self.scroll_x_offset = max(0, self.scroll_x_offset - delta)
             self._invalidate_grid()
+            self._invalidate_note_rects()
+            self.scroll_synced_signal.emit(int(self.scroll_x_offset))
             self.update()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
@@ -950,18 +954,25 @@ class TimelineWidget(QWidget):
         """ドラッグ中に画面の端で自動スクロールさせる内部メソッド"""
         margin = 40  # 反応する範囲（ピクセル）
         max_speed = 20.0
+        scrolled = False
         
         # 右端付近
         if pos.x() > self.width() - margin:
             # 端に近いほど速くスクロール
             ratio = (pos.x() - (self.width() - margin)) / margin
             self.scroll_x_offset += max_speed * min(1.0, ratio)
-            self._invalidate_grid()
+            scrolled = True
         # 左端付近
         elif pos.x() < margin and self.scroll_x_offset > 0:
             ratio = (margin - pos.x()) / margin
             self.scroll_x_offset = max(0, self.scroll_x_offset - max_speed * min(1.0, ratio))
+            scrolled = True
+
+        if scrolled:
             self._invalidate_grid()
+            self._invalidate_note_rects()
+            self.scroll_synced_signal.emit(int(self.scroll_x_offset))
+            self.update()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if self.edit_mode == "draw_parameter":
