@@ -282,6 +282,8 @@ jobs:
               --hidden-import=modules.gui.main_window \
               --hidden-import=backports \
               --hidden-import=backports.tarfile \
+              --collect-all=sounddevice \
+              --collect-all=soundfile \
               --add-data "bin/vose_core.dll;bin" \
               --add-data "assets;assets" \
               --add-data "modules;modules" \
@@ -307,6 +309,8 @@ jobs:
               --hidden-import=modules.gui.main_window \
               --hidden-import=backports \
               --hidden-import=backports.tarfile \
+              --collect-all=sounddevice \
+              --collect-all=soundfile \
               --add-data "bin/libvose_core.dylib:bin" \
               --add-data "assets:assets" \
               --add-data "modules:modules" \
@@ -315,6 +319,43 @@ jobs:
             
             echo "macOS app bundle is ready for signing before packaging."
           fi
+
+      - name: Smoke test packaged app startup
+        shell: python
+        env:
+          VOSE_STARTUP_SMOKE_TEST: "1"
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          import os
+          import subprocess
+          import sys
+
+          if "${{ matrix.os }}" == "windows-latest":
+              app_path = os.path.join("dist", "VO-SE_vocal_Win.exe")
+          else:
+              app_path = os.path.join(
+                  "dist",
+                  "VO-SE_vocal_Mac.app",
+                  "Contents",
+                  "MacOS",
+                  "VO-SE_vocal_Mac",
+              )
+
+          print(f"Smoke testing packaged app: {app_path}")
+          if not os.path.exists(app_path):
+              raise SystemExit(f"Packaged app executable not found: {app_path}")
+
+          result = subprocess.run(
+              [app_path],
+              env=os.environ.copy(),
+              text=True,
+              capture_output=True,
+              timeout=90,
+          )
+          print(result.stdout)
+          print(result.stderr, file=sys.stderr)
+          if result.returncode != 0:
+              raise SystemExit(result.returncode)
 
       - name: Verify macOS binary linkage
         if: startsWith(matrix.os, 'macos')
