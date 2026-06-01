@@ -385,6 +385,12 @@ def main():
         window.statusBar().showMessage("VO-SE Core Engine: Ready")
     else:
         window.statusBar().showMessage("VO-SE Core Engine: Not Found (Offline Mode)")
+    if os.environ.get("VOSE_STARTUP_SMOKE_TEST") == "1":
+        print("[SmokeTest] VO-SE Pro initialized successfully.")
+        config_handler.save_config(config)
+        app.quit()
+        return 0
+
 
     def show_main_window():
         if window.isMinimized():
@@ -409,8 +415,11 @@ def main():
 
     result = app.exec()
     config_handler.save_config(config)
-    sys.exit(result)
+    return result
+
+
+
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
