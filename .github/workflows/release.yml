@@ -58,11 +58,6 @@ jobs:
           
 
 
-      - name: Install Python dependencies
-        run: pip install -r requirements.txt
-
-      - name: Package with PyInstaller
-        run: pyinstaller your_config.spec
 
       - name: Ruff Check and Fix (Windows only)
         if: matrix.os == 'windows-latest'
