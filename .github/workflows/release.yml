@@ -58,7 +58,7 @@ jobs:
       - name: Package with PyInstaller
         shell: bash
         run: |
-          # OSに応じた設定値を定義
+          # OSに応じた正確なファイル名とパス設定
           if [ "${{ runner.os }}" == "Windows" ]; then
             ICON="assets/icon.ico"
             CORE_LIB="bin/vose_core.dll;bin"
@@ -66,7 +66,8 @@ jobs:
             NAME="VO-SE_vocal_Win"
           else
             ICON="assets/icon.icns"
-            CORE_LIB="bin/libvose_core.dylib:bin"
+            # 指摘いただいた通り lib を除いた名前に修正
+            CORE_LIB="bin/vose_core.dylib:bin"
             PATH_SEP=":"
             NAME="VO-SE_vocal_Mac"
           fi
