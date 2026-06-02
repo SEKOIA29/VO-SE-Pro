@@ -449,6 +449,12 @@ jobs:
           import subprocess
           import sys
 
+          # 💡 子プロセス（パッケージ化されたアプリ）にオフスクリーン環境変数を確実に引き継がせる
+          env_copy = os.environ.copy()
+          env_copy["QT_QPA_PLATFORM"] = "offscreen"
+          env_copy["QT_MEDIA_BACKEND"] = "ffmpeg"
+          env_copy["VOSE_STARTUP_SMOKE_TEST"] = "1"
+
           if "${{ matrix.os }}" == "windows-latest":
               app_path = os.path.join("dist", "VO-SE_vocal_Win.exe")
           else:
@@ -460,21 +466,28 @@ jobs:
                   "VO-SE_vocal_Mac",
               )
 
-          print(f"Smoke testing packaged app: {app_path}")
+          print(f"Smoke testing packaged app (Headless Mode): {app_path}")
           if not os.path.exists(app_path):
               raise SystemExit(f"Packaged app executable not found: {app_path}")
 
+          # 💡 env=env_copy を渡して起動
           result = subprocess.run(
               [app_path],
-              env=os.environ.copy(),
+              env=env_copy,
               text=True,
               capture_output=True,
               timeout=90,
           )
+          
+          print("--- STDOUT ---")
           print(result.stdout)
+          print("--- STDERR ---")
           print(result.stderr, file=sys.stderr)
+          
           if result.returncode != 0:
+              print(f"Application exited with non-zero code: {result.returncode}")
               raise SystemExit(result.returncode)
+          print("✅ Smoke test passed successfully!")
 
       - name: 🍎 Optional notarize macOS app (recommended)
         if: matrix.os != 'windows-latest'
