@@ -328,6 +328,7 @@ jobs:
               --hidden-import=backports.tarfile \
               --collect-all=sounddevice \
               --collect-all=soundfile \
+              --collect-all=pyopenjtalk \
               --add-data "bin/vose_core.dll;bin" \
               --add-data "assets;assets" \
               --add-data "modules;modules" \
@@ -355,6 +356,7 @@ jobs:
               --hidden-import=backports.tarfile \
               --collect-all=sounddevice \
               --collect-all=soundfile \
+              --collect-all=pyopenjtalk \
               --add-data "bin/libvose_core.dylib:bin" \
               --add-data "assets:assets" \
               --add-data "modules:modules" \
