@@ -34,10 +34,13 @@ jobs:
           cache: 'pip'
           
       - name: Install OS dependencies
-        shell: bash  # ここを必ず指定してください
+        shell: bash
         run: |
             if [ "${{ runner.os }}" == "Windows" ]; then
-                choco install portaudio libsndfile -y
+                # portaudioはChocolateyにないため、必要であればvcpkgでインストールするか、
+                # 開発環境でバイナリを直接扱う方針に切り替えます。
+                # ここではlibsndfileのみインストールします。
+                choco install libsndfile -y
             elif [ "${{ runner.os }}" == "macOS" ]; then
                 brew install portaudio libsndfile
             fi
