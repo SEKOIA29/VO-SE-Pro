@@ -58,28 +58,24 @@ jobs:
       - name: Package with PyInstaller
         shell: bash
         run: |
-          # OSに応じた正確なファイル名とパス設定
+          # 1. OS別の変数設定
           if [ "${{ runner.os }}" == "Windows" ]; then
-            ICON="assets/icon.ico"
             CORE_LIB="bin/vose_core.dll;bin"
             PATH_SEP=";"
             NAME="VO-SE_vocal_Win"
+            MODE="--onefile"
           else
-            ICON="assets/icon.icns"
-            # 指摘いただいた通り lib を除いた名前に修正
             CORE_LIB="bin/vose_core.dylib:bin"
             PATH_SEP=":"
             NAME="VO-SE_vocal_Mac"
+            MODE="--onedir"
           fi
 
-          # PyInstallerの実行
-          python -m PyInstaller --noconsole --onefile --clean \
+          # 2. .specファイルを指定せず、直接 main.py を指定して実行
+          python -m PyInstaller $MODE --noconsole --clean \
             --paths . \
             --paths modules \
-            --icon="$ICON" \
             --hidden-import=modules.gui.main_window \
-            --hidden-import=backports \
-            --hidden-import=backports.tarfile \
             --collect-all=sounddevice \
             --collect-all=soundfile \
             --add-data "$CORE_LIB" \
