@@ -55,33 +55,6 @@ jobs:
                 brew install portaudio libsndfile
             fi
             
-      - name: Package with PyInstaller
-        shell: bash
-        run: |
-          # 1. OS別の変数設定
-          if [ "${{ runner.os }}" == "Windows" ]; then
-            CORE_LIB="bin/vose_core.dll;bin"
-            PATH_SEP=";"
-            NAME="VO-SE_vocal_Win"
-            MODE="--onefile"
-          else
-            CORE_LIB="bin/vose_core.dylib:bin"
-            PATH_SEP=":"
-            NAME="VO-SE_vocal_Mac"
-            MODE="--onedir"
-          fi
-
-          # 2. .specファイルを指定せず、直接 main.py を指定して実行
-          python -m PyInstaller $MODE --noconsole --clean \
-            --paths . \
-            --paths modules \
-            --hidden-import=modules.gui.main_window \
-            --collect-all=sounddevice \
-            --collect-all=soundfile \
-            --add-data "$CORE_LIB" \
-            --add-data "assets${PATH_SEP}assets" \
-            --add-data "modules${PATH_SEP}modules" \
-            --name "$NAME" main.py
           
 
 
@@ -176,6 +149,38 @@ jobs:
 
           echo "✅ Build Complete: bin/libvose_core.dylib"
           ls -l bin/libvose_core.dylib
+
+      - name: Package with PyInstaller
+        shell: bash
+        run: |
+          # OSに応じた正確なファイル名とパス設定
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            ICON="assets/icon.ico"
+            CORE_LIB="bin/vose_core.dll;bin"
+            PATH_SEP=";"
+            NAME="VO-SE_vocal_Win"
+          else
+            ICON="assets/icon.icns"
+            # ビルドステップで生成される「libvose_core.dylib」に正確に合わせます
+            CORE_LIB="bin/libvose_core.dylib:bin"
+            PATH_SEP=":"
+            NAME="VO-SE_vocal_Mac"
+          fi
+
+          # PyInstallerの実行（main.pyから直接自動生成）
+          python -m PyInstaller --noconsole --onefile --clean \
+            --paths . \
+            --paths modules \
+            --icon="$ICON" \
+            --hidden-import=modules.gui.main_window \
+            --hidden-import=backports \
+            --hidden-import=backports.tarfile \
+            --collect-all=sounddevice \
+            --collect-all=soundfile \
+            --add-data "$CORE_LIB" \
+            --add-data "assets${PATH_SEP}assets" \
+            --add-data "modules${PATH_SEP}modules" \
+            --name "$NAME" main.py
 
       - name: Verify pkg_resources for PyInstaller hook
         shell: python
