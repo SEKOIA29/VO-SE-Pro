@@ -32,10 +32,14 @@ jobs:
         with:
           python-version: '3.10'
           cache: 'pip'
-
-      - name: Install OS dependencies (macOS)
-        if: startsWith(matrix.os, 'macos')
-        run: brew install portaudio libsndfile
+          
+      - name: Install OS dependencies
+        run: |
+            if [ "${{ runner.os }}" == "Windows" ]; then
+                choco install portaudio libsndfile -y
+            elif [ "${{ runner.os }}" == "macOS" ]; then
+                brew install portaudio libsndfile
+            fi
 
       - name: Install dependencies
         env:
