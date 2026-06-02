@@ -364,42 +364,6 @@ jobs:
             echo "macOS app bundle is ready for signing before packaging."
           fi
 
-      - name: Smoke test packaged app startup
-        shell: python
-        env:
-          VOSE_STARTUP_SMOKE_TEST: "1"
-          QT_QPA_PLATFORM: offscreen
-        run: |
-          import os
-          import subprocess
-          import sys
-
-          if "${{ matrix.os }}" == "windows-latest":
-              app_path = os.path.join("dist", "VO-SE_vocal_Win.exe")
-          else:
-              app_path = os.path.join(
-                  "dist",
-                  "VO-SE_vocal_Mac.app",
-                  "Contents",
-                  "MacOS",
-                  "VO-SE_vocal_Mac",
-              )
-
-          print(f"Smoke testing packaged app: {app_path}")
-          if not os.path.exists(app_path):
-              raise SystemExit(f"Packaged app executable not found: {app_path}")
-
-          result = subprocess.run(
-              [app_path],
-              env=os.environ.copy(),
-              text=True,
-              capture_output=True,
-              timeout=90,
-          )
-          print(result.stdout)
-          print(result.stderr, file=sys.stderr)
-          if result.returncode != 0:
-              raise SystemExit(result.returncode)
 
       - name: Verify macOS binary linkage
         if: startsWith(matrix.os, 'macos')
@@ -471,6 +435,44 @@ jobs:
             find dist -type f \( -name "*.dylib" -o -name "*.so" -o -name "VO-SE_vocal_Mac" \) -exec codesign --force --sign - {} \;
           fi
           echo "✅ macOS Linkage & Code Signing completed successfully!"
+
+      
+      - name: Smoke test packaged app startup
+        shell: python
+        env:
+          VOSE_STARTUP_SMOKE_TEST: "1"
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          import os
+          import subprocess
+          import sys
+
+          if "${{ matrix.os }}" == "windows-latest":
+              app_path = os.path.join("dist", "VO-SE_vocal_Win.exe")
+          else:
+              app_path = os.path.join(
+                  "dist",
+                  "VO-SE_vocal_Mac.app",
+                  "Contents",
+                  "MacOS",
+                  "VO-SE_vocal_Mac",
+              )
+
+          print(f"Smoke testing packaged app: {app_path}")
+          if not os.path.exists(app_path):
+              raise SystemExit(f"Packaged app executable not found: {app_path}")
+
+          result = subprocess.run(
+              [app_path],
+              env=os.environ.copy(),
+              text=True,
+              capture_output=True,
+              timeout=90,
+          )
+          print(result.stdout)
+          print(result.stderr, file=sys.stderr)
+          if result.returncode != 0:
+              raise SystemExit(result.returncode)
 
       - name: 🍎 Optional notarize macOS app (recommended)
         if: matrix.os != 'windows-latest'
