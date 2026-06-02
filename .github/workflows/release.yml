@@ -44,13 +44,20 @@ jobs:
             
       - name: Package with PyInstaller
         run: |
-          if [ -f "your_config.spec" ]; then
-            pyinstaller your_config.spec
-          else
-            echo "Spec file not found, creating/running directly..."
-            # 必要に応じてここで pyinstaller main.py などのコマンドを直接実行する
-            pyinstaller --noconsole --onefile main.py
-          fi
+          # 確実にインストール済みのPyInstallerを呼び出す
+          python -m PyInstaller --noconsole --onefile --clean \
+            --paths . \
+            --paths modules \
+            --icon="assets/icon.ico" \
+            --hidden-import=modules.gui.main_window \
+            --hidden-import=backports \
+            --hidden-import=backports.tarfile \
+            --collect-all=sounddevice \
+            --collect-all=soundfile \
+            --add-data "bin/vose_core.dll;bin" \
+            --add-data "assets;assets" \
+            --add-data "modules;modules" \
+            --name "VO-SE_vocal_Win" main.py
 
       - name: Install dependencies
         env:
