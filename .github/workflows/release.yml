@@ -41,6 +41,16 @@ jobs:
             elif [ "${{ runner.os }}" == "macOS" ]; then
                 brew install portaudio libsndfile
             fi
+            
+      - name: Package with PyInstaller
+        run: |
+          if [ -f "your_config.spec" ]; then
+            pyinstaller your_config.spec
+          else
+            echo "Spec file not found, creating/running directly..."
+            # 必要に応じてここで pyinstaller main.py などのコマンドを直接実行する
+            pyinstaller --noconsole --onefile main.py
+          fi
 
       - name: Install dependencies
         env:
