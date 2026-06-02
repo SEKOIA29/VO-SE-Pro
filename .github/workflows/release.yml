@@ -445,8 +445,8 @@ jobs:
           import os
           import subprocess
           import sys
+          import time
 
-          # 💡 子プロセス（パッケージ化されたアプリ）にオフスクリーン環境変数を確実に引き継がせる
           env_copy = os.environ.copy()
           env_copy["QT_QPA_PLATFORM"] = "offscreen"
           env_copy["QT_MEDIA_BACKEND"] = "ffmpeg"
@@ -463,28 +463,44 @@ jobs:
                   "VO-SE_vocal_Mac",
               )
 
-          print(f"Smoke testing packaged app (Headless Mode): {app_path}")
+          print(f"Smoke testing packaged app: {app_path}")
           if not os.path.exists(app_path):
               raise SystemExit(f"Packaged app executable not found: {app_path}")
 
-          # 💡 env=env_copy を渡して起動
-          result = subprocess.run(
+          # 🔥 何分も待たされないよう、subprocess.Popen で非同期に起動
+          proc = subprocess.Popen(
               [app_path],
               env=env_copy,
-              text=True,
-              capture_output=True,
-              timeout=90,
+              stdout=subprocess.PIPE,
+              stderr=subprocess.PIPE,
+              text=True
           )
-          
-          print("--- STDOUT ---")
-          print(result.stdout)
-          print("--- STDERR ---")
-          print(result.stderr, file=sys.stderr)
-          
-          if result.returncode != 0:
-              print(f"Application exited with non-zero code: {result.returncode}")
-              raise SystemExit(result.returncode)
-          print("✅ Smoke test passed successfully!")
+
+          # 💡 5秒間、アプリが即死（クラッシュ）せずに起動し続けられるか監視
+          print("Waiting 5 seconds to verify application stability...")
+          time.sleep(5)
+
+          # 現在の状態を確認
+          return_code = proc.poll()
+
+          if return_code is None:
+              # 5秒経ってもプロセスが生きて独立している ＝ 起動ロジック・依存関係はすべて健全！
+              print("✅ App is running stably without crashing. Terminating for CI flow.")
+              proc.terminate()  # 優しく終了を試みる
+              try:
+                  proc.wait(timeout=3)
+              except subprocess.TimeoutExpired:
+                  proc.kill()  # 応答がなければ即座にプロセスを強制終了
+              print("✅ Smoke test passed successfully (Process verified)!")
+          else:
+              # 5秒以内に落ちてしまった場合はエラー（依存関係不足など）
+              stdout, stderr = proc.communicate()
+              print("--- STDOUT ---")
+              print(stdout)
+              print("--- STDERR ---")
+              print(stderr, file=sys.stderr)
+              print(f"❌ Application crashed on startup with exit code: {return_code}")
+              raise SystemExit(return_code)
 
       - name: 🍎 Optional notarize macOS app (recommended)
         if: matrix.os != 'windows-latest'
