@@ -320,7 +320,6 @@ jobs:
           mkdir dist_out
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             pyinstaller --noconsole --onefile --clean \
-              --paths . \
               --paths modules \
               --icon="assets/icon.ico" \
               --hidden-import=modules.gui.main_window \
@@ -344,10 +343,8 @@ jobs:
               MAC_LABEL="AppleSilicon"
             fi
 
-
             pyinstaller --noconsole --windowed --clean \
               --target-arch "$MAC_ARCH" \
-              --paths . \
               --paths modules \
               --icon="assets/icon.icns" \
               --exclude-module PySide6.QtPdf \
