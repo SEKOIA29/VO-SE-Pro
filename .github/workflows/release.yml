@@ -50,9 +50,15 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install "setuptools<82"       # ← バージョンを81.x以下に固定
           python -m pip install pytest ruff pyright
+          
       - name: Install OS dependencies
+        shell: bash
         run: |
-          brew install portaudio libsndfile
+            if [ "${{ runner.os }}" == "Windows" ]; then
+                choco install portaudio libsndfile -y
+            elif [ "${{ runner.os }}" == "macOS" ]; then
+                brew install portaudio libsndfile
+            fi
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
