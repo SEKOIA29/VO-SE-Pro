@@ -46,6 +46,15 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install "setuptools<82"       # ← バージョンを81.x以下に固定
           python -m pip install pytest ruff pyright
+      - name: Install OS dependencies
+        run: |
+          brew install portaudio libsndfile
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Package with PyInstaller
+        run: pyinstaller your_config.spec
 
       - name: Ruff Check and Fix (Windows only)
         if: matrix.os == 'windows-latest'
