@@ -1516,8 +1516,20 @@ class MainWindow(QMainWindow):
         ボイスギャラリーのセットアップ。
         ここで self.confirmed_partners の情報をギャラリーに反映させる。
         """
+        # ギャラリーウィジェットのインスタンス化
+        self.voice_gallery = VoiceCardGallery(self.voice_manager)
+    
+        # パートナー情報を設定
+        self.voice_gallery.set_partner_data(self.confirmed_partners)
+    
+        # ギャラリーのセットアップ実行
+        self.voice_gallery.setup_gallery()
+    
+        # ボイス選択シグナルを接続
+        self.voice_gallery.voice_selected.connect(self.on_voice_changed)
         # ギャラリーウィジェットのインスタンス化（MainWindowが保持）
-        if hasattr(self, 'voice_gallery') and self.voice_gallery:
+        if hasattr(self, 'main_layout') and self.main_layout:
+            self.main_layout.addWidget(self.voice_gallery)
             # ギャラリーに対して「募集枠の情報」を渡して更新をかける
             # 内部で先ほどの refresh_gallery(self.confirmed_partners) が呼ばれる
             self.voice_gallery.set_partner_data(self.confirmed_partners)
@@ -1539,9 +1551,15 @@ class MainWindow(QMainWindow):
         # VoSeEngine側で __INTERNAL__ (公式) か フォルダパス (UTAU) かを判別
         if hasattr(self, 'vo_se_engine') and self.vo_se_engine:
             try:
-                # エンジン内部で音源バイナリ/WAV群をメモリに展開
                 self.vo_se_engine.set_active_character(internal_id)
-                print(f"DEBUG: Engine switched character to: {display_name} ({internal_id})")
+            
+                # 🔴 重要: oto.iniの読み込みを確認
+                voice_path = self.voice_manager.voices.get(display_name, {}).get("path", "")
+                if voice_path:
+                    oto_data = self.parse_oto_ini(voice_path)
+                    if not oto_data:
+                        print(f"⚠️ Warning: oto.ini not found in {voice_path}")
+                    
             except Exception as e:
                 print(f"❌ Engine character switch failed: {e}")
 
@@ -1584,7 +1602,8 @@ class MainWindow(QMainWindow):
         self.main_layout.setSpacing(2)
 
         # 3. 各セクションの順次セットアップ
-        # 依存関係（下のパネルが上のエディタを参照するなど）を考慮した順序で呼び出し    self.setup_menus()             # アクション登録前にメニューだけ先に
+        # 依存関係（下のパネルが上のエディタを参照するなど）を考慮した順序で呼び出し    
+        self.setup_menus()             # アクション登録前にメニューだけ先に
         self.setup_main_editor_area()  # 1. timeline_widget生成
         self.setup_actions()           # 2. QAction定義
         self.setup_menus()             #
@@ -1592,7 +1611,7 @@ class MainWindow(QMainWindow):
         self.setup_bottom_panel()
         self.setup_status_bar()
         self._set_transport_time(0.0)
-    
+        self.setup_voice_gallery()
 
         # 4. スタイルと初期状態の適用
         # hasattrによるチェックに加え、初期化済みフラグ等で安全に呼び出し
@@ -3961,6 +3980,14 @@ class MainWindow(QMainWindow):
             event.accept()
         else:
             event.ignore()
+        if file_lower.endswith(".zip"):
+            # ✅ import_voice_bank() を呼び出す（直接実装）
+            try:
+                # self.import_voice_bank() を使わず、ここで直接実装
+                self.import_voice_bank(file_path)  # ← ここを追加
+            
+            except Exception as e:
+                QMessageBox.critical(self, "導入失敗", f"{str(e)}")
             
 
     def dropEvent(self, event):
