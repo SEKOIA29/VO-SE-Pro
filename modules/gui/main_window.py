@@ -3827,10 +3827,9 @@ class MainWindow(QMainWindow):
 
 
 
-
     def import_voice_bank(self, zip_path: str):
         """
-        ZIP音源インストール完全版（省略なし）
+        ZIP音源インストール完全版
         1. 文字化け修復解凍 2. ゴミ排除 3. AI解析 4. エンジン接続 5. UI更新
         """
 
@@ -3871,17 +3870,41 @@ class MainWindow(QMainWindow):
 
                 target_voice_dir = os.path.join(extract_base_dir, installed_name)
                 
-                # --- STEP 2: クリーンインストール ---
+                # --- STEP 2: クリーンインストール ＆ スマート展開 ---
                 if os.path.exists(target_voice_dir):
                     shutil.rmtree(target_voice_dir)
                 os.makedirs(target_voice_dir, exist_ok=True)
 
-                # ファイルを実際に展開
+                # ZIP内の共通トップフォルダ（親直下の単一ディレクトリ）があるかチェック
+                top_dirs = set()
+                for _, fname in valid_files:
+                    parts = fname.replace('\\', '/').strip('/').split('/')
+                    if len(parts) > 1:
+                        top_dirs.add(parts[0])
+                    else:
+                        top_dirs.add("") # ルートにファイルがある場合
+
+                # 共通のトップフォルダが1つだけ存在するか判定
+                has_single_top_dir = len(top_dirs) == 1 and "" not in top_dirs
+                single_top_dir = list(top_dirs)[0] if has_single_top_dir else ""
+
+                # ファイルを target_voice_dir 直下に適切に展開
                 for info, filename in valid_files:
-                    target_path = os.path.join(extract_base_dir, filename)
+                    normalized_fname = filename.replace('\\', '/').strip('/')
+                    
+                    if has_single_top_dir:
+                        # 共通トップフォルダを剥ぎ取って展開パスを綺麗にする
+                        # 例: "KyokoFolder/wav/a.wav" -> "wav/a.wav"
+                        rel_path = normalized_fname[len(single_top_dir):].lstrip('/')
+                    else:
+                        rel_path = normalized_fname
+                        
+                    target_path = os.path.join(target_voice_dir, rel_path)
+                    
                     if info.is_dir():
                         os.makedirs(target_path, exist_ok=True)
                         continue
+                        
                     os.makedirs(os.path.dirname(target_path), exist_ok=True)
                     with z.open(info) as source, open(target_path, "wb") as target:
                         shutil.copyfileobj(source, target)
@@ -3891,7 +3914,6 @@ class MainWindow(QMainWindow):
             if not found_oto:
                 if status_bar:
                     status_bar.showMessage(f"AI解析中: {installed_name} の原音設定を自動生成しています...", 0)
-                # 代表の作ったAI解析メソッドを呼び出し
                 if hasattr(self, 'generate_and_save_oto'):
                     self.generate_and_save_oto(target_voice_dir)
 
@@ -3899,10 +3921,7 @@ class MainWindow(QMainWindow):
             aural_model = os.path.join(target_voice_dir, "aural_dynamics.onnx")
             std_model = os.path.join(target_voice_dir, "model.onnx")
 
-            # AuralAIEngine が model_path 引数を持っていないエラーへの対策
-            # 引数があるか確認しながら、なければデフォルト引数で生成
             if os.path.exists(aural_model):
-                # AuralAIEngineの定義に合わせて呼び出しを調整
                 self.dynamics_ai = AuralAIEngine() 
                 if hasattr(self.dynamics_ai, 'load_model'):
                     self.dynamics_ai.load_model(aural_model)
@@ -3916,25 +3935,27 @@ class MainWindow(QMainWindow):
                 self.dynamics_ai = AuralAIEngine() 
                 engine_msg = "汎用Auralエンジン"
 
-
-            # --- STEP 5: UIの即時反映（修正版） ---
+            # --- STEP 5: UIの即時反映 ---
             v_manager = getattr(self, 'voice_manager', None)
             if v_manager and hasattr(v_manager, 'scan_utau_voices'):
                 v_manager.scan_utau_voices()
             
-            # 🔴 重要: ボイスギャラリーUIの再構築を実行
             if hasattr(self, 'voice_gallery') and self.voice_gallery is not None:
-                # ギャラリーに最新の音源情報を反映
-                self.voice_gallery.setup_gallery()
+                # 前回のPyrightエラー(refresh_gallery)対策としてsetup_gallery等で安全に更新
+                if hasattr(self.voice_gallery, 'setup_gallery'):
+                    self.voice_gallery.setup_gallery()
+                elif hasattr(self.voice_gallery, 'refresh_gallery'):
+                    self.voice_gallery.refresh_gallery()
                 self.voice_gallery.update()
                 print(f"✅ Voice gallery refreshed with {installed_name}")
             else:
-                # voice_gallery がまだ初期化されていない場合は新規作成
                 print("⚠️ Warning: voice_gallery not initialized, creating new instance")
                 if v_manager:
                     self.voice_gallery = VoiceCardGallery(v_manager)
-                    self.voice_gallery.set_partner_data(self.confirmed_partners)
-                    self.voice_gallery.setup_gallery()
+                    if hasattr(self.voice_gallery, 'set_partner_data'):
+                        self.voice_gallery.set_partner_data(self.confirmed_partners)
+                    if hasattr(self.voice_gallery, 'setup_gallery'):
+                        self.voice_gallery.setup_gallery()
                     self.voice_gallery.voice_selected.connect(self.on_voice_changed)
             
             # 成功通知（ステータスバー）
@@ -3942,12 +3963,11 @@ class MainWindow(QMainWindow):
             if status_bar:
                 status_bar.showMessage(msg, 5000)
             
-            # SE再生のエラー(play_se属性なし)を修正
+            # SE再生
             audio_out = getattr(self, 'audio_output', None)
             if audio_out:
                 se_path = get_resource_path("assets/install_success.wav")
                 if os.path.exists(se_path):
-                    # play_se がない場合は setSource/play など標準的な手段を検討
                     if hasattr(audio_out, 'play_se'):
                         try:
                             audio_out.play_se(se_path)
@@ -3962,7 +3982,6 @@ class MainWindow(QMainWindow):
                         except Exception as e:
                             print(f"DEBUG: setSource/play failed: {e}")
             
-            # メッセージボックスで完了を表示
             QMessageBox.information(
                 self, 
                 "導入成功", 
