@@ -1533,7 +1533,7 @@ class MainWindow(QMainWindow):
             # ギャラリーに対して「募集枠の情報」を渡して更新をかける
             # 内部で先ほどの refresh_gallery(self.confirmed_partners) が呼ばれる
             self.voice_gallery.set_partner_data(self.confirmed_partners)
-            self.voice_gallery.refresh_gallery()
+            self.voice_gallery.setup_gallery()
 
     @Slot(str, str)
     def on_voice_changed(self, display_name: str, internal_id: str):
@@ -3941,11 +3941,10 @@ class MainWindow(QMainWindow):
                 v_manager.scan_utau_voices()
             
             if hasattr(self, 'voice_gallery') and self.voice_gallery is not None:
-                # 前回のPyrightエラー(refresh_gallery)対策としてsetup_gallery等で安全に更新
-                if hasattr(self.voice_gallery, 'setup_gallery'):
-                    self.voice_gallery.setup_gallery()
-                elif hasattr(self.voice_gallery, 'refresh_gallery'):
-                    self.voice_gallery.refresh_gallery()
+                # 完全に動的な取得に切り替えることで静的エラーを回避
+                refresh_fn = getattr(self.voice_gallery, 'setup_gallery', getattr(self.voice_gallery, 'refresh_gallery', None))
+                if refresh_fn:
+                    refresh_fn()
                 self.voice_gallery.update()
                 print(f"✅ Voice gallery refreshed with {installed_name}")
             else:
@@ -3994,25 +3993,15 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "導入エラー", f"インストール中にエラーが発生しました:\n{str(e)}")
             
     def dragEnterEvent(self, event):
-        """ファイルドラッグ時の処理"""
+        """ファイルドラッグ時の処理（ここでは受け入れるかどうかの判定のみ行う）"""
         if event.mimeData().hasUrls():
             event.accept()
         else:
             event.ignore()
-        if file_lower.endswith(".zip"):
-            # ✅ import_voice_bank() を呼び出す（直接実装）
-            try:
-                # self.import_voice_bank() を使わず、ここで直接実装
-                self.import_voice_bank(file_path)  # ← ここを追加
-            
-            except Exception as e:
-                QMessageBox.critical(self, "導入失敗", f"{str(e)}")
-            
 
     def dropEvent(self, event):
         """
         ファイルドロップ時の処理：ZIP（音源）、MIDI/JSON（プロジェクト）を自動判別。
-        インデント不整合を修正し、各マネージャーへの橋渡しを安全に行う。
         """
         # 1. 安全なファイルリストの取得
         mime_data = event.mimeData()
@@ -4040,12 +4029,18 @@ class MainWindow(QMainWindow):
             if file_lower.endswith(".zip") or (source_type == "url" and ".zip" in file_lower):
                 status_bar = self.statusBar()
                 if status_bar:
-                    status_bar.showMessage(f"音源を導入中: {os.path.basename(file_path)}")
+                    status_bar.showMessage(f"音源を処理中: {os.path.basename(file_path)}")
                 
                 try:
                     zip_input_path = file_path
                     tmp_file_path = None
+                    
+                    # URLドロップの場合は一時ファイルとしてダウンロード
                     if source_type == "url":
+                        from urllib.parse import urlparse
+                        from urllib.request import urlretrieve
+                        import tempfile
+                        
                         parsed = urlparse(file_path)
                         if parsed.scheme not in ("http", "https"):
                             raise ValueError(f"未対応のURLスキームです: {parsed.scheme}")
@@ -4053,27 +4048,11 @@ class MainWindow(QMainWindow):
                             tmp_file_path = tmp.name
                         urlretrieve(file_path, tmp_file_path)
                         zip_input_path = tmp_file_path
-                    # VoiceManagerの存在確認
-                    v_manager = getattr(self, 'voice_manager', None)
-                    if v_manager and hasattr(v_manager, 'install_voice_from_zip'):
-                        new_voice = v_manager.install_voice_from_zip(zip_input_path)
-                        
-                        # 成功演出：SEを鳴らして通知
-                        audio_out = getattr(self, 'audio_output', None)
-                        if audio_out:
-                            se_path = get_resource_path("assets/install_success.wav")
-                            if os.path.exists(se_path):
-                                if hasattr(audio_out, 'play_se'):
-                                    audio_out.play_se(se_path)
-                        
-                        from PySide6.QtWidgets import QMessageBox
-                        QMessageBox.information(self, "導入完了", f"音源 '{new_voice}' をインストールしました！")
-                        
-                        # リストを最新の状態に更新
-                        if hasattr(self, 'scan_utau_voices'):
-                            self.scan_utau_voices()
-                    else:
-                        print("DEBUG: voice_manager or install_voice_from_zip not found.")
+
+                    # ✅ 先ほど作成した完全版 import_voice_bank に丸投げする（UI更新もSE再生も自動で行われる）
+                    self.import_voice_bank(zip_input_path)
+                    
+                    # URLからの一時ファイルをクリーンアップ
                     if tmp_file_path and os.path.exists(tmp_file_path):
                         os.remove(tmp_file_path)
 
