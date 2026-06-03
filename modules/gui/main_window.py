@@ -14,9 +14,6 @@ import zipfile
 import shutil
 import threading
 import math
-import tempfile
-from urllib.parse import urlparse
-from urllib.request import urlretrieve
 from copy import deepcopy
 from typing import Any, List, Dict, Optional, TYPE_CHECKING, cast              
 
