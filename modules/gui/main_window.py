@@ -3405,8 +3405,9 @@ class MainWindow(QMainWindow):
             # 8. レンダリング終了後に安全にメモリ解放
             # keep_alive が削除されることで、参照カウントが減り、
             # Pythonのガベージコレクタが適切に処理する
-            del keep_alive
-            del cpp_notes_array
+           for arr in keep_alive:
+               arr = None
+            keep_alive.clear()
             print("メモリクリーンアップ完了")
 
 
