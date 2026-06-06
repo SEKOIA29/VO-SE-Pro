@@ -24,11 +24,14 @@ except Exception:
 class CNoteEvent(ctypes.Structure):
     _fields_ = [
         ("wav_path", ctypes.c_char_p),
-        ("pitch_curve", ctypes.POINTER(ctypes.c_float)),
+        ("pitch_curve", ctypes.POINTER(ctypes.c_double)),
         ("pitch_length", ctypes.c_int),
-        ("gender_curve", ctypes.POINTER(ctypes.c_float)),
-        ("tension_curve", ctypes.POINTER(ctypes.c_float)),
-        ("breath_curve", ctypes.POINTER(ctypes.c_float))
+        ("gender_curve", ctypes.POINTER(ctypes.c_double)),
+        ("tension_curve", ctypes.POINTER(ctypes.c_double)),
+        ("breath_curve", ctypes.POINTER(ctypes.c_double)),
+        ("vibrato_depth_curve", ctypes.POINTER(ctypes.c_double)),
+        ("vibrato_rate_curve", ctypes.POINTER(ctypes.c_double)),
+        ("vibrato_curve_length", ctypes.c_int),
     ]
 
 # ==========================================================================
@@ -113,7 +116,8 @@ class VO_SE_Engine:
                     lib.execute_render.argtypes = [
                         ctypes.POINTER(CNoteEvent), 
                         ctypes.c_int, 
-                        ctypes.c_char_p
+                        ctypes.c_char_p,
+                        ctypes.c_int,
                     ]
                     print(f"○ Engine Core Connected: {path}")
                     return lib
@@ -165,22 +169,27 @@ class VO_SE_Engine:
                 wav_path = list(self.oto_map.values())[0] if self.oto_map else ""
 
             res = 128
-            p_curve = self._get_sampled_curve(parameters["Pitch"], note, res, is_pitch=True)
-            g_curve = self._get_sampled_curve(parameters["Gender"], note, res)
-            t_curve = self._get_sampled_curve(parameters["Tension"], note, res)
-            b_curve = self._get_sampled_curve(parameters["Breath"], note, res)
+            p_curve = self._get_sampled_curve(parameters["Pitch"], note, res, is_pitch=True).astype(np.float64)
+            g_curve = self._get_sampled_curve(parameters["Gender"], note, res).astype(np.float64)
+            t_curve = self._get_sampled_curve(parameters["Tension"], note, res).astype(np.float64)
+            b_curve = self._get_sampled_curve(parameters["Breath"], note, res).astype(np.float64)
+            vibrato_depth_curve = np.zeros(res, dtype=np.float64)
+            vibrato_rate_curve = np.zeros(res, dtype=np.float64)
 
-            self._temp_refs.extend([p_curve, g_curve, t_curve, b_curve])
+            self._temp_refs.extend([p_curve, g_curve, t_curve, b_curve, vibrato_depth_curve, vibrato_rate_curve])
 
             c_notes_array[i].wav_path = wav_path.encode('utf-8')
-            c_notes_array[i].pitch_curve = p_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-            c_notes_array[i].gender_curve = g_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-            c_notes_array[i].tension_curve = t_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-            c_notes_array[i].breath_curve = b_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+            c_notes_array[i].pitch_curve = p_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+            c_notes_array[i].gender_curve = g_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+            c_notes_array[i].tension_curve = t_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+            c_notes_array[i].breath_curve = b_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+            c_notes_array[i].vibrato_depth_curve = vibrato_depth_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+            c_notes_array[i].vibrato_rate_curve = vibrato_rate_curve.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
             c_notes_array[i].pitch_length = res
+            c_notes_array[i].vibrato_curve_length = res
 
         try:
-            self.lib.execute_render(c_notes_array, note_count, os.path.abspath(file_path).encode('utf-8'))
+            self.lib.execute_render(c_notes_array, note_count, os.path.abspath(file_path).encode('utf-8'), 0)
         finally:
             self._temp_refs = []
 
