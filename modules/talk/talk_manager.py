@@ -253,6 +253,7 @@ class VoseRendererBridge:
                 ctypes.POINTER(CNoteEvent), # vose_types.py で定義[cite: 21]
                 ctypes.c_int,
                 ctypes.c_char_p,
+                ctypes.c_int,
             ]
             self.lib.execute_render.restype = None
 
@@ -311,7 +312,7 @@ class VoseRendererBridge:
             c_notes[i].breath_curve = b_arr
 
         try:
-            self.lib.execute_render(c_notes, note_count, output_path.encode("utf-8"))
+            self.lib.execute_render(c_notes, note_count, output_path.encode("utf-8"), 0)
             print(f"🎬 Render finished: {output_path}")
             return True
         except Exception as e:
