@@ -19,9 +19,11 @@ except Exception as e:
 
 # OSに応じたCエンジンのバイナリ判定
 if sys.platform == 'win32':
-    dll_name = 'libvo_se.dll'
+        dll_name = 'vose_core.dll'
+elif sys.platform == 'darwin':
+    dll_name = 'libvose_core.dylib'
 else:
-    dll_name = 'libvo_se.dylib' # Mac用
+    dll_name = 'libvose_core.so'
 
 dll_path = os.path.join('bin', dll_name)
 if os.path.exists(dll_path):
