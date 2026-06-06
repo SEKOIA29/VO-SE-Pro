@@ -39,3 +39,35 @@ def test_runtime_requirement_check_skips_macos_bundled_os_libraries(monkeypatch)
     monkeypatch.setattr(main, "_is_os_library_loadable", lambda library_name: False)
 
     assert main._check_runtime_requirements() == []
+
+
+def test_engine_library_path_uses_linux_shared_object(monkeypatch):
+    monkeypatch.setattr(main.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(main.os.path, "exists", lambda path: False)
+
+    engine_path = main.get_engine_library_path()
+
+    assert engine_path.endswith("bin/libvose_core.so")
+
+
+def test_app_initializer_accepts_linux_core_names(monkeypatch, tmp_path):
+    from modules.utils.initializer import AppInitializer
+    import modules.utils.initializer as initializer
+
+    bin_dir = tmp_path / "bin"
+    open_jtalk_dir = bin_dir / "open_jtalk"
+    models_dir = tmp_path / "models"
+    open_jtalk_dir.mkdir(parents=True)
+    models_dir.mkdir()
+    (bin_dir / "libvose_core.so").write_text("", encoding="utf-8")
+    (open_jtalk_dir / "open_jtalk").write_text("", encoding="utf-8")
+    (models_dir / "onset_detector.onnx").write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(initializer.sys, "platform", "linux")
+    monkeypatch.setattr(initializer.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(initializer.sys, "_MEIPASS", str(tmp_path), raising=False)
+
+    ok, message = AppInitializer.check_environment()
+
+    assert ok is True
+    assert message == "All clear"
