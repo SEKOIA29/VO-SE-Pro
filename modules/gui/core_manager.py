@@ -86,6 +86,7 @@ class VoseCoreManager:
                 ctypes.POINTER(CNoteEvent),
                 ctypes.c_int,
                 ctypes.c_char_p,
+                ctypes.c_int,
             ]
             self.lib.execute_render.restype = None
         except AttributeError:
