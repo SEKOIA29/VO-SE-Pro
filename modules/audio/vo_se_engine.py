@@ -87,17 +87,24 @@ class VO_SE_Engine:
             print(f"Device error: {e}")
 
     def _load_core_library(self):
-        """OS判別ロード（Win/Mac両対応）"""
+        """OS判別ロード（Win/Mac/Linux対応）"""
         system = platform.system()
-        ext = ".dll" if system == "Windows" else ".dylib"
+        if system == "Windows":
+            lib_names = ("vose_core.dll",)
+        elif system == "Darwin":
+            lib_names = ("libvose_core.dylib", "vose_core.dylib")
+        else:
+            lib_names = ("libvose_core.so", "vose_core.so")
         
         # 探索候補
         base_dir = os.path.dirname(__file__)
-        search_paths = [
-            os.path.join(base_dir, f"vose_core{ext}"),
-            os.path.join(base_dir, "bin", f"vose_core{ext}"),
-            f"./vose_core{ext}"
+        search_dirs = [
+            base_dir,
+            os.path.join(base_dir, "bin"),
+            os.path.join(os.getcwd(), "bin"),
+            os.getcwd(),
         ]
+        search_paths = [os.path.join(directory, lib_name) for directory in search_dirs for lib_name in lib_names]
         
         for path in search_paths:
             if os.path.exists(path):
