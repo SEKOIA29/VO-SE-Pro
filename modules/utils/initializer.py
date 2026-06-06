@@ -22,7 +22,12 @@ class AppInitializer:
 
         # チェック対象リスト
         # 各プラットフォームに合わせたバイナリ名を判定
-        dll_names = ("vose_core.dll",) if sys.platform == "win32" else ("libvose_core.dylib", "vose_core.dylib")
+        if sys.platform == "win32":
+            dll_names = ("vose_core.dll",)
+        elif sys.platform == "darwin":
+            dll_names = ("libvose_core.dylib", "vose_core.dylib")
+        else:
+            dll_names = ("libvose_core.so", "vose_core.so")
         jtalk_bin = "open_jtalk.exe" if sys.platform == "win32" else "open_jtalk"
 
         required_files = [
