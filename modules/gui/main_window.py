@@ -124,6 +124,9 @@ except ImportError:
             ("gender_curve", ctypes.POINTER(ctypes.c_double)),
             ("tension_curve", ctypes.POINTER(ctypes.c_double)),
             ("breath_curve", ctypes.POINTER(ctypes.c_double)),
+            ("vibrato_depth_curve", ctypes.POINTER(ctypes.c_double)),
+            ("vibrato_rate_curve", ctypes.POINTER(ctypes.c_double)),
+            ("vibrato_curve_length", ctypes.c_int),
             # 必要に応じて UTAU用パラメータ(offset等)をここに追加
         ]
 
@@ -3384,7 +3387,8 @@ class MainWindow(QMainWindow):
             result_code = self.engine_dll.execute_render(
                 cpp_notes_array,
                 note_count,
-                output_path.encode('utf-8')
+                output_path.encode('utf-8'),
+                0
             )
         
             # 7. 結果チェック
