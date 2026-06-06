@@ -201,7 +201,7 @@ jobs:
             ICON="assets/icon.ico"
             CORE_LIB="bin/libvose_core.so:bin"
             PATH_SEP=":"
-            NAME="VO-SE_vocal_
+            NAME="VO-SE_vocal_Linux"
           fi
 
           # PyInstallerの実行（main.pyから直接自動生成）
