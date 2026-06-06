@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-15-intel, macos-15]
+        os: [windows-latest, macos-15-intel, macos-15, ubuntu-latest]
 
     steps:
       - name: Checkout code
@@ -53,6 +53,13 @@ jobs:
                 choco install libsndfile -y
             elif [ "${{ runner.os }}" == "macOS" ]; then
                 brew install portaudio libsndfile
+            elif [ "${{ runner.os }}" == "Linux" ]; then
+                sudo apt-get update
+                sudo apt-get install -y \
+                  libgl1 libegl1 libxkbcommon0 libxkbcommon-x11-0 \
+                  libdbus-1-3 libxcb-cursor0 libxrender1 libxi6 \
+                  libsm6 libxext6 libfontconfig1 \
+                  libpulse0 libasound2t64 libsndfile1 portaudio19-dev
             fi
             
           
@@ -145,6 +152,36 @@ jobs:
           echo "✅ Build Complete: bin/libvose_core.dylib"
           ls -l bin/libvose_core.dylib
 
+      - name: 🛠️ Build VOSE Core (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bin build/linux-world
+          cp include/world/*.h src/world/
+
+          echo "🔨 Compiling WORLD source files for Linux..."
+          for f in src/world/*.cpp; do
+            [ -e "$f" ] || continue
+            obj="build/linux-world/$(basename "${f%.cpp}").o"
+            echo "  Compiling $f -> $obj"
+            g++ -O3 -fPIC -c -std=c++17 \
+              -D_USE_MATH_DEFINES \
+              -I./src -I./include -I./src/world \
+              "$f" -o "$obj"
+          done
+
+          echo "🔗 Linking all objects into libvose_core.so..."
+          g++ -O3 -fPIC -shared -std=c++17 \
+            -Wl,-soname,libvose_core.so \
+            -I./src -I./include -I./src/world \
+            -o bin/libvose_core.so \
+            src/vose_core.cpp \
+            build/linux-world/*.o
+
+          echo "✅ Build Complete: bin/libvose_core.so"
+          ls -l bin/libvose_core.so
+
       - name: Package with PyInstaller
         shell: bash
         run: |
@@ -154,12 +191,17 @@ jobs:
             CORE_LIB="bin/vose_core.dll;bin"
             PATH_SEP=";"
             NAME="VO-SE_vocal_Win"
-          else
+          elif [ "${{ runner.os }}" == "macOS" ]; then
             ICON="assets/icon.icns"
             # ビルドステップで生成される「libvose_core.dylib」に正確に合わせます
             CORE_LIB="bin/libvose_core.dylib:bin"
             PATH_SEP=":"
             NAME="VO-SE_vocal_Mac"
+          else
+            ICON="assets/icon.ico"
+            CORE_LIB="bin/libvose_core.so:bin"
+            PATH_SEP=":"
+            NAME="VO-SE_vocal_
           fi
 
           # PyInstallerの実行（main.pyから直接自動生成）
@@ -333,6 +375,23 @@ jobs:
               --add-data "modules;modules" \
               --name "VO-SE_vocal_Win" main.py
             cp dist/VO-SE_vocal_Win.exe dist_out/
+          elif [ "${{ runner.os }}" = "Linux" ]; then
+            echo "Building Linux app on runner: ${{ matrix.os }}"
+            pyinstaller --noconsole --onefile --clean \
+              --paths modules \
+              --icon="assets/icon.ico" \
+              --hidden-import=modules.gui.main_window \
+              --hidden-import=backports \
+              --hidden-import=backports.tarfile \
+              --collect-all=sounddevice \
+              --collect-all=soundfile \
+              --collect-all=pyopenjtalk \
+              --add-data "bin/libvose_core.so:bin" \
+              --add-data "assets:assets" \
+              --add-data "modules:modules" \
+              --name "VO-SE_vocal_Linux" main.py
+            chmod +x dist/VO-SE_vocal_Linux
+            cp dist/VO-SE_vocal_Linux dist_out/VO-SE_vocal_Linux_x86_64
           else
             echo "Building macOS app on runner: ${{ matrix.os }}"
             if [ "${{ matrix.os }}" = "macos-15-intel" ]; then
@@ -454,6 +513,8 @@ jobs:
 
           if "${{ matrix.os }}" == "windows-latest":
               app_path = os.path.join("dist", "VO-SE_vocal_Win.exe")
+          elif "${{ runner.os }}" == "Linux":
+              app_path = os.path.join("dist", "VO-SE_vocal_Linux")
           else:
               app_path = os.path.join(
                   "dist",
@@ -499,7 +560,7 @@ jobs:
               raise SystemExit(return_code)
 
       - name: 🍎 Optional notarize macOS app (recommended)
-        if: matrix.os != 'windows-latest'
+        if: startsWith(matrix.os, 'macos')
         shell: bash
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -562,6 +623,18 @@ jobs:
 
           echo "🗜️ Generating signed update ZIP..."
           (cd dist && zip -ry "../dist_out/VO-SE_vocal_Mac_${MAC_LABEL}_update.zip" VO-SE_vocal_Mac.app)
+
+      - name: 🐧 Package Linux artifacts
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist/VO-SE_vocal_Linux
+          mkdir -p dist_out
+          chmod +x dist/VO-SE_vocal_Linux
+          tar -C dist -czf dist_out/VO-SE_vocal_Linux_x86_64.tar.gz VO-SE_vocal_Linux
+          cp dist/VO-SE_vocal_Linux dist_out/VO-SE_vocal_Linux_x86_64
+
 
       - name: 📦 Save Artifacts
         uses: actions/upload-artifact@v4
@@ -643,6 +716,8 @@ jobs:
             dist_out/VO-SE_vocal_Mac_AppleSilicon_update.zip
             dist_out/VO-SE_vocal_Mac_Intel.dmg
             dist_out/VO-SE_vocal_Mac_Intel_update.zip
+            dist_out/VO-SE_vocal_Linux_x86_64.tar.gz
+            dist_out/VO-SE_vocal_Linux_x86_64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -659,6 +734,8 @@ jobs:
             dist_out/VO-SE_vocal_Mac_AppleSilicon.dmg
             dist_out/VO-SE_vocal_Mac_AppleSilicon_update.zip
             dist_out/VO-SE_vocal_Mac_Intel.dmg
-            dist_out/VO-SE_vocal_Mac_Intel_update.zip
+            dist_out/VO-SE_vocal_Mac_Intel_update.zip 
+            dist_out/VO-SE_vocal_Linux_x86_64.tar.gz
+            dist_out/VO-SE_vocal_Linux_x86_64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
