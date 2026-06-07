@@ -19,7 +19,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [windows-latest, macos-latest, ubuntu-latest]
+
 
     steps:
       - name: "📂 [Step 1] Checkout Repository"
@@ -93,22 +94,43 @@ jobs:
               /I src /I include /I src\\world \
               /link"
 
-          else
-            # macOS (Clang): 個別にコンパイルして dynamiclib としてリンク[cite: 30]
-            cd src/world
-            for f in *.cpp; do
+          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+            # macOS (Clang): 個別にコンパイルして dynamiclib としてリンク
+            mkdir -p build/macos-world
+            for f in src/world/*.cpp; do
               [ -e "$f" ] || continue
-              clang++ -O3 -c -std=c++17 -stdlib=libc++ -mmacosx-version-min=11.0 \
-                -I. -I.. -I../../include "$f"
+              obj="build/macos-world/$(basename "${f%.cpp}").o"
+              clang++ -O3 -fPIC -c -std=c++17 -stdlib=libc++ -mmacosx-version-min=11.0 \
+                -D_USE_MATH_DEFINES \
+                -I./src -I./include -I./src/world \
+                "$f" -o "$obj"
             done
-            cd ../..
+            
 
             clang++ -O3 -dynamiclib -std=c++17 -stdlib=libc++ \
               -mmacosx-version-min=11.0 \
               -I./src -I./include -I./src/world \
               -o bin/libvose_core.dylib \
               src/vose_core.cpp \
-              src/world/*.o
+              build/macos-world/*.o
+          else
+            # Linux (GCC): PIC オブジェクトを作成し、共有ライブラリ (.so) としてリンク
+            mkdir -p build/linux-world
+            for f in src/world/*.cpp; do
+              [ -e "$f" ] || continue
+              obj="build/linux-world/$(basename "${f%.cpp}").o"
+              g++ -O3 -fPIC -c -std=c++17 \
+                -D_USE_MATH_DEFINES \
+                -I./src -I./include -I./src/world \
+                "$f" -o "$obj"
+            done
+
+            g++ -O3 -fPIC -shared -std=c++17 \
+              -Wl,-soname,libvose_core.so \
+              -I./src -I./include -I./src/world \
+              -o bin/libvose_core.so \
+              src/vose_core.cpp \
+              build/linux-world/*.o
           fi
           
       - name: "🔍 Verify DLL/dylib"
@@ -123,13 +145,20 @@ jobs:
               --add-data "bin/vose_core.dll;bin" \
               --add-data "assets;assets" \
               --distpath ./dist_out --name "VO-SE_PRO_Win" main.py
-          else
+          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
             # Macアプリ化してZIPに固める
             pyinstaller --noconsole --windowed \
               --add-data "bin/libvose_core.dylib:bin" \
               --add-data "assets:assets" \
               --distpath ./dist_out --name "VO-SE_PRO_Mac" main.py
             cd dist_out && zip -r VO-SE_PRO_Mac.zip VO-SE_PRO_Mac.app && cd ..
+           else
+            # Linux実行ファイル化
+            pyinstaller --noconsole --onefile \
+              --add-data "bin/libvose_core.so:bin" \
+              --add-data "assets:assets" \
+              --distpath ./dist_out --name "VO-SE_PRO_Linux" main.py
+            chmod +x dist_out/VO-SE_PRO_Linux
           fi
 
       - name: "🔍 Debug: List files before release"
@@ -138,7 +167,7 @@ jobs:
           echo "--- dist_out content ---"
           find dist_out -maxdepth 2
           echo "--- bin content ---"
-          ls -R bin/
+          find bin -maxdepth 2 -type f -print
 
       - name: "📦 Upload Artifacts for Workflow"
         uses: actions/upload-artifact@v4
@@ -148,6 +177,7 @@ jobs:
             dist_out/*
             bin/*.dll
             bin/*.dylib
+            bin/*.so
 
       - name: "🚀 [Step 9] Publish GitHub Release"
         uses: softprops/action-gh-release@v2
@@ -160,6 +190,8 @@ jobs:
             ${{ matrix.os == 'windows-latest' && 'bin/*.dll' || '' }}
             ${{ matrix.os == 'macos-latest' && 'dist_out/VO-SE_PRO_Mac.zip' || '' }}
             ${{ matrix.os == 'macos-latest' && 'bin/*.dylib' || '' }}
+            ${{ matrix.os == 'ubuntu-latest' && 'dist_out/VO-SE_PRO_Linux' || '' }}
+            ${{ matrix.os == 'ubuntu-latest' && 'bin/*.so' || '' }}
           fail_on_unmatched_files: false
           generate_release_notes: true
           make_latest: true
