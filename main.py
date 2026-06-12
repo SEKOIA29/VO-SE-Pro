@@ -164,7 +164,7 @@ class VoSeEngine:
         except Exception as e:
             return [f"Analysis failed: {str(e)}"]
 
-def analyze_singing_pitch(self, notes, sample_rate=48000, frame_period_ms=5.0):
+    def analyze_singing_pitch(self, notes, sample_rate=48000, frame_period_ms=5.0):
         """
         【歌唱用・WORLDエンジン連携】ノート列からF0カーブ（フレーム単位の周波数配列）を生成する。
         notes: [{'note_number': 60, 'duration': 0.5}, ...] を想定。
@@ -261,7 +261,7 @@ def analyze_singing_pitch(self, notes, sample_rate=48000, frame_period_ms=5.0):
         【共通処理】波形データとピッチデータ（WORLD F0カーブなど）をC++エンジンに送り込みます。
         
         ■ 変更・最適化ポイント:
-        - 複数スレッド（再生スレッド、UI描画スレッド、非同期書き出しなど）から同時にC++コアへ
+        - 再生スレッド、UIメーター描画、エディットスレッド等から同時にC++コアへ
           アクセスした際のメモリ競合・破壊（Segfault）を防ぐため、Pythonの Lock (Mutex) を導入。
         - numpyモジュールのロードにおいて、キャッシュ（sys.modules）を優先参照してリアルタイム処理時の
           オーバーヘッドを極限まで削減。
@@ -276,7 +276,7 @@ def analyze_singing_pitch(self, notes, sample_rate=48000, frame_period_ms=5.0):
             self._lock = threading.Lock()
 
         try:
-            # numpyを安全かつ低コストでロード
+            # numpyを安全かつ低コストでロード（毎回の探索オーバーヘッドを排除）
             import sys
             if "numpy" in sys.modules:
                 np = sys.modules["numpy"]
@@ -284,14 +284,14 @@ def analyze_singing_pitch(self, notes, sample_rate=48000, frame_period_ms=5.0):
                 import importlib
                 np = importlib.import_module("numpy")
 
-            # 同時実行を防ぐため、ロックを獲得してC++へ突入
+            # 同時実行を防ぐため、ロックを獲得してC++コアへ突入
             with self._lock:
                 # 波形データの準備
                 wav_float = np.ascontiguousarray(data_array, dtype=np.float32)
                 wav_ptr = wav_float.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
                 length = len(wav_float)
 
-                # f0_float を明示的に保持し、GCによるダングリングポインタを防ぐ
+                # [FIX-2] f0_float を明示的に保持し、GCによるダングリングポインタを防ぐ
                 f0_float = None
                 f0_ptr = None
                 if f0_array is not None:
@@ -302,7 +302,7 @@ def analyze_singing_pitch(self, notes, sample_rate=48000, frame_period_ms=5.0):
                 # ロック内かつスコープ内のため、wav_float・f0_float のメモリは100%安全に保護されます
                 self.c_engine.process_voice(wav_ptr, length, f0_ptr)
 
-            # wav_float を返すことで GC による早期解放を防ぐ
+            # [FIX-3] wav_float を返すことで GC による早期解放を防ぐ
             return wav_float
 
         except Exception as e:
