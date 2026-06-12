@@ -9,6 +9,37 @@ import json
 import importlib
 from importlib.util import find_spec
 
+# main.py の上部、既存のインポート文の下に追加してください
+
+def global_exception_handler(exctype, value, tb):
+    """
+    アプリ全体の未キャッチ例外をすべて捕捉し、無言クラッシュを防ぐグローバルハンドラー。
+    予期せぬエラー発生時、ユーザーにダイアログで原因を明示します。
+    """
+    import traceback
+    error_message = "".join(traceback.format_exception(exctype, value, tb))
+    print(f"[Fatal Crash] {error_message}", file=sys.stderr)
+    
+    try:
+        # GUIがすでに起動している場合は、QMessageBoxでエラーを視覚的に表示
+        from PySide6.QtWidgets import QApplication, QMessageBox
+        if QApplication.instance():
+            QMessageBox.critical(
+                None,
+                "致命的なエラー (VO-SE Pro)",
+                f"アプリケーション内で予期しないエラーが発生しました。\n"
+                f"開発者にこのエラーを報告してください。\n\n"
+                f"【エラー内容】\n{value}\n\n"
+                f"※詳細はコンソールログ、またはログファイルを確認してください。"
+            )
+    except Exception as e:
+        print(f"Failed to show crash dialog: {e}", file=sys.stderr)
+        
+    sys.exit(1)
+
+# グローバル例外ハンドラーをシステムに登録
+sys.excepthook = global_exception_handler
+
 
 # --- [1] リソースパス解決関数 (PyInstaller対応) ---
 def get_resource_path(relative_path):
