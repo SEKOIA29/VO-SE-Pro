@@ -126,7 +126,6 @@ class AudioOutput:
         【バックグラウンド供給】C++エンジンから随時波形データを先読み（プル）し、
         キューに事前充填（プリバッファリング）する高効率ループ。
         """
-        import sys
         if "numpy" in sys.modules:
             np = sys.modules["numpy"]
         else:
