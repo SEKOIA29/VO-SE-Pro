@@ -248,13 +248,18 @@ class VoSeEngine:
 
         except Exception as e:
             print(f"[Error] analyze_singing_pitch failed: {e}")
-            # 万が一の予期せぬ不具合時も、後続のC++処理（process_with_c）でダングリングやクラッシュを起こさないよう安全なゼロ配列を保証
+            # 万が一の予期せぬ不具合時も、後続のC++処理（process_with_c）でクラッシュを起こさないよう安全なゼロ配列を保証
             try:
-                import numpy as np
+                import sys
+                if "numpy" in sys.modules:
+                    np = sys.modules["numpy"]
+                else:
+                    import numpy as np
                 return np.zeros(1, dtype=np.float32)
             except Exception:
-                # 最悪のケース（numpyすら死んでいる状態）のフォールバック
-                return ctypes.util.find_library(None) # ダミー回避用（通常は通過しません）
+                # [修正] numpyのインポートすら完全に破綻している最悪のケースのフォールバック
+                # Pyrightのエラーを完全に回避しつつ、後続の process_with_c が安全に処理できる None を返します。
+                return None
 
     def process_with_c(self, data_array, f0_array=None):
         """
