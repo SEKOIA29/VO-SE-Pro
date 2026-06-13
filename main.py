@@ -354,7 +354,8 @@ OS_DEPENDENCY_INSTALL_HINTS = {
 
 def _is_os_library_loadable(library_lookup_name):
     library_path = ctypes.util.find_library(library_lookup_name)
-    if not library_path:
+    # [修正] library_path が None の場合は、ctypes.CDLL に渡さず即座に False を返す
+    if library_path is None:
         return False
 
     try:
